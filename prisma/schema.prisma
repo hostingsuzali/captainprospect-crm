@@ -1,0 +1,2460 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================
+// ENUMS (PRD Section 11)
+// ============================================
+
+enum UserRole {
+  SDR
+  MANAGER
+  CLIENT
+  DEVELOPER
+  BUSINESS_DEVELOPER
+}
+
+enum Channel {
+  CALL
+  EMAIL
+  LINKEDIN
+}
+
+// In-app call system
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallStatus {
+  queued
+  ringing
+  in_progress
+  completed
+  failed
+}
+
+enum ListType {
+  SUZALI
+  CLIENT
+  MIXED
+}
+
+enum CompletenessStatus {
+  INCOMPLETE
+  PARTIAL
+  ACTIONABLE
+}
+
+enum ActionResult {
+  NO_RESPONSE
+  BAD_CONTACT
+  INTERESTED
+  CALLBACK_REQUESTED
+  MEETING_BOOKED
+  MEETING_CANCELLED
+  DISQUALIFIED
+  ENVOIE_MAIL
+}
+
+// Config-driven action status and workflow
+enum ActionScopeType {
+  GLOBAL
+  CLIENT
+  MISSION
+  CAMPAIGN
+}
+
+enum ActionPriorityLabel {
+  CALLBACK
+  FOLLOW_UP
+  NEW
+  RETRY
+  SKIP
+}
+
+enum SyncDirection {
+  CRM_TO_DRIVE
+  DRIVE_TO_CRM
+  BIDIRECTIONAL
+}
+
+enum Urgency {
+  SHORT
+  MEDIUM
+  LONG
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum EmailProvider {
+  GMAIL
+  OUTLOOK
+  CUSTOM
+}
+
+enum InvoiceStatus {
+  DRAFT
+  VALIDATED
+  SENT
+  PAID
+  CANCELLED
+  PARTIALLY_PAID
+}
+
+enum InvoiceDocumentType {
+  INVOICE
+  CREDIT_NOTE
+}
+
+enum InvoiceTransactionType {
+  B2B_DOMESTIC        // B2B France domestic (e-invoicing)
+  B2B_INTRA_EU        // B2B intra-EU (e-reporting)
+  B2B_EXPORT          // B2B export outside EU (e-reporting)
+  B2C_DOMESTIC        // B2C France (e-reporting)
+  B2C_INTRA_EU        // B2C intra-EU (e-reporting)
+  B2C_EXPORT          // B2C export (e-reporting)
+}
+
+enum PdpSubmissionStatus {
+  NOT_SUBMITTED
+  PENDING
+  ACCEPTED
+  REJECTED
+  ERROR
+}
+
+enum PaymentMatchStatus {
+  MATCHED
+  CONFIRMED
+}
+
+// ============================================
+// PROSPECT ORCHESTRATION ENGINE ENUMS
+// ============================================
+
+enum ProspectSourceType {
+  WEB_FORM
+  CSV_IMPORT
+  API
+  PARTNER_FEED
+  MANUAL_ENTRY
+}
+
+enum ProspectPipelineStep {
+  INTAKE
+  NORMALIZE
+  VALIDATE
+  ENRICH
+  DEDUPLICATE
+  SCORE
+  ROUTE
+  ACTIVATE
+  HOLD
+  REJECT
+}
+
+enum ProspectStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  ACTIVATED
+  DUPLICATE
+}
+
+enum DecisionOutcome {
+  PASS
+  FAIL
+  REVIEW_REQUIRED
+  SKIP
+}
+
+// ============================================
+// EMAIL HUB ENUMS
+// ============================================
+
+enum MailboxType {
+  PERSONAL
+  SHARED
+  CLIENT
+  CAMPAIGN
+}
+
+enum MailboxWarmupStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  PAUSED
+}
+
+enum MailboxSyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  ERROR
+}
+
+enum EmailDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum EmailStatus {
+  DRAFT
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  REPLIED
+  BOUNCED
+  FAILED
+}
+
+enum SequenceStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  REPLIED
+  BOUNCED
+  UNSUBSCRIBED
+  MANUAL_EXIT
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          UserRole
+  isActive      Boolean   @default(true)  // For banning/disabling users
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id])
+  clientOnboardingDismissedPermanently Boolean @default(false)  // Client portal: hide onboarding forever
+  actions       Action[]  @relation("SDRActions")
+  assignedMissions SDRAssignment[]
+  missionsAsTeamLead Mission[]  @relation("MissionTeamLead")
+  uploadedFiles File[]
+  googleDriveSyncs GoogleDriveSync[]
+  
+  // Projects & Tasks
+  ownedProjects    Project[]       @relation("ProjectOwner")
+  projectMemberships ProjectMember[]
+  assignedTasks    Task[]          @relation("TaskAssignee")
+  createdTasks     Task[]          @relation("TaskCreator")
+  taskComments     TaskComment[]   @relation("TaskCommenter")
+  projectActivities ProjectActivity[] @relation("ProjectActivityUser")
+  taskTimeEntries  TaskTimeEntry[]   @relation("TaskTimeEntryUser")
+  projectTemplates ProjectTemplate[] @relation("ProjectTemplateCreator")
+  
+  // Email Accounts (legacy)
+  emailAccounts    EmailAccount[]
+  notifications    Notification[]
+  
+  // Email Hub - Mailboxes
+  ownedMailboxes       Mailbox[]           @relation("MailboxOwner")
+  mailboxPermissions   MailboxPermission[]
+  assignedThreads      EmailThread[]       @relation("AssignedThreads")
+  threadComments       ThreadComment[]
+  createdSequences     EmailSequence[]     @relation("SequenceCreator")
+  emailAuditLogs       EmailAuditLog[]
+  emailTemplates       EmailTemplate[]     @relation("TemplateCreator")
+  sentEmails           Email[]             @relation("SentEmails")
+  
+  // Permissions
+  userPermissions  UserPermission[]
+  
+  // Google Drive Integration
+  googleDriveConnected Boolean  @default(false)
+  googleDriveTokens    Json?    // Encrypted OAuth tokens
+  googleDriveEmail     String?
+  
+  // Legacy Email fields (deprecated - use Mailbox model)
+  emailProvider        String?
+  emailConnected       Boolean    @default(false)
+  emailTokens          Json?
+  smtpHost             String?
+  smtpPort             Int?
+  smtpUser             String?
+  smtpPassword         String?
+  
+  // SDR Preferences
+  selectedMissionId    String?
+  selectedListId       String?
+
+  // Profile (all roles)
+  phone                String?
+  timezone             String?   @default("Europe/Paris")
+  preferences          Json?     // notifications, appearance, workingHours
+
+  // In-app telephony: unique outbound number per SDR (enforced in app logic)
+  outboundPhoneNumber  String?   @unique
+  calls                Call[]   @relation("CallUser")
+  
+  // Business Developer portfolio
+  bdPortfolio          BusinessDeveloperClient[]
+  
+  // Scheduling (for SDRs)
+  scheduleBlocks       ScheduleBlock[] @relation("SDRScheduleBlocks")
+  createdScheduleBlocks ScheduleBlock[] @relation("CreatedScheduleBlocks")
+  
+  // CRM Activity Tracking
+  crmActivityDays     CrmActivityDay[]
+  
+  // Internal Communication Module
+  createdCommsGroups      CommsGroup[]            @relation("CommsGroupCreator")
+  commsGroupMemberships   CommsGroupMember[]
+  createdCommsThreads     CommsThread[]           @relation("CommsThreadCreator")
+  commsParticipations     CommsParticipant[]
+  commsMessages           CommsMessage[]          @relation("CommsMessageAuthor")
+  commsMentions           CommsMention[]          @relation("CommsMentionedUser")
+  commsBroadcastReceipts  CommsBroadcastReceipt[] @relation("CommsBroadcastReader")
+  commsMessageReadReceipts CommsMessageReadReceipt[] @relation("CommsMessageReader")
+  commsMessageReactions   CommsMessageReaction[]    @relation("CommsMessageReactor")
+  commsSavedSearches      CommsSavedSearch[]
+  
+  // Billing Module
+  createdInvoices         Invoice[]               @relation("InvoiceCreator")
+  confirmedPayments       InvoicePayment[]        @relation("PaymentConfirmer")
+  invoiceAuditLogs        InvoiceAuditLog[]       @relation("InvoiceAuditLogUser")
+  
+  // Prospect Orchestration Engine
+  reviewedProspects   ProspectProfile[] @relation("ProspectReviewer")
+  assignedProspects   ProspectProfile[]
+  createdProspectRules ProspectRule[] @relation("ProspectRuleCreator")
+  updatedProspectRules ProspectRule[] @relation("ProspectRuleUpdater")
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([isActive])
+}
+
+// ============================================
+// BUSINESS DEVELOPER PORTFOLIO
+// ============================================
+
+model BusinessDeveloperClient {
+  id            String    @id @default(cuid())
+  bdUserId      String
+  bdUser        User      @relation(fields: [bdUserId], references: [id], onDelete: Cascade)
+  clientId      String
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  // Assignment metadata
+  assignedAt    DateTime  @default(now())
+  isActive      Boolean   @default(true)
+  
+  @@unique([bdUserId, clientId])
+  @@index([bdUserId])
+  @@index([clientId])
+}
+
+model ClientOnboarding {
+  id            String    @id @default(cuid())
+  clientId      String    @unique
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  // Onboarding status
+  status        OnboardingStatus @default(DRAFT)
+  
+  // Flexible onboarding data (fiche client, targets, ICP, listing criteria, etc.)
+  onboardingData Json?
+  
+  // Key dates
+  targetLaunchDate DateTime?
+  completedAt      DateTime?
+  
+  // Scripts and notes
+  scripts       Json?     // Structured scripts (intro, discovery, objection, closing)
+  notes         String?   @db.Text
+  
+  // Created by BD
+  createdById   String
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([clientId])
+  @@index([status])
+}
+
+enum OnboardingStatus {
+  DRAFT
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  APPROVED
+  ACTIVE
+}
+
+model Client {
+  id            String    @id @default(cuid())
+  name          String
+  email         String?
+  phone         String?
+  industry      String?
+  logo          String?
+  bookingUrl    String?   // URL for booking tools (Calendly, etc.)
+  users         User[]
+  missions      Mission[]
+  folders       Folder[]
+  files         File[]
+  projects      Project[]
+  
+  // Business Developer relations
+  bdAssignments BusinessDeveloperClient[]
+  onboarding    ClientOnboarding?
+  
+  // Email Hub relations
+  emailThreads  EmailThread[]
+  
+  // Internal Communication Module
+  commsChannel  CommsChannel?
+  
+  // Prospect Orchestration Engine
+  prospectSources     ProspectSource[]
+  prospectRules       ProspectRule[]
+  prospectPipelineConfig ProspectPipelineConfig?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Mission {
+  id            String    @id @default(cuid())
+  clientId      String
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name          String
+  objective     String
+  channel       Channel
+  startDate     DateTime
+  endDate       DateTime
+  isActive      Boolean   @default(true)
+  campaigns     Campaign[]
+  lists         List[]
+  sdrAssignments SDRAssignment[]
+  scheduleBlocks ScheduleBlock[]
+  folders       Folder[]
+  files         File[]
+
+  // Team lead: this SDR can see all rappels and notes of teammates in this mission
+  teamLeadSdrId String?
+  teamLeadSdr   User?     @relation("MissionTeamLead", fields: [teamLeadSdrId], references: [id], onDelete: SetNull)
+  
+  // Email Hub relations
+  emailThreads  EmailThread[]
+  sentEmails    Email[]
+  
+  // Internal Communication Module
+  commsChannel  CommsChannel?
+  
+  // Prospect Orchestration Engine
+  prospectProfiles    ProspectProfile[]
+  prospectSources     ProspectSource[]
+  
+  // Mission Email Templates
+  emailTemplates      MissionEmailTemplate[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model SDRAssignment {
+  id            String    @id @default(cuid())
+  missionId     String
+  mission       Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  sdrId         String
+  sdr           User      @relation(fields: [sdrId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+
+  @@unique([missionId, sdrId])
+}
+
+model Campaign {
+  id            String    @id @default(cuid())
+  missionId     String
+  mission       Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  name          String
+  icp           String    // Ideal Customer Profile
+  pitch         String    @db.Text
+  script        String?   @db.Text
+  rules         Json?     // Additional rules as JSON
+  isActive      Boolean   @default(true)
+  actions       Action[]
+  files         File[]
+  calls         Call[]
+  
+  // Email Hub relations
+  emailThreads  EmailThread[]
+  emailSequences EmailSequence[]
+  
+  // Internal Communication Module
+  commsChannel  CommsChannel?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model List {
+  id            String    @id @default(cuid())
+  missionId     String
+  mission       Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  name          String
+  type          ListType
+  source        String?   // Origin: Apollo, Clay, CSV, etc.
+  importConfig  Json?     // Store import configuration (type, mappings, custom fields)
+  companies     Company[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Company {
+  id            String    @id @default(cuid())
+  listId        String
+  list          List      @relation(fields: [listId], references: [id], onDelete: Cascade)
+  name          String
+  country       String?
+  industry      String?
+  website       String?
+  size          String?
+  phone         String?   // Company phone number for direct calls
+  customData    Json?     // Store custom fields from CSV imports
+  status        CompletenessStatus @default(INCOMPLETE)
+  contacts      Contact[]
+  opportunities Opportunity[]
+  actions       Action[]  // Actions can be on companies too
+  calls         Call[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Contact {
+  id            String    @id @default(cuid())
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  firstName     String?
+  lastName      String?
+  title         String?
+  email         String?
+  phone         String?
+  additionalPhones Json?  // ["+33 6 12 34 56 78", ...]
+  additionalEmails  Json? // ["other@example.com", ...]
+  linkedin      String?
+  customData    Json?     // Store custom fields from CSV imports
+  status        CompletenessStatus @default(INCOMPLETE)
+  actions       Action[]
+  opportunities Opportunity[]
+  calls         Call[]
+  
+  // Email Hub relations
+  emailThreads         EmailThread[]
+  sequenceEnrollments  EmailSequenceEnrollment[]
+  sentEmails           Email[]
+
+  // Email consent: when true, contact has unsubscribed from emails
+  unsubscribed          Boolean   @default(false)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Action {
+  id            String       @id @default(cuid())
+  contactId     String?      // Optional - can call company directly
+  contact       Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId     String?      // Optional - for company-level actions
+  company       Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sdrId         String
+  sdr           User         @relation("SDRActions", fields: [sdrId], references: [id])
+  campaignId    String
+  campaign      Campaign     @relation(fields: [campaignId], references: [id])
+  channel       Channel
+  result        ActionResult
+  note          String?      @db.Text
+  callbackDate  DateTime?    // Auto-detected from note for CALLBACK_REQUESTED
+  duration      Int?         // Duration in seconds
+  call          Call?        // Reverse relation: Call.actionId -> this Action
+  createdAt     DateTime     @default(now())
+  
+  @@index([companyId])
+  @@index([contactId])
+  @@index([callbackDate])
+}
+
+// Config-driven action status definitions (per scope: GLOBAL, CLIENT, MISSION, CAMPAIGN)
+model ActionStatusDefinition {
+  id                 String             @id @default(cuid())
+  scopeType          ActionScopeType
+  scopeId            String?            // Null for GLOBAL; clientId / missionId / campaignId otherwise
+  code               String             // e.g. NO_RESPONSE, CALLBACK_REQUESTED
+  label              String?            // Display label; null = inherit from parent
+  color              String?            // Optional hex for UI (e.g. #F5F5DC)
+  sortOrder          Int
+  requiresNote       Boolean            @default(false)
+  priorityLabel      ActionPriorityLabel
+  priorityOrder      Int?               // Optional numeric override; derived from priorityLabel if null
+  triggersOpportunity Boolean           @default(false)
+  triggersCallback   Boolean            @default(false)
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@unique([scopeType, scopeId, code])
+  @@index([scopeType, scopeId])
+}
+
+// Config-driven next steps: "after this result, suggest this action"
+model ActionNextStep {
+  id             String         @id @default(cuid())
+  scopeType      ActionScopeType
+  scopeId        String?
+  fromResultCode String
+  actionType     String         // e.g. OPEN_BOOKING, SEND_EMAIL, OPEN_EMAIL_MODAL
+  label          String?
+  config         Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([scopeType, scopeId])
+}
+
+// In-app call system: one record per call, linked to User (SDR) and optionally Action after logging
+model Call {
+  id              String        @id @default(cuid())
+  direction       CallDirection
+  fromNumber      String
+  toNumber        String
+  userId          String
+  user            User          @relation("CallUser", fields: [userId], references: [id], onDelete: Cascade)
+  contactId       String?
+  contact         Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  companyId       String?
+  company         Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  campaignId      String?
+  campaign        Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  startTime       DateTime      @default(now())
+  endTime         DateTime?
+  status          CallStatus    @default(queued)
+  durationSeconds Int?
+  recordingUrl    String?       @db.Text
+  externalCallId  String?       // e.g. external provider call ID
+  actionId        String?       @unique // Set when SDR logs outcome (creates Action); link from Call -> Action
+  action          Action?       @relation(fields: [actionId], references: [id], onDelete: SetNull)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([startTime])
+  @@index([status])
+}
+
+model Opportunity {
+  id            String    @id @default(cuid())
+  contactId     String
+  contact       Contact   @relation(fields: [contactId], references: [id])
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id])
+  needSummary   String    @db.Text
+  urgency       Urgency
+  estimatedMin  Float?
+  estimatedMax  Float?
+  handedOff     Boolean   @default(false)
+  handedOffAt   DateTime?
+  notes         String?   @db.Text
+  
+  // Email Hub relations
+  emailThreads  EmailThread[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ============================================
+// FILE MANAGEMENT (Phase 4.1)
+// ============================================
+
+model Folder {
+  id            String    @id @default(cuid())
+  name          String
+  description   String?
+  
+  // Hierarchy
+  parentId      String?
+  parent        Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children      Folder[]  @relation("FolderHierarchy")
+  
+  // Contents
+  files         File[]
+  
+  // Associations
+  missionId     String?
+  mission       Mission?  @relation(fields: [missionId], references: [id])
+  
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id])
+  
+  // Metadata
+  color         String?
+  icon          String?
+  isPublic      Boolean   @default(false)
+  
+  // Google Drive Integration
+  googleDriveSyncs GoogleDriveSync[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([parentId])
+  @@index([missionId])
+  @@index([clientId])
+}
+
+model File {
+  id            String    @id @default(cuid())
+  name          String
+  originalName  String
+  mimeType      String
+  size          Int       // bytes
+  path          String    // Storage path/key
+  url           String?   // Public URL if available
+  
+  // Organization
+  folderId      String?
+  folder        Folder?   @relation(fields: [folderId], references: [id])
+  
+  // Associations
+  uploadedById  String
+  uploadedBy    User      @relation(fields: [uploadedById], references: [id])
+  
+  missionId     String?
+  mission       Mission?  @relation(fields: [missionId], references: [id])
+  
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id])
+  
+  campaignId    String?
+  campaign      Campaign? @relation(fields: [campaignId], references: [id])
+  
+  taskId        String?
+  task          Task?     @relation(fields: [taskId], references: [id])
+  
+  // Metadata
+  description   String?
+  tags          String[]  @default([])
+  
+  // Versioning
+  version       Int       @default(1)
+  
+  // Soft delete
+  deletedAt     DateTime?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([folderId])
+  @@index([uploadedById])
+  @@index([missionId])
+  @@index([clientId])
+  @@index([campaignId])
+  @@index([deletedAt])
+}
+
+// ============================================
+// GOOGLE DRIVE INTEGRATION
+// ============================================
+
+model GoogleDriveSync {
+  id              String        @id @default(cuid())
+  
+  // User
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // CRM folder mapping
+  crmFolderId     String?
+  crmFolder       Folder?       @relation(fields: [crmFolderId], references: [id], onDelete: SetNull)
+  
+  // Google Drive folder mapping
+  driveFolderId   String        // Google Drive folder ID
+  driveFolderName String
+  driveFolderPath String?       // Full path in Drive
+  
+  // Sync settings
+  syncDirection   SyncDirection @default(BIDIRECTIONAL)
+  autoSync        Boolean       @default(false)
+  syncInterval    Int           @default(3600) // seconds (default: 1 hour)
+  
+  // Sync status
+  lastSyncedAt    DateTime?
+  lastSyncStatus  String?       // 'success', 'error', 'in_progress'
+  lastSyncError   String?
+  filesSync       Int           @default(0)
+  
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  @@index([userId])
+  @@index([crmFolderId])
+  @@index([isActive])
+}
+
+// ============================================
+// PROJECTS & TASKS (Shared Module)
+// ============================================
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?       @db.Text
+  status      ProjectStatus @default(ACTIVE)
+  
+  // Owner (Manager or Developer)
+  ownerId     String
+  owner       User          @relation("ProjectOwner", fields: [ownerId], references: [id])
+  
+  // Optional client association
+  clientId    String?
+  client      Client?       @relation(fields: [clientId], references: [id])
+  
+  // Enhanced fields
+  startDate   DateTime?
+  endDate     DateTime?
+  color       String?       @default("#6366f1")
+  icon        String?       @default("folder")
+  archivedAt  DateTime?
+  
+  // Relations
+  tasks       Task[]
+  members     ProjectMember[]
+  activities  ProjectActivity[]
+  milestones  ProjectMilestone[]
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  @@index([ownerId])
+  @@index([clientId])
+  @@index([status])
+}
+
+model ProjectMember {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String  @default("member") // "owner", "admin", "member"
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  projectId   String
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  title       String
+  description String?      @db.Text
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+  startDate   DateTime?
+  
+  // Assignment
+  assigneeId  String?
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  
+  // Creator
+  createdById String
+  createdBy   User         @relation("TaskCreator", fields: [createdById], references: [id])
+  
+  // Enhanced fields
+  estimatedHours Float?
+  loggedHours    Float?
+  position       Int          @default(0)
+  completedAt    DateTime?
+  labels         String[]     @default([])
+  
+  // Details (legacy)
+  tags        String[]     @default([])
+  
+  // Subtasks (Self Relation)
+  parentTaskId String?
+  parentTask   Task?       @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  subtasks     Task[]      @relation("Subtasks")
+  
+  // Milestone
+  milestoneId String?
+  milestone   ProjectMilestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  
+  // Dependencies
+  dependentOn   TaskDependency[] @relation("TaskDependentOn")
+  blockedBy     TaskDependency[] @relation("TaskBlockedBy")
+  
+  // Relations
+  comments    TaskComment[]
+  files       File[]
+  activities  ProjectActivity[]
+  timeEntries TaskTimeEntry[]
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@index([projectId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([priority])
+  @@index([parentTaskId])
+  @@index([position])
+  @@index([milestoneId])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("TaskCommenter", fields: [userId], references: [id])
+  content   String   @db.Text
+  
+  createdAt DateTime @default(now())
+  
+  @@index([taskId])
+  @@index([userId])
+}
+
+model TaskDependency {
+  id              String   @id @default(cuid())
+  taskId          String
+  task            Task     @relation("TaskDependentOn", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTaskId String
+  dependsOnTask   Task     @relation("TaskBlockedBy", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  
+  @@unique([taskId, dependsOnTaskId])
+  @@index([taskId])
+  @@index([dependsOnTaskId])
+}
+
+model ProjectActivity {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  userId    String
+  user      User     @relation("ProjectActivityUser", fields: [userId], references: [id])
+  action    String   // "task_created", "status_changed", "assigned", "commented", "ai_decomposed", etc.
+  details   Json?    // { from: "TODO", to: "IN_PROGRESS" }
+  createdAt DateTime @default(now())
+  
+  @@index([projectId, createdAt])
+  @@index([taskId])
+  @@index([userId])
+}
+
+model ProjectMilestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?   @db.Text
+  dueDate     DateTime?
+  completedAt DateTime?
+  position    Int       @default(0)
+  tasks       Task[]
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@index([projectId])
+}
+
+model TaskTimeEntry {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation("TaskTimeEntryUser", fields: [userId], references: [id])
+  hours       Float
+  description String?
+  date        DateTime
+  createdAt   DateTime @default(now())
+  
+  @@index([taskId])
+  @@index([userId])
+  @@index([date])
+}
+
+model ProjectTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  structure   Json     // { tasks: [{ title, description, priority, subtasks: [...] }] }
+  createdById String
+  createdBy   User     @relation("ProjectTemplateCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============================================
+// MANAGER PLANNING / SCHEDULING
+// ============================================
+
+model ScheduleBlock {
+  id            String    @id @default(cuid())
+  
+  // The SDR being scheduled
+  sdrId         String
+  sdr           User      @relation("SDRScheduleBlocks", fields: [sdrId], references: [id], onDelete: Cascade)
+  
+  // The mission they're working on
+  missionId     String
+  mission       Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  
+  // Time slot
+  date          DateTime  @db.Date
+  startTime     String    // HH:mm format (e.g., "09:00")
+  endTime       String    // HH:mm format (e.g., "12:00")
+  
+  // Optional notes
+  notes         String?
+  
+  // Status
+  status        ScheduleBlockStatus @default(SCHEDULED)
+  
+  // Created by (manager)
+  createdById   String
+  createdBy     User      @relation("CreatedScheduleBlocks", fields: [createdById], references: [id])
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([sdrId])
+  @@index([missionId])
+  @@index([date])
+  @@index([createdById])
+  // Ensure no overlapping blocks for same SDR on same day
+  @@unique([sdrId, date, startTime])
+}
+
+enum ScheduleBlockStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================
+// CRM ACTIVITY TRACKING
+// ============================================
+
+model CrmActivityDay {
+  id                      String    @id @default(cuid())
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                    DateTime  @db.Date
+  
+  // Accumulated time for today (in seconds)
+  totalActiveSeconds      Int       @default(0)
+  
+  // Current session (null when paused)
+  currentSessionStartedAt DateTime?
+  lastActivityAt          DateTime?
+  
+  // Session analytics
+  sessionCount            Int       @default(0)  // Number of sessions started today
+  longestSessionSeconds   Int       @default(0)  // Longest single session duration
+  
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+  @@index([date, totalActiveSeconds])  // For leaderboards and analytics
+}
+
+// ============================================
+// EMAIL INTEGRATION
+// ============================================
+
+model EmailAccount {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Provider info
+  provider      EmailProvider
+  email         String
+  displayName   String?
+  
+  // OAuth tokens (encrypted)
+  accessToken   String?       @db.Text
+  refreshToken  String?       @db.Text
+  tokenExpiry   DateTime?
+  
+  // SMTP/IMAP settings (for CUSTOM provider)
+  smtpHost      String?
+  smtpPort      Int?
+  imapHost      String?
+  imapPort      Int?
+  password      String?       @db.Text  // Encrypted
+  
+  // Status
+  isActive      Boolean       @default(true)
+  lastSyncAt    DateTime?
+  syncError     String?
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  @@unique([userId, email])
+  @@index([userId])
+  @@index([provider])
+}
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // "info", "success", "warning", "error"
+  link      String?  // Optional link to redirect
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+// ============================================
+// PERMISSION SYSTEM
+// ============================================
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique  // e.g., "pages.dashboard", "actions.create_mission"
+  name        String             // Human-readable name
+  description String?
+  category    String             // "pages", "features", "actions"
+  createdAt   DateTime @default(now())
+  
+  rolePermissions RolePermission[]
+  userPermissions UserPermission[]
+  
+  @@index([category])
+  @@index([code])
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  role         UserRole
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  granted      Boolean    @default(true)
+  
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  
+  @@unique([role, permissionId])
+  @@index([role])
+  @@index([permissionId])
+}
+
+model UserPermission {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  granted      Boolean    // true = override grant, false = override deny
+  
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([permissionId])
+}
+
+// ============================================
+// EMAIL HUB - MAILBOX MANAGEMENT
+// ============================================
+
+model Mailbox {
+  id              String            @id @default(cuid())
+  organizationId  String?
+  ownerId         String
+  owner           User              @relation("MailboxOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Provider
+  provider        EmailProvider
+  email           String
+  displayName     String?
+  
+  // OAuth (encrypted)
+  accessToken     String?           @db.Text
+  refreshToken    String?           @db.Text
+  tokenExpiry     DateTime?
+  
+  // IMAP/SMTP settings (for CUSTOM provider)
+  imapHost        String?
+  imapPort        Int?
+  smtpHost        String?
+  smtpPort        Int?
+  password        String?           @db.Text  // Encrypted
+  
+  // Type & Status
+  type            MailboxType       @default(PERSONAL)
+  syncStatus      MailboxSyncStatus @default(PENDING)
+  warmupStatus    MailboxWarmupStatus @default(NOT_STARTED)
+  warmupDailyLimit Int              @default(20)
+  
+  // Throttling
+  dailySendLimit  Int               @default(200)
+  sentToday       Int               @default(0)
+  lastSendReset   DateTime          @default(now())
+  
+  // Signature
+  signature       String?           @db.Text
+  signatureHtml   String?           @db.Text
+  
+  // Health
+  lastSyncAt      DateTime?
+  lastError       String?
+  healthScore     Int               @default(100)
+  
+  // Failure tracking for circuit breaker
+  failureCount        Int           @default(0)
+  consecutiveFailures Int           @default(0)
+  lastFailureAt       DateTime?
+  disabledAt          DateTime?
+  disabledReason      String?
+  
+  // Provider-specific throttling
+  providerProfile     String?       // "titan", "gmail", "outlook", "default"
+  syncIntervalMs      Int           @default(300000)  // 5 min default
+
+  // Custom Tracking Domain
+  trackingDomain      String?       // e.g. "https://track.client-domain.com"
+  
+  // Relations
+  emails          Email[]
+  threads         EmailThread[]
+  permissions     MailboxPermission[]
+  sequences       EmailSequence[]
+  analyticsDaily  EmailAnalyticsDaily[]
+  
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  @@unique([ownerId, email])
+  @@index([organizationId])
+  @@index([syncStatus])
+  @@index([type])
+  @@index([isActive])
+}
+
+model MailboxPermission {
+  id            String    @id @default(cuid())
+  mailboxId     String
+  mailbox       Mailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  canRead       Boolean   @default(true)
+  canSend       Boolean   @default(false)
+  canSendAs     Boolean   @default(false)
+  requiresApproval Boolean @default(false)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@unique([mailboxId, userId])
+  @@index([mailboxId])
+  @@index([userId])
+}
+
+// ============================================
+// EMAIL HUB - THREADS & MESSAGES
+// ============================================
+
+model EmailThread {
+  id            String    @id @default(cuid())
+  mailboxId     String
+  mailbox       Mailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  
+  // Thread metadata
+  subject       String
+  snippet       String?   @db.Text
+  participantEmails String[] @default([])
+  
+  // Status
+  isRead        Boolean   @default(false)
+  isStarred     Boolean   @default(false)
+  isArchived    Boolean   @default(false)
+  isTrashed     Boolean   @default(false)
+  
+  // CRM Linking
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id])
+  missionId     String?
+  mission       Mission?  @relation(fields: [missionId], references: [id])
+  campaignId    String?
+  campaign      Campaign? @relation(fields: [campaignId], references: [id])
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
+  contactId     String?
+  contact       Contact?  @relation(fields: [contactId], references: [id])
+  
+  // Assignment
+  assignedToId  String?
+  assignedTo    User?     @relation("AssignedThreads", fields: [assignedToId], references: [id])
+  
+  // Labels
+  labels        String[]  @default([])
+  
+  // SLA
+  slaDeadline   DateTime?
+  
+  // AI Analysis
+  sentiment     String?   // positive, neutral, negative
+  priority      String?   // high, medium, low
+  summary       String?   @db.Text
+  
+  // Emails
+  emails        Email[]
+  comments      ThreadComment[]
+  
+  // Provider refs
+  providerThreadId String?
+  
+  lastEmailAt   DateTime
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([mailboxId])
+  @@index([clientId])
+  @@index([missionId])
+  @@index([campaignId])
+  @@index([contactId])
+  @@index([assignedToId])
+  @@index([isRead, isArchived])
+  @@index([lastEmailAt])
+  @@index([providerThreadId])
+}
+
+model Email {
+  id            String         @id @default(cuid())
+  mailboxId     String
+  mailbox       Mailbox        @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  threadId      String
+  thread        EmailThread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  
+  // Email content
+  fromAddress   String
+  fromName      String?
+  toAddresses   String[]
+  ccAddresses   String[]       @default([])
+  bccAddresses  String[]       @default([])
+  replyTo       String?
+  
+  subject       String
+  bodyText      String?        @db.Text
+  bodyHtml      String?        @db.Text
+  snippet       String?
+  
+  // Direction & Status
+  direction     EmailDirection
+  status        EmailStatus    @default(DRAFT)
+  
+  // Attachments
+  attachments   EmailAttachment[]
+  
+  // Tracking
+  trackingPixelId String?      @unique
+  openCount     Int            @default(0)
+  clickCount    Int            @default(0)
+  firstOpenedAt DateTime?
+  lastOpenedAt  DateTime?
+  
+  // Sequence relation
+  sequenceStepId String?
+  sequenceStep  EmailSequenceStep? @relation(fields: [sequenceStepId], references: [id])
+  sequenceEnrollmentId String?
+  sequenceEnrollment EmailSequenceEnrollment? @relation(fields: [sequenceEnrollmentId], references: [id])
+  
+  // Outreach / mission context (quick-send from SDR)
+  contactId     String?
+  contact       Contact?     @relation(fields: [contactId], references: [id])
+  missionId     String?
+  mission       Mission?     @relation(fields: [missionId], references: [id])
+  sentById      String?
+  sentBy        User?        @relation("SentEmails", fields: [sentById], references: [id])
+  templateId    String?
+  template      EmailTemplate? @relation(fields: [templateId], references: [id])
+  
+  // Provider refs
+  providerMessageId String?
+  providerThreadId  String?
+  
+  // Error tracking
+  errorMessage  String?
+  bounceType    String?        // hard, soft
+  
+  sentAt        DateTime?
+  receivedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  @@index([mailboxId])
+  @@index([threadId])
+  @@index([status])
+  @@index([direction])
+  @@index([sentAt])
+  @@index([receivedAt])
+  @@index([providerMessageId])
+  @@index([sequenceEnrollmentId])
+  @@index([contactId])
+  @@index([missionId])
+  @@index([sentById])
+  @@unique([mailboxId, providerMessageId])  // Prevent duplicate ingestion
+}
+
+model EmailAttachment {
+  id            String    @id @default(cuid())
+  emailId       String
+  email         Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  
+  filename      String
+  mimeType      String
+  size          Int       // bytes
+  storageKey    String?   // S3/storage key
+  url           String?   // Public URL if available
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([emailId])
+}
+
+model ThreadComment {
+  id            String      @id @default(cuid())
+  threadId      String
+  thread        EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  
+  content       String      @db.Text
+  mentions      String[]    @default([]) // user IDs
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  @@index([threadId])
+  @@index([userId])
+}
+
+// ============================================
+// EMAIL HUB - SEQUENCES & AUTOMATION
+// ============================================
+
+model EmailSequence {
+  id            String          @id @default(cuid())
+  mailboxId     String
+  mailbox       Mailbox         @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  createdById   String
+  createdBy     User            @relation("SequenceCreator", fields: [createdById], references: [id])
+  
+  name          String
+  description   String?         @db.Text
+  status        SequenceStatus  @default(DRAFT)
+  
+  // Settings
+  stopOnReply   Boolean         @default(true)
+  stopOnBounce  Boolean         @default(true)
+  trackOpens    Boolean         @default(true)
+  trackClicks   Boolean         @default(true)
+  
+  // Schedule settings
+  sendOnWeekends Boolean        @default(false)
+  sendTimeStart  String?        // HH:mm format, e.g., "09:00"
+  sendTimeEnd    String?        // HH:mm format, e.g., "18:00"
+  timezone       String         @default("Europe/Paris")
+  
+  // CRM linking
+  campaignId    String?
+  campaign      Campaign?       @relation(fields: [campaignId], references: [id])
+  
+  steps         EmailSequenceStep[]
+  enrollments   EmailSequenceEnrollment[]
+  
+  // Stats (denormalized for performance)
+  totalEnrolled Int             @default(0)
+  totalCompleted Int            @default(0)
+  totalReplied  Int             @default(0)
+  totalBounced  Int             @default(0)
+  
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  @@index([mailboxId])
+  @@index([campaignId])
+  @@index([status])
+  @@index([createdById])
+}
+
+model EmailSequenceStep {
+  id            String        @id @default(cuid())
+  sequenceId    String
+  sequence      EmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  
+  order         Int
+  name          String?
+  
+  // Delay from previous step
+  delayDays     Int           @default(0)
+  delayHours    Int           @default(0)
+  delayMinutes  Int           @default(0)
+  
+  // Template
+  subject       String
+  bodyHtml      String        @db.Text
+  bodyText      String?       @db.Text
+  
+  // A/B Testing
+  isABTest      Boolean       @default(false)
+  variantSubjectB String?
+  variantBodyHtmlB String?    @db.Text
+  abWinnerCriteria String?    // open_rate, reply_rate, click_rate
+  abTestEndDate DateTime?
+  
+  // Conditions
+  skipIfOpened  Boolean       @default(false)
+  skipIfClicked Boolean       @default(false)
+  skipIfReplied Boolean       @default(true)
+  
+  // Stats (denormalized)
+  totalSent     Int           @default(0)
+  totalOpened   Int           @default(0)
+  totalClicked  Int           @default(0)
+  totalReplied  Int           @default(0)
+  totalBounced  Int           @default(0)
+  
+  emails        Email[]
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  @@unique([sequenceId, order])
+  @@index([sequenceId])
+}
+
+model EmailSequenceEnrollment {
+  id            String           @id @default(cuid())
+  sequenceId    String
+  sequence      EmailSequence    @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  contactId     String
+  contact       Contact          @relation(fields: [contactId], references: [id])
+  
+  status        EnrollmentStatus @default(ACTIVE)
+  currentStep   Int              @default(0)
+  
+  // Personalization tokens
+  tokens        Json?            // { firstName: "John", company: "Acme" }
+  
+  // Timing
+  enrolledAt    DateTime         @default(now())
+  nextStepAt    DateTime?
+  completedAt   DateTime?
+  exitedAt      DateTime?
+  exitReason    String?
+  
+  // Variant assignment for A/B tests
+  abVariant     String?          // "A" or "B"
+  
+  emails        Email[]
+  
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  
+  @@unique([sequenceId, contactId])
+  @@index([sequenceId])
+  @@index([contactId])
+  @@index([status])
+  @@index([nextStepAt])
+}
+
+// ============================================
+// EMAIL HUB - ANALYTICS & AUDIT
+// ============================================
+
+model EmailAnalyticsDaily {
+  id            String    @id @default(cuid())
+  mailboxId     String
+  mailbox       Mailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  date          DateTime  @db.Date
+  
+  // Counts
+  sent          Int       @default(0)
+  delivered     Int       @default(0)
+  opened        Int       @default(0)
+  uniqueOpened  Int       @default(0)
+  clicked       Int       @default(0)
+  replied       Int       @default(0)
+  bounced       Int       @default(0)
+  
+  // Response metrics (avg in minutes)
+  avgResponseTime Int?
+  totalResponseTime Int   @default(0)
+  responseCount Int       @default(0)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@unique([mailboxId, date])
+  @@index([mailboxId])
+  @@index([date])
+}
+
+model EmailAuditLog {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  
+  action        String    // send, read, delete, assign, link, archive, etc.
+  resourceType  String    // email, thread, mailbox, sequence
+  resourceId    String
+  
+  metadata      Json?     // Additional context
+  ipAddress     String?
+  userAgent     String?
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@index([action])
+}
+
+// ============================================
+// EMAIL TEMPLATES
+// Reusable email templates for sequences & manual emails
+// ============================================
+
+model EmailTemplate {
+  id            String    @id @default(cuid())
+  createdById   String
+  createdBy     User      @relation("TemplateCreator", fields: [createdById], references: [id])
+  
+  name          String
+  subject       String
+  bodyHtml      String    @db.Text
+  bodyText      String?   @db.Text
+  
+  category      String    @default("general")  // general, sales, follow-up, intro, etc.
+  isShared      Boolean   @default(false)      // Visible to all team members
+  variables     String[]  @default([])         // List of variable names used
+  
+  useCount      Int       @default(0)
+  lastUsedAt    DateTime?
+  
+  // Mission assignments
+  missionTemplates  MissionEmailTemplate[]
+  sentEmails        Email[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([createdById])
+  @@index([category])
+  @@index([isShared])
+}
+
+// ============================================
+// MISSION EMAIL TEMPLATES (Junction Table)
+// Links email templates to missions for quick-send
+// ============================================
+
+model MissionEmailTemplate {
+  id          String        @id @default(cuid())
+  missionId   String
+  mission     Mission       @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  templateId  String
+  template    EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  
+  // Display order in mission
+  order       Int           @default(0)
+  
+  createdAt   DateTime      @default(now())
+  
+  @@unique([missionId, templateId])
+  @@index([missionId])
+  @@index([templateId])
+}
+
+// ============================================
+// INTERNAL COMMUNICATION MODULE
+// CRM-native operational communication
+// ============================================
+
+enum CommsChannelType {
+  MISSION
+  CLIENT
+  CAMPAIGN
+  GROUP
+  DIRECT
+  BROADCAST
+}
+
+enum CommsThreadStatus {
+  OPEN
+  RESOLVED
+  ARCHIVED
+}
+
+enum CommsMessageType {
+  TEXT
+  SYSTEM
+  BROADCAST
+}
+
+model CommsChannel {
+  id              String            @id @default(cuid())
+  type            CommsChannelType
+  name            String?           // For GROUP type; auto-generated for others
+  
+  // Polymorphic anchor (only one set based on type)
+  missionId       String?           @unique
+  mission         Mission?          @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  clientId        String?           @unique
+  client          Client?           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  campaignId      String?           @unique
+  campaign        Campaign?         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  groupId         String?           @unique
+  group           CommsGroup?       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  
+  // For DIRECT channels - stores sorted user IDs for lookup
+  directUserIds   String[]          @default([])
+  
+  threads         CommsThread[]
+  
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  @@index([type])
+  @@index([directUserIds])
+}
+
+model CommsGroup {
+  id              String              @id @default(cuid())
+  name            String
+  description     String?
+  
+  createdById     String
+  createdBy       User                @relation("CommsGroupCreator", fields: [createdById], references: [id])
+  
+  members         CommsGroupMember[]
+  channel         CommsChannel?
+  
+  isActive        Boolean             @default(true)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model CommsGroupMember {
+  id              String      @id @default(cuid())
+  groupId         String
+  group           CommsGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  role            String      @default("member")  // "admin", "member"
+  joinedAt        DateTime    @default(now())
+  
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+}
+
+model CommsThread {
+  id              String            @id @default(cuid())
+  channelId       String
+  channel         CommsChannel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  
+  subject         String
+  status          CommsThreadStatus @default(OPEN)
+  
+  // Creator
+  createdById     String
+  createdBy       User              @relation("CommsThreadCreator", fields: [createdById], references: [id])
+  
+  // Participants
+  participants    CommsParticipant[]
+  messages        CommsMessage[]
+  
+  // Denormalized metadata for query efficiency
+  messageCount    Int               @default(0)
+  lastMessageAt   DateTime?
+  lastMessageById String?
+  
+  // For broadcasts
+  isBroadcast     Boolean           @default(false)
+  broadcastAudience Json?           // { type: "all" | "role" | "mission" | "group", target?: string }
+  readReceipts    CommsBroadcastReceipt[]
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  @@index([channelId])
+  @@index([createdById])
+  @@index([status])
+  @@index([lastMessageAt])
+  @@index([isBroadcast])
+}
+
+model CommsParticipant {
+  id              String      @id @default(cuid())
+  threadId        String
+  thread          CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Read tracking
+  lastReadAt      DateTime?
+  unreadCount     Int         @default(0)
+  
+  // Notification preferences
+  isMuted         Boolean     @default(false)
+  
+  joinedAt        DateTime    @default(now())
+  
+  @@unique([threadId, userId])
+  @@index([threadId])
+  @@index([userId])
+  @@index([unreadCount])
+}
+
+model CommsMessage {
+  id              String            @id @default(cuid())
+  threadId        String
+  thread          CommsThread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  
+  authorId        String
+  author          User              @relation("CommsMessageAuthor", fields: [authorId], references: [id])
+  
+  parentMessageId String?
+  parentMessage   CommsMessage?     @relation("MessageReplies", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  replies         CommsMessage[]    @relation("MessageReplies")
+  
+  type            CommsMessageType  @default(TEXT)
+  content         String            @db.Text
+  
+  // Rich content
+  attachments     CommsAttachment[]
+  mentions        CommsMention[]
+  readReceipts    CommsMessageReadReceipt[]
+  reactions       CommsMessageReaction[]
+  
+  // Edit tracking
+  isEdited        Boolean           @default(false)
+  editedAt        DateTime?
+  
+  // Soft delete
+  isDeleted       Boolean           @default(false)
+  deletedAt       DateTime?
+  
+  createdAt       DateTime          @default(now())
+  
+  @@index([threadId])
+  @@index([authorId])
+  @@index([parentMessageId])
+  @@index([createdAt])
+  @@index([isDeleted])
+}
+
+model CommsMention {
+  id              String        @id @default(cuid())
+  messageId       String
+  message         CommsMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User          @relation("CommsMentionedUser", fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Notification tracking
+  notified        Boolean       @default(false)
+  
+  createdAt       DateTime      @default(now())
+  
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+  @@index([notified])
+}
+
+model CommsAttachment {
+  id              String        @id @default(cuid())
+  messageId       String
+  message         CommsMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  filename        String
+  mimeType        String
+  size            Int           // bytes
+  storageKey      String
+  url             String?
+  
+  createdAt       DateTime      @default(now())
+  
+  @@index([messageId])
+}
+
+model CommsMessageReadReceipt {
+  id          String      @id @default(cuid())
+  messageId   String
+  message     CommsMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User        @relation("CommsMessageReader", fields: [userId], references: [id], onDelete: Cascade)
+  readAt      DateTime    @default(now())
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+}
+
+model CommsMessageReaction {
+  id        String        @id @default(cuid())
+  messageId String
+  message   CommsMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation("CommsMessageReactor", fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+}
+
+model CommsBroadcastReceipt {
+  id              String      @id @default(cuid())
+  threadId        String
+  thread          CommsThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User        @relation("CommsBroadcastReader", fields: [userId], references: [id], onDelete: Cascade)
+  
+  readAt          DateTime    @default(now())
+  
+  @@unique([threadId, userId])
+  @@index([threadId])
+  @@index([userId])
+}
+
+model CommsSavedSearch {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  query     String
+  filters   Json?    // { channelType?, authorId?, fromDate?, toDate?, status? }
+  
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+}
+
+model CommsMessageTemplate {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  category    String?  // "greeting", "follow_up", "closing", "custom"
+  content     String   @db.Text
+  variables   String[] @default([]) // ["{{client_name}}", "{{mission_name}}"]
+  isShared    Boolean  @default(false) // If true, visible to all users
+  usageCount  Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([isShared])
+  @@index([category])
+}
+
+// ============================================
+// BILLING MODULE
+// ============================================
+
+model CompanyIssuer {
+  id            String    @id @default(cuid())
+  legalName     String
+  address       String
+  city          String
+  postalCode    String
+  country       String    @default("France")
+  siret         String    @unique
+  vatNumber     String?
+  email         String?
+  phone         String?
+  logo          String?
+  
+  // Legal information (mandatory French mentions)
+  legalForm     String?   // Forme juridique: SAS, SARL, EURL, SA, etc.
+  capitalSocial String?   // Capital social: e.g., "10 000 €"
+  rcsCity       String?   // Ville du RCS: e.g., "Paris"
+  rcsNumber     String?   // Numéro RCS: e.g., "Paris B 123 456 789"
+  
+  // Bank details for payment
+  iban          String?   // IBAN for bank transfer
+  bic           String?   // BIC/SWIFT code
+  
+  // Default invoice settings
+  defaultPaymentTermsDays   Int       @default(30)
+  defaultLatePenaltyRate    Decimal   @default(0) @db.Decimal(5, 2) // % penalty rate
+  defaultEarlyPaymentDiscount String? // Escompte text, e.g., "Pas d'escompte pour paiement anticipé"
+  
+  invoices      Invoice[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model BillingClient {
+  id            String    @id @default(cuid())
+  legalName     String
+  address       String
+  city          String
+  postalCode    String
+  country       String    @default("France")
+  siret         String?
+  vatNumber     String?
+  email         String?
+  phone         String?
+  
+  invoices      Invoice[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([siret])
+  @@index([vatNumber])
+}
+
+model Invoice {
+  id              String              @id @default(cuid())
+  invoiceNumber   String?             @unique
+  status          InvoiceStatus       @default(DRAFT)
+  documentType    InvoiceDocumentType @default(INVOICE)
+  
+  billingClientId String
+  billingClient   BillingClient   @relation(fields: [billingClientId], references: [id], onDelete: Restrict)
+  
+  companyIssuerId String
+  companyIssuer   CompanyIssuer   @relation(fields: [companyIssuerId], references: [id], onDelete: Restrict)
+  
+  issueDate       DateTime
+  dueDate         DateTime
+  currency        String          @default("EUR")
+  
+  totalHt         Decimal         @default(0) @db.Decimal(10, 2)
+  totalVat        Decimal         @default(0) @db.Decimal(10, 2)
+  totalTtc        Decimal         @default(0) @db.Decimal(10, 2)
+  
+  // Payment terms & legal mentions
+  paymentTermsDays       Int       @default(30)
+  paymentTermsText       String?   // Custom text, e.g., "Paiement à 30 jours date de facture"
+  latePenaltyRate        Decimal   @default(0) @db.Decimal(5, 2) // Late penalty %
+  earlyPaymentDiscount   String?   // Escompte text
+  notes                  String?   // Free-text notes
+  
+  facturxPdfUrl   String?
+  
+  // E-reporting / PDP (EU 2026)
+  transactionType      InvoiceTransactionType @default(B2B_DOMESTIC)
+  pdpSubmissionStatus  PdpSubmissionStatus    @default(NOT_SUBMITTED)
+  pdpSubmissionId      String?    // External ID from PDP/PPF
+  pdpSubmittedAt       DateTime?
+  pdpResponseData      Json?      // Response from PDP
+  
+  // Credit note relation
+  relatedInvoiceId String?
+  relatedInvoice   Invoice?  @relation("CreditNoteRelation", fields: [relatedInvoiceId], references: [id])
+  creditNotes      Invoice[] @relation("CreditNoteRelation")
+  
+  createdById     String
+  createdBy       User            @relation("InvoiceCreator", fields: [createdById], references: [id])
+  
+  validatedAt     DateTime?
+  sentAt          DateTime?
+  paidAt          DateTime?
+  cancelledAt     DateTime?
+  
+  items           InvoiceItem[]
+  payments        InvoicePayment[]
+  auditLogs       InvoiceAuditLog[]
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  @@index([invoiceNumber])
+  @@index([status])
+  @@index([documentType])
+  @@index([billingClientId])
+  @@index([companyIssuerId])
+  @@index([createdById])
+  @@index([relatedInvoiceId])
+  @@index([transactionType])
+  @@index([pdpSubmissionStatus])
+}
+
+model InvoiceItem {
+  id            String    @id @default(cuid())
+  invoiceId     String
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  description   String
+  quantity      Decimal   @db.Decimal(10, 2)
+  unitPriceHt   Decimal   @db.Decimal(10, 2)
+  vatRate       Decimal   @db.Decimal(5, 2)  // e.g., 20.00 for 20%
+  
+  totalHt       Decimal   @db.Decimal(10, 2)
+  totalVat      Decimal   @db.Decimal(10, 2)
+  totalTtc      Decimal   @db.Decimal(10, 2)
+  
+  order         Int       @default(0)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([invoiceId])
+}
+
+model InvoicePayment {
+  id                  String              @id @default(cuid())
+  invoiceId           String
+  invoice             Invoice             @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  qontoTransactionId  String              @unique
+  amount              Decimal             @db.Decimal(10, 2)
+  paymentDate         DateTime
+  
+  status              PaymentMatchStatus  @default(MATCHED)
+  
+  matchedAt           DateTime            @default(now())
+  confirmedAt         DateTime?
+  confirmedById       String?
+  confirmedBy         User?               @relation("PaymentConfirmer", fields: [confirmedById], references: [id])
+  
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  
+  @@index([invoiceId])
+  @@index([qontoTransactionId])
+  @@index([status])
+}
+
+model InvoiceAuditLog {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  action      String   // CREATED, VALIDATED, SENT, PAID, CANCELLED, CREDIT_NOTE_CREATED
+  userId      String
+  user        User     @relation("InvoiceAuditLogUser", fields: [userId], references: [id])
+  details     Json?    // Additional context (e.g., reason for cancellation)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([invoiceId])
+  @@index([userId])
+  @@index([action])
+}
+
+// ============================================
+// PROSPECT ORCHESTRATION ENGINE MODELS
+// ============================================
+
+// Source configuration
+model ProspectSource {
+  id            String              @id @default(cuid())
+  name          String              // "Website Form", "Partner API", etc.
+  type          ProspectSourceType
+  clientId      String?             // Optional: client-specific source
+  client        Client?             @relation(fields: [clientId], references: [id])
+  
+  // Configuration
+  isActive      Boolean             @default(true)
+  autoActivate  Boolean             @default(false) // Skip review for high-confidence
+  defaultMissionId String?          // Default mission for routing
+  defaultMission Mission?           @relation(fields: [defaultMissionId], references: [id])
+  
+  // Metadata
+  metadata      Json?               // Source-specific config (API keys, webhook URLs, etc.)
+  
+  events        ProspectEvent[]
+  rules         ProspectRule[]
+  
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  
+  @@index([clientId])
+  @@index([type])
+  @@index([isActive])
+}
+
+// Immutable event log (append-only)
+model ProspectEvent {
+  id            String              @id @default(cuid())
+  sourceId      String
+  source        ProspectSource      @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  profileId     String?             // Links to ProspectProfile (null until profile created)
+  profile       ProspectProfile?    @relation(fields: [profileId], references: [id])
+  
+  // Raw payload (immutable)
+  rawPayload    Json                // Original data as received
+  
+  // Event metadata
+  eventType     String              // "intake", "update", "enrichment", "decision"
+  step          ProspectPipelineStep
+  outcome       DecisionOutcome?
+  
+  // Processing context
+  processedAt   DateTime            @default(now())
+  processedBy   String?             // System or userId for manual events
+  errorMessage  String?             // If processing failed
+  
+  // Decision log reference
+  decisionLogId String?
+  decisionLog   ProspectDecisionLog? @relation(fields: [decisionLogId], references: [id])
+  
+  createdAt     DateTime            @default(now())
+  
+  @@index([sourceId])
+  @@index([profileId])
+  @@index([step])
+  @@index([createdAt])
+  @@index([eventType])
+}
+
+// Evolving prospect profile (derived from events)
+model ProspectProfile {
+  id            String              @id @default(cuid())
+  
+  // Normalized data (evolves as events are processed)
+  firstName     String?
+  lastName      String?
+  email         String?
+  phone         String?
+  linkedin      String?
+  title         String?
+  companyName   String?
+  companyWebsite String?
+  companyIndustry String?
+  companyCountry String?
+  companySize   String?
+  
+  // Additional fields (flexible JSON)
+  customFields  Json?               // Source-specific or enrichment data
+  
+  // Pipeline state
+  currentStep   ProspectPipelineStep @default(INTAKE)
+  status        ProspectStatus       @default(PENDING)
+  
+  // Scoring
+  qualityScore  Int                 @default(0) // 0-100
+  confidenceScore Int               @default(0) // 0-100 (data completeness)
+  
+  // Routing
+  assignedMissionId String?
+  assignedMission   Mission?        @relation(fields: [assignedMissionId], references: [id])
+  assignedSdrId     String?
+  assignedSdr       User?           @relation(fields: [assignedSdrId], references: [id])
+  
+  // Deduplication
+  duplicateOfId     String?         // If merged with another profile
+  duplicateOf       ProspectProfile? @relation("ProspectDuplicates", fields: [duplicateOfId], references: [id])
+  duplicates        ProspectProfile[] @relation("ProspectDuplicates")
+  
+  // Review
+  reviewRequired    Boolean         @default(false)
+  reviewReason      String?         // Why review is needed
+  reviewedById      String?
+  reviewedBy        User?           @relation("ProspectReviewer", fields: [reviewedById], references: [id])
+  reviewedAt        DateTime?
+  reviewNotes       String?         @db.Text
+  
+  // Activation
+  activatedAt       DateTime?
+  activatedContactId String?       // Link to created Contact (read-only after activation)
+  activatedCompanyId String?        // Link to created Company
+  
+  // Relations
+  events            ProspectEvent[]
+  decisionLogs     ProspectDecisionLog[]
+  
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  
+  @@index([status])
+  @@index([currentStep])
+  @@index([qualityScore])
+  @@index([reviewRequired])
+  @@index([assignedMissionId])
+  @@index([assignedSdrId])
+  @@index([email]) // For deduplication
+  @@index([phone]) // For deduplication
+  @@unique([email]) // Prevent duplicate emails
+}
+
+// Decision log (explainability)
+model ProspectDecisionLog {
+  id            String              @id @default(cuid())
+  profileId     String
+  profile       ProspectProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  step          ProspectPipelineStep
+  outcome       DecisionOutcome
+  
+  // Rule execution
+  ruleId        String?
+  rule          ProspectRule?       @relation(fields: [ruleId], references: [id])
+  ruleResult   Json?               // Rule evaluation details
+  
+  // Decision context
+  inputData     Json                // Profile state at decision time
+  outputData    Json?               // Changes made
+  reason        String               @db.Text // Human-readable explanation
+  
+  // Metadata
+  executedAt    DateTime            @default(now())
+  executedBy    String?             // System or userId
+  
+  events        ProspectEvent[]
+  
+  @@index([profileId])
+  @@index([step])
+  @@index([outcome])
+  @@index([executedAt])
+}
+
+// Rule definitions (manager-configurable)
+model ProspectRule {
+  id            String              @id @default(cuid())
+  name          String
+  description   String?             @db.Text
+  
+  // Rule scope
+  clientId      String?             // Client-specific rule
+  client        Client?             @relation(fields: [clientId], references: [id])
+  sourceId      String?             // Source-specific rule
+  source        ProspectSource?      @relation(fields: [sourceId], references: [id])
+  
+  // Rule application
+  step          ProspectPipelineStep // Which step this rule applies to
+  priority      Int                 @default(0) // Higher = evaluated first
+  
+  // Rule definition (declarative JSON)
+  condition     Json                // { field: "email", operator: "endsWith", value: "@gmail.com" }
+  action        Json                // { type: "adjustScore", value: -30 } or { type: "requireReview", reason: "Free email" }
+  
+  // Versioning
+  version       Int                 @default(1)
+  isActive      Boolean             @default(true)
+  
+  // Audit
+  createdById   String
+  createdBy     User                @relation("ProspectRuleCreator", fields: [createdById], references: [id])
+  updatedById   String?
+  updatedBy     User?               @relation("ProspectRuleUpdater", fields: [updatedById], references: [id])
+  
+  decisionLogs  ProspectDecisionLog[]
+  
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  
+  @@index([clientId])
+  @@index([sourceId])
+  @@index([step])
+  @@index([isActive])
+  @@index([priority])
+}
+
+// Pipeline step configuration
+model ProspectPipelineConfig {
+  id            String              @id @default(cuid())
+  clientId      String?
+  client        Client?             @relation(fields: [clientId], references: [id])
+  
+  // Step settings
+  enableEnrichment Boolean          @default(false)
+  enrichmentProvider String?        // "clearbit", "apollo", "custom"
+  enrichmentApiKey  String?         // Encrypted
+  
+  // Thresholds
+  minQualityScore    Int             @default(50) // Minimum score for auto-approval
+  minConfidenceScore Int             @default(70) // Minimum confidence for auto-approval
+  reviewThreshold    Int             @default(40) // Score below which review required
+  
+  // Deduplication
+  enableDeduplication Boolean        @default(true)
+  dedupeFields        String[]       @default(["email", "phone"]) // Fields to match on
+  
+  // Routing
+  defaultRoutingStrategy String      @default("round_robin") // "round_robin", "load_balance", "manual"
+  
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  
+  @@unique([clientId])
+}
