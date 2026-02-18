@@ -347,7 +347,7 @@ export default function SDRActionPage() {
     const [viewType, setViewTypeState] = useState<"all" | "companies" | "contacts">(() =>
         (typeof window !== "undefined" && (localStorage.getItem("sdr_view_type") as "all" | "companies" | "contacts") in { all: 1, companies: 1, contacts: 1 })
             ? (localStorage.getItem("sdr_view_type") as "all" | "companies" | "contacts")
-            : "all"
+            : "contacts"
     );
     const setViewType = useCallback((value: "all" | "companies" | "contacts" | ((prev: "all" | "companies" | "contacts") => "all" | "companies" | "contacts")) => {
         setViewTypeState((prev) => {
@@ -379,7 +379,7 @@ export default function SDRActionPage() {
     const [tableFilterResult, setTableFilterResult] = useState<string>(""); // "" | ActionResult | "NONE" (no last action)
     const [tableFilterPriority, setTableFilterPriority] = useState<string>("");
     const [tableFilterChannel, setTableFilterChannel] = useState<string>("");
-    const [tableFilterType, setTableFilterType] = useState<string>(""); // "" | "contact" | "company"
+    const [tableFilterType, setTableFilterType] = useState<string>("contact"); // "" | "contact" | "company" — default to contacts in table view
     // Mission search: server-side search so contacts can be filtered by name
     const [tableSearchInput, setTableSearchInput] = useState("");
     const [tableSearchApi, setTableSearchApi] = useState("");
