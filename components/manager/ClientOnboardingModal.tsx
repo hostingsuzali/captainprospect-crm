@@ -234,7 +234,7 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess }: ClientOnbo
         setAiError(null);
 
         try {
-            const res = await fetch("/api/ai/mistral/onboarding", {
+            const res = await fetch("/api/ai/onboarding", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -330,7 +330,7 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess }: ClientOnbo
                     `Taille: ${formData.targetCompanySize || "PME/ETI"}.`;
                 const pitchText = aiAnalysis?.recommendations?.strategy?.channelReasoning ||
                     `${formData.name} propose des solutions pour les entreprises du secteur ${formData.industry || "B2B"}.`;
-                const res = await fetch("/api/ai/mistral/script", {
+                const res = await fetch("/api/ai/script", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -355,22 +355,22 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess }: ClientOnbo
                     showError("Erreur", data.error || "Impossible de régénérer les scripts");
                 }
             } else {
-                const res = await fetch("/api/ai/mistral/onboarding", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        name: formData.name,
-                        industry: formData.industry,
-                        website: formData.website,
-                        email: formData.email,
-                        icp: formData.icp,
-                        targetIndustries: formData.targetIndustries,
-                        targetCompanySize: formData.targetCompanySize,
-                        targetJobTitles: formData.targetJobTitles,
-                        targetGeographies: formData.targetGeographies,
-                        analysisType: section,
-                    }),
-                });
+const res = await fetch("/api/ai/onboarding", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: formData.name,
+                    industry: formData.industry,
+                    website: formData.website,
+                    email: formData.email,
+                    icp: formData.icp,
+                    targetIndustries: formData.targetIndustries,
+                    targetCompanySize: formData.targetCompanySize,
+                    targetJobTitles: formData.targetJobTitles,
+                    targetGeographies: formData.targetGeographies,
+                    analysisType: section,
+                }),
+            });
                 const data = await res.json();
                 if (data.success && data.data?.analysis) {
                     const analysis = data.data.analysis as AIAnalysis;
@@ -430,7 +430,7 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess }: ClientOnbo
         setIsGeneratingScripts(true);
 
         try {
-            const res = await fetch("/api/ai/mistral/script", {
+            const res = await fetch("/api/ai/script", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

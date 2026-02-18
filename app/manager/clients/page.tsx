@@ -302,6 +302,11 @@ export default function ClientsPage() {
                 onClose={() => setShowDrawer(false)}
                 client={selectedClient}
                 onUpdate={handleClientUpdate}
+                onDelete={() => {
+                    setSelectedClient(null);
+                    setShowDrawer(false);
+                    fetchClients();
+                }}
             />
 
             {/* Client Onboarding Modal */}

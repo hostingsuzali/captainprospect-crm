@@ -112,7 +112,7 @@ export const PUT = withErrorHandler(async (
 });
 
 // ============================================
-// DELETE /api/clients/[id] - Delete client
+// DELETE /api/clients/[id] - Delete client and all connected data
 // ============================================
 
 export const DELETE = withErrorHandler(async (
@@ -122,31 +122,53 @@ export const DELETE = withErrorHandler(async (
     await requireRole(['MANAGER'], request);
     const { id } = await params;
 
-    // Check if client has missions
     const client = await prisma.client.findUnique({
         where: { id },
-        include: {
-            _count: {
-                select: {
-                    missions: true,
-                },
-            },
-        },
     });
 
     if (!client) {
         throw new NotFoundError('Client introuvable');
     }
 
-    if (client._count.missions > 0) {
-        return errorResponse(
-            'Impossible de supprimer ce client car il a des missions associées. Supprimez d\'abord les missions.',
-            400
-        );
-    }
+    // Delete client and all connected data in a transaction.
+    // Order: unlink/drop relations that don't cascade, then delete client (DB cascades the rest).
+    await prisma.$transaction(async (tx) => {
+        // Unlink users from this client (they keep their account, just lose client access)
+        await tx.user.updateMany({
+            where: { clientId: id },
+            data: { clientId: null },
+        });
 
-    await prisma.client.delete({
-        where: { id },
+        // Delete client-scoped files and folders
+        await tx.file.deleteMany({ where: { clientId: id } });
+        await tx.folder.deleteMany({ where: { clientId: id } });
+
+        // Unlink optional client references
+        await tx.project.updateMany({
+            where: { clientId: id },
+            data: { clientId: null },
+        });
+        await tx.emailThread.updateMany({
+            where: { clientId: id },
+            data: { clientId: null },
+        });
+        await tx.prospectSource.updateMany({
+            where: { clientId: id },
+            data: { clientId: null },
+        });
+        await tx.prospectRule.updateMany({
+            where: { clientId: id },
+            data: { clientId: null },
+        });
+
+        // Remove client-specific pipeline config (1:1)
+        await tx.prospectPipelineConfig.deleteMany({ where: { clientId: id } });
+
+        // Delete client; DB/Prisma cascades: Mission (and its Campaign, List, etc.),
+        // ClientOnboarding, BusinessDeveloperClient, CommsChannel
+        await tx.client.delete({
+            where: { id },
+        });
     });
 
     return successResponse({ deleted: true });

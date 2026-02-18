@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Drawer, DrawerSection, DrawerField, Button, Input, useToast } from "@/components/ui";
+import { Drawer, DrawerSection, DrawerField, Button, Input, useToast, ConfirmModal } from "@/components/ui";
 import {
     Building2,
     Mail,
@@ -17,6 +17,7 @@ import {
     TrendingUp,
     Link as LinkIcon,
     ExternalLink,
+    Trash2,
 } from "lucide-react";
 
 // ============================================
@@ -41,6 +42,8 @@ interface ClientDrawerProps {
     onClose: () => void;
     client: Client | null;
     onUpdate?: (client: Client) => void;
+    /** Called after client is deleted (e.g. refresh list and close) */
+    onDelete?: () => void;
 }
 
 // ============================================
@@ -52,10 +55,13 @@ export function ClientDrawer({
     onClose,
     client,
     onUpdate,
+    onDelete,
 }: ClientDrawerProps) {
     const { success, error: showError } = useToast();
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [formData, setFormData] = useState({
         name: "",
         industry: "",
@@ -120,6 +126,31 @@ export function ClientDrawer({
         success("Copié", `${label} copié dans le presse-papier`);
     };
 
+    // ============================================
+    // DELETE CLIENT
+    // ============================================
+
+    const handleDeleteConfirm = async () => {
+        if (!client) return;
+        setIsDeleting(true);
+        try {
+            const res = await fetch(`/api/clients/${client.id}`, { method: "DELETE" });
+            const json = await res.json();
+            if (json.success) {
+                success("Client supprimé", `${client.name} et toutes les données associées ont été supprimés`);
+                setShowDeleteConfirm(false);
+                onClose();
+                onDelete?.();
+            } else {
+                showError("Erreur", json.error || "Impossible de supprimer le client");
+            }
+        } catch (err) {
+            showError("Erreur", "Impossible de supprimer le client");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     if (!client) return null;
 
     return (
@@ -130,35 +161,49 @@ export function ClientDrawer({
             description={isEditing ? "Modifiez les informations du client" : client.industry || "Client"}
             size="lg"
             footer={
-                <div className="flex items-center justify-end gap-3">
-                    {isEditing ? (
-                        <>
+                <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2">
+                        {!isEditing && (
                             <Button
                                 variant="ghost"
-                                onClick={() => setIsEditing(false)}
-                                disabled={isSaving}
+                                onClick={() => setShowDeleteConfirm(true)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
                             >
-                                <X className="w-4 h-4 mr-2" />
-                                Annuler
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Supprimer
                             </Button>
+                        )}
+                    </div>
+                    <div className="flex items-center justify-end gap-3">
+                        {isEditing ? (
+                            <>
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => setIsEditing(false)}
+                                    disabled={isSaving}
+                                >
+                                    <X className="w-4 h-4 mr-2" />
+                                    Annuler
+                                </Button>
+                                <Button
+                                    variant="primary"
+                                    onClick={handleSave}
+                                    disabled={isSaving}
+                                >
+                                    <Save className="w-4 h-4 mr-2" />
+                                    {isSaving ? "Enregistrement..." : "Enregistrer"}
+                                </Button>
+                            </>
+                        ) : (
                             <Button
-                                variant="primary"
-                                onClick={handleSave}
-                                disabled={isSaving}
+                                variant="secondary"
+                                onClick={() => setIsEditing(true)}
                             >
-                                <Save className="w-4 h-4 mr-2" />
-                                {isSaving ? "Enregistrement..." : "Enregistrer"}
+                                <Edit className="w-4 h-4 mr-2" />
+                                Modifier
                             </Button>
-                        </>
-                    ) : (
-                        <Button
-                            variant="secondary"
-                            onClick={() => setIsEditing(true)}
-                        >
-                            <Edit className="w-4 h-4 mr-2" />
-                            Modifier
-                        </Button>
-                    )}
+                        )}
+                    </div>
                 </div>
             }
         >
@@ -352,6 +397,18 @@ export function ClientDrawer({
                     </div>
                 )}
             </div>
+
+            <ConfirmModal
+                isOpen={showDeleteConfirm}
+                onClose={() => !isDeleting && setShowDeleteConfirm(false)}
+                onConfirm={handleDeleteConfirm}
+                title="Supprimer le client"
+                message={`Êtes-vous sûr de vouloir supprimer "${client.name}" ? Cette action supprimera définitivement le client et toutes les données associées (missions, campagnes, onboarding, utilisateurs liés, etc.) et ne peut pas être annulée.`}
+                confirmText="Supprimer définitivement"
+                cancelText="Annuler"
+                variant="danger"
+                isLoading={isDeleting}
+            />
         </Drawer>
     );
 }
