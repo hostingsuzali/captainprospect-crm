@@ -49,17 +49,32 @@ export const GET = withErrorHandler(async (
             totalMeetings: 0,
             byMission: [],
             byCampaign: [],
+            allMeetings: [],
         });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search')?.trim() || null;
+
+    const meetingWhere: Record<string, unknown> = {
+        result: 'MEETING_BOOKED',
+        campaign: {
+            missionId: { in: missionIds },
+        },
+    };
+    if (search) {
+        meetingWhere.contact = {
+            OR: [
+                { firstName: { contains: search, mode: 'insensitive' } },
+                { lastName: { contains: search, mode: 'insensitive' } },
+                { company: { name: { contains: search, mode: 'insensitive' } } },
+            ],
+        };
     }
 
     // Get all meetings (actions with MEETING_BOOKED result) for this client's missions
     const meetings = await prisma.action.findMany({
-        where: {
-            result: 'MEETING_BOOKED',
-            campaign: {
-                missionId: { in: missionIds },
-            },
-        },
+        where: meetingWhere,
         include: {
             contact: {
                 include: {

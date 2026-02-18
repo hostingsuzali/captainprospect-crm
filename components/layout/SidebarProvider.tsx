@@ -7,6 +7,9 @@ interface SidebarContextValue {
     isMobileOpen: boolean;
     isHovering: boolean;
     isExpanded: boolean;
+    searchOpen: boolean;
+    openSearch: () => void;
+    closeSearch: () => void;
     toggleCollapsed: () => void;
     setCollapsed: (collapsed: boolean) => void;
     openMobile: () => void;
@@ -31,6 +34,7 @@ export function SidebarProvider({
     const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [isHovering, setIsHovering] = useState(false);
+    const [searchOpen, setSearchOpen] = useState(false);
     const [isHydrated, setIsHydrated] = useState(false);
     const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -62,8 +66,19 @@ export function SidebarProvider({
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && isMobileOpen) {
-                setIsMobileOpen(false);
+            if (e.key === "Escape") {
+                if (searchOpen) {
+                    setSearchOpen(false);
+                    e.preventDefault();
+                } else if (isMobileOpen) {
+                    setIsMobileOpen(false);
+                }
+                return;
+            }
+            if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+                e.preventDefault();
+                setSearchOpen((prev) => !prev);
+                return;
             }
             if ((e.metaKey || e.ctrlKey) && e.key === "b") {
                 e.preventDefault();
@@ -72,7 +87,7 @@ export function SidebarProvider({
         };
         document.addEventListener("keydown", handleKeyDown);
         return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [isMobileOpen]);
+    }, [isMobileOpen, searchOpen]);
 
     const toggleCollapsed = useCallback(() => {
         setIsCollapsed((prev) => !prev);
@@ -94,6 +109,9 @@ export function SidebarProvider({
     const toggleMobile = useCallback(() => {
         setIsMobileOpen((prev) => !prev);
     }, []);
+
+    const openSearch = useCallback(() => setSearchOpen(true), []);
+    const closeSearch = useCallback(() => setSearchOpen(false), []);
 
     const handleSetHovering = useCallback((hovering: boolean) => {
         if (!isCollapsed) return;
@@ -125,6 +143,9 @@ export function SidebarProvider({
             isMobileOpen,
             isHovering,
             isExpanded,
+            searchOpen,
+            openSearch,
+            closeSearch,
             toggleCollapsed,
             setCollapsed,
             openMobile,
@@ -132,7 +153,7 @@ export function SidebarProvider({
             toggleMobile,
             setHovering: handleSetHovering,
         }),
-        [isCollapsed, isMobileOpen, isHovering, isExpanded, toggleCollapsed, setCollapsed, openMobile, closeMobile, toggleMobile, handleSetHovering]
+        [isCollapsed, isMobileOpen, isHovering, isExpanded, searchOpen, openSearch, closeSearch, toggleCollapsed, setCollapsed, openMobile, closeMobile, toggleMobile, handleSetHovering]
     );
 
     return (

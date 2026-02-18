@@ -136,7 +136,7 @@ export default function ManagerDashboard() {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [missions, setMissions] = useState<MissionSummaryItem[]>([]);
     const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
-    const [period, setPeriod] = useState<"today" | "week" | "month">("week");
+    const [period, setPeriod] = useState<"today" | "week" | "month">("month");
     const [missionFilter, setMissionFilter] = useState<string>("");
     const [isLoading, setIsLoading] = useState(true);
     const [heroAnimated, setHeroAnimated] = useState(false);

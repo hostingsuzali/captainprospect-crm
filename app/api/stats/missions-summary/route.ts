@@ -14,7 +14,7 @@ import {
 export const GET = withErrorHandler(async (request: NextRequest) => {
     await requireRole(['MANAGER'], request);
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || 'week';
+    const period = searchParams.get('period') || 'month';
     const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10) || 20, 50);
 
     let dateFilter: Date;
@@ -31,9 +31,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             dateFilter = new Date();
             dateFilter.setMonth(dateFilter.getMonth() - 1);
             break;
+        case 'quarter':
+            dateFilter = new Date();
+            dateFilter.setDate(dateFilter.getDate() - 90);
+            break;
         default:
             dateFilter = new Date();
-            dateFilter.setDate(dateFilter.getDate() - 7);
+            dateFilter.setMonth(dateFilter.getMonth() - 1);
     }
 
     const [missions, actionsInPeriod] = await Promise.all([

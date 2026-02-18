@@ -196,6 +196,7 @@ export function GlobalSidebar({ navigation }: GlobalSidebarProps) {
         toggleCollapsed,
         closeMobile,
         setHovering,
+        openSearch,
     } = useSidebar();
     const [callbacksCount, setCallbacksCount] = useState<number | null>(null);
     const [nextCallbackDate, setNextCallbackDate] = useState<string | null>(
@@ -378,15 +379,9 @@ export function GlobalSidebar({ navigation }: GlobalSidebarProps) {
                 {/* Quick Search Trigger */}
                 {isExpanded ? (
                     <button
+                        type="button"
                         className="cp-search-trigger"
-                        onClick={() => {
-                            document.dispatchEvent(
-                                new KeyboardEvent("keydown", {
-                                    key: "k",
-                                    metaKey: true,
-                                })
-                            );
-                        }}
+                        onClick={openSearch}
                     >
                         <Search className="w-3.5 h-3.5 text-slate-400" />
                         <span className="cp-search-text">Rechercher...</span>
@@ -396,15 +391,9 @@ export function GlobalSidebar({ navigation }: GlobalSidebarProps) {
                     </button>
                 ) : (
                     <button
+                        type="button"
                         className="cp-search-trigger-mini"
-                        onClick={() => {
-                            document.dispatchEvent(
-                                new KeyboardEvent("keydown", {
-                                    key: "k",
-                                    metaKey: true,
-                                })
-                            );
-                        }}
+                        onClick={openSearch}
                         aria-label="Rechercher"
                     >
                         <Search className="w-4 h-4" />

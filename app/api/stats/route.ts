@@ -15,7 +15,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const { searchParams } = new URL(request.url);
 
     // Period filter
-    const period = searchParams.get('period') || 'week';
+    const period = searchParams.get('period') || 'month';
     const missionId = searchParams.get('missionId');
 
     let dateFilter: Date;
@@ -32,9 +32,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             dateFilter = new Date();
             dateFilter.setMonth(dateFilter.getMonth() - 1);
             break;
+        case 'quarter':
+            dateFilter = new Date();
+            dateFilter.setDate(dateFilter.getDate() - 90);
+            break;
         default:
             dateFilter = new Date();
-            dateFilter.setDate(dateFilter.getDate() - 7);
+            dateFilter.setMonth(dateFilter.getMonth() - 1);
     }
 
     const actionWhere: Record<string, unknown> = {

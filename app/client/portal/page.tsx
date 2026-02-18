@@ -7,11 +7,8 @@ import {
     Card,
     Badge,
     Button,
-    PageHeader,
     StatCard,
     EmptyState,
-    StatCardSkeleton,
-    CardSkeleton,
     useToast,
 } from "@/components/ui";
 import {
@@ -26,13 +23,14 @@ import {
     Clock,
     CheckCircle2,
     RefreshCw,
-    Sparkles,
     ArrowRight,
+    Sparkles,
     Video,
     BarChart3,
     FileDown,
     ChevronDown,
     ChevronUp,
+    Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClientOnboardingModal } from "@/components/client/ClientOnboardingModal";
@@ -114,9 +112,9 @@ const URGENCY_LABELS: Record<string, { label: string; class: string }> = {
 
 const PERIOD_OPTIONS = [
     { value: "today", label: "Aujourd'hui" },
-    { value: "week", label: "7 jours" },
-    { value: "month", label: "30 jours" },
-];
+    { value: "week", label: "Semaine" },
+    { value: "month", label: "Mois" },
+] as const;
 
 function getGreeting(): string {
     const hour = new Date().getHours();
@@ -138,7 +136,7 @@ function PeriodSelector({
 }) {
     return (
         <div
-            className="flex rounded-xl overflow-hidden bg-white/10 backdrop-blur border border-white/20"
+            className="flex rounded-lg overflow-hidden bg-white border border-[#E8EBF0]"
             role="group"
             aria-label="Periode de temps"
         >
@@ -148,10 +146,10 @@ function PeriodSelector({
                     onClick={() => onChange(p.value)}
                     aria-pressed={period === p.value}
                     className={cn(
-                        "px-4 py-2.5 text-sm font-medium transition-all",
+                        "px-3 py-1.5 text-[12px] font-medium transition-colors duration-150",
                         period === p.value
-                            ? "bg-white text-indigo-700 shadow-sm"
-                            : "text-white/90 hover:bg-white/10"
+                            ? "bg-[#7C5CFC] text-white"
+                            : "text-[#8B8BA7] hover:text-[#12122A]"
                     )}
                 >
                     {p.label}
@@ -170,7 +168,7 @@ function OpportunityCard({ opp, formatDate }: { opp: Opportunity; formatDate: (s
 
     return (
         <div
-            className="client-opp-card group bg-white rounded-2xl border border-slate-200 p-6 hover:border-indigo-200 hover:shadow-lg transition-all duration-200"
+            className="client-opp-card group bg-white rounded-xl border border-[#E8EBF0] p-6 hover:border-[#C5C8D4] hover:shadow-md transition-all duration-150"
             role="article"
             tabIndex={0}
             aria-label={`Opportunite ${opp.company.name}`}
@@ -181,11 +179,11 @@ function OpportunityCard({ opp, formatDate }: { opp: Opportunity; formatDate: (s
                 </div>
                 <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-slate-900">{opp.company.name}</h3>
+                        <h3 className="font-semibold text-[#12122A]">{opp.company.name}</h3>
                         <span
                             className={cn(
                                 "text-xs font-medium px-2.5 py-1 rounded-full border",
-                                URGENCY_LABELS[opp.urgency]?.class ?? "bg-slate-100 text-slate-600 border-slate-200"
+                                URGENCY_LABELS[opp.urgency]?.class ?? "bg-[#F4F6F9] text-[#8B8BA7] border-[#E8EBF0]"
                             )}
                         >
                             {URGENCY_LABELS[opp.urgency]?.label ?? opp.urgency}
@@ -194,7 +192,7 @@ function OpportunityCard({ opp, formatDate }: { opp: Opportunity; formatDate: (s
                             <Badge variant="success">Transmis</Badge>
                         )}
                     </div>
-                    <div className="flex items-center gap-2 mt-1.5 text-sm text-slate-500">
+                    <div className="flex items-center gap-2 mt-1.5 text-sm text-[#8B8BA7]">
                         <User className="w-4 h-4 flex-shrink-0" />
                         <span>
                             {[opp.contact.firstName, opp.contact.lastName].filter(Boolean).join(" ") || "\u2014"}
@@ -204,7 +202,7 @@ function OpportunityCard({ opp, formatDate }: { opp: Opportunity; formatDate: (s
                     {opp.needSummary && (
                         <div className="mt-3">
                             <p className={cn(
-                                "text-sm text-slate-600 leading-relaxed",
+                                "text-sm text-[#8B8BA7] leading-relaxed",
                                 !expanded && "line-clamp-2"
                             )}>
                                 {opp.needSummary}
@@ -212,7 +210,7 @@ function OpportunityCard({ opp, formatDate }: { opp: Opportunity; formatDate: (s
                             {opp.needSummary.length > 120 && (
                                 <button
                                     onClick={() => setExpanded(!expanded)}
-                                    className="flex items-center gap-1 mt-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+                                    className="flex items-center gap-1 mt-1.5 text-xs font-medium text-[#7C5CFC] hover:text-[#6C4CE0] transition-colors"
                                     aria-expanded={expanded}
                                 >
                                     {expanded ? (
@@ -224,15 +222,15 @@ function OpportunityCard({ opp, formatDate }: { opp: Opportunity; formatDate: (s
                             )}
                         </div>
                     )}
-                    <div className="flex flex-wrap items-center justify-between mt-4 pt-4 border-t border-slate-100 gap-2">
-                        <div className="flex items-center gap-1.5 text-sm text-slate-500">
+                    <div className="flex flex-wrap items-center justify-between mt-4 pt-4 border-t border-[#E8EBF0] gap-2">
+                        <div className="flex items-center gap-1.5 text-sm text-[#8B8BA7]">
                             <Clock className="w-4 h-4" />
                             {opp.handedOffAt
                                 ? `Transmis le ${formatDate(opp.handedOffAt)}`
                                 : `Cree le ${formatDate(opp.createdAt)}`}
                         </div>
                         {(opp.estimatedMin != null || opp.estimatedMax != null) && (
-                            <span className="text-sm font-semibold text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg">
+                            <span className="text-sm font-semibold text-[#12122A] bg-[#F4F6F9] px-2.5 py-1 rounded-lg">
                                 {[opp.estimatedMin, opp.estimatedMax]
                                     .filter(Boolean)
                                     .map((v) => `${v?.toLocaleString()}\u20ac`)
@@ -323,10 +321,10 @@ export default function ClientPortal() {
     }, []);
 
     const CLIENT_STATS = [
-        { label: "Missions en cours", value: stats?.activeMissions ?? 0, icon: Target, iconBg: "bg-indigo-100", iconColor: "text-indigo-600" },
-        { label: "Entreprises contactees", value: stats?.totalActions ?? 0, icon: Phone, iconBg: "bg-violet-100", iconColor: "text-violet-600" },
-        { label: "Personnes interessees", value: stats?.resultBreakdown?.INTERESTED ?? 0, icon: MessageSquare, iconBg: "bg-emerald-100", iconColor: "text-emerald-600" },
-        { label: "RDV pris pour vous", value: stats?.meetingsBooked ?? 0, icon: Calendar, iconBg: "bg-amber-100", iconColor: "text-amber-600" },
+        { label: "Missions en cours", value: stats?.activeMissions ?? 0, icon: Target, iconBg: "bg-[#EEF2FF]", iconColor: "text-[#7C5CFC]" },
+        { label: "Entreprises contactees", value: stats?.totalActions ?? 0, icon: Phone, iconBg: "bg-[#EEF2FF]", iconColor: "text-[#7C5CFC]" },
+        { label: "Personnes interessees", value: stats?.resultBreakdown?.INTERESTED ?? 0, icon: MessageSquare, iconBg: "bg-[#ECFDF5]", iconColor: "text-[#10B981]" },
+        { label: "RDV pris pour vous", value: stats?.meetingsBooked ?? 0, icon: Calendar, iconBg: "bg-[#FFF7ED]", iconColor: "text-[#F59E0B]" },
     ];
 
     const formatDate = (dateString: string) =>
@@ -405,36 +403,14 @@ export default function ClientPortal() {
     // LOADING SKELETON STATE
     // ============================================
 
+    const periodLabel = period === "today" ? "Aujourd'hui" : period === "week" ? "Semaine" : "Mois";
+
     if (isLoading && !stats) {
         return (
-            <div className="space-y-8">
-                {/* Hero skeleton */}
-                <div className="rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 p-8 shadow-xl">
-                    <div className="space-y-3">
-                        <div className="h-4 w-32 rounded bg-white/20 animate-pulse" />
-                        <div className="h-8 w-64 rounded bg-white/20 animate-pulse" />
-                        <div className="h-4 w-80 rounded bg-white/10 animate-pulse" />
-                    </div>
-                </div>
-
-                {/* Stats skeleton */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    {[...Array(4)].map((_, i) => (
-                        <StatCardSkeleton key={i} />
-                    ))}
-                </div>
-
-                {/* Content skeleton */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 space-y-4">
-                        <CardSkeleton hasHeader lines={3} />
-                        <CardSkeleton hasHeader lines={3} />
-                    </div>
-                    <div className="space-y-4">
-                        <CardSkeleton hasHeader={false} lines={2} />
-                        <CardSkeleton hasHeader={false} lines={2} />
-                        <CardSkeleton hasHeader={false} lines={2} />
-                    </div>
+            <div className="min-h-full bg-[#F4F6F9] p-6">
+                <div className="flex flex-col items-center justify-center py-32">
+                    <Loader2 className="w-8 h-8 text-[#7C5CFC] animate-spin" />
+                    <p className="text-[13px] text-[#8B8BA7] font-medium mt-4">Chargement du tableau de bord...</p>
                 </div>
             </div>
         );
@@ -445,36 +421,30 @@ export default function ClientPortal() {
     // ============================================
 
     return (
-        <div className={cn("space-y-8", mounted && "client-dashboard-mounted")}>
-            {/* Hero Header */}
-            <PageHeader
-                variant="hero"
-                title="Votre tableau de bord"
-                subtitle="Suivi en temps reel de vos missions et des contacts qualifies"
-                icon={
-                    <span className="flex items-center gap-2 text-indigo-300 text-sm font-medium">
-                        <Sparkles className="w-4 h-4" />
-                        {getGreeting()}, {userName}
-                    </span>
-                }
-                actions={
-                    <div className="flex items-center gap-3">
-                        <PeriodSelector period={period} onChange={setPeriod} />
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => fetchData(true)}
-                            disabled={isRefreshing}
-                            aria-busy={isRefreshing}
-                            aria-label="Actualiser les donnees"
-                            className="gap-2 bg-white/10 border-white/20 text-white hover:bg-white/20"
-                        >
-                            <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
-                            <span className="hidden sm:inline">Actualiser</span>
-                        </Button>
-                    </div>
-                }
-            />
+        <div className={cn("min-h-full bg-[#F4F6F9] p-6 space-y-6", mounted && "client-dashboard-mounted")}>
+            {/* Page Header */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-[22px] font-bold text-[#12122A] tracking-tight">
+                        Votre tableau de bord
+                    </h1>
+                    <p className="text-[13px] text-[#8B8BA7] mt-0.5">
+                        {periodLabel} · {getGreeting()}, {userName}
+                    </p>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                    <PeriodSelector period={period} onChange={setPeriod} />
+                    <button
+                        onClick={() => fetchData(true)}
+                        disabled={isRefreshing}
+                        className="w-8 h-8 rounded-lg border border-[#E8EBF0] flex items-center justify-center text-[#8B8BA7] hover:text-[#12122A] hover:border-[#C5C8D4] transition-colors duration-150 disabled:opacity-50 bg-white"
+                        title="Rafraîchir"
+                        aria-label="Actualiser les donnees"
+                    >
+                        <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
+                    </button>
+                </div>
+            </div>
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" aria-live="polite">
@@ -486,31 +456,32 @@ export default function ClientPortal() {
                         icon={stat.icon}
                         iconBg={stat.iconBg}
                         iconColor={stat.iconColor}
-                        className="client-kpi-card"
+                        className="bg-white border-[#E8EBF0] rounded-xl hover:border-[#C5C8D4] transition-colors duration-150 [&_p]:text-[#12122A] [&_[class*='text-slate']]:text-[#8B8BA7]"
                     />
                 ))}
             </div>
 
             {/* Conversion Rate Banner */}
             {stats && stats.totalActions > 0 && (
-                <Card className="border-0 bg-gradient-to-r from-slate-800 to-slate-900 text-white shadow-xl">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center">
-                            <BarChart3 className="w-7 h-7" />
+                <div className="bg-gradient-to-br from-[#1A1040] to-[#12122A] rounded-2xl p-6 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-48 h-48 bg-[#7C5CFC]/10 rounded-full blur-3xl" />
+                    <div className="relative z-10 flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-2xl bg-[#7C5CFC]/20 flex items-center justify-center">
+                            <BarChart3 className="w-7 h-7 text-[#A78BFA]" />
                         </div>
                         <div className="flex-1">
-                            <h3 className="font-semibold">Taux de conversion (RDV / contacts)</h3>
-                            <p className="text-slate-300 text-sm mt-0.5">
+                            <h3 className="font-semibold text-white">Taux de conversion (RDV / contacts)</h3>
+                            <p className="text-[#8B8BA7] text-sm mt-0.5">
                                 {stats.meetingsBooked} RDV pour {stats.totalActions} entreprises contactees
                             </p>
                         </div>
                         <div className="text-right">
-                            <span className="text-3xl font-bold text-emerald-400 tabular-nums">
+                            <span className="text-3xl font-bold text-[#10B981] tabular-nums">
                                 {stats.conversionRate?.toFixed(1) ?? 0}%
                             </span>
                         </div>
                     </div>
-                </Card>
+                </div>
             )}
 
             {/* Main Content Grid */}
@@ -519,7 +490,7 @@ export default function ClientPortal() {
                 <div className="lg:col-span-2 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                            <h2 className="text-lg font-semibold text-slate-900">
+                            <h2 className="text-lg font-semibold text-[#12122A]">
                                 Contacts qualifies pour vous
                             </h2>
                             <Badge variant="primary">{opportunities.length}</Badge>
@@ -556,8 +527,8 @@ export default function ClientPortal() {
                 <div className="space-y-6">
                     {/* Missions */}
                     <div className="client-panel">
-                        <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                            <Target className="w-5 h-5 text-indigo-500" />
+                        <h2 className="text-lg font-semibold text-[#12122A] mb-4 flex items-center gap-2">
+                            <Target className="w-5 h-5 text-[#7C5CFC]" />
                             Vos missions
                         </h2>
                         {missions.length === 0 ? (
@@ -570,14 +541,14 @@ export default function ClientPortal() {
                         ) : (
                             <div className="space-y-3">
                                 {missions.map((mission) => (
-                                    <Card key={mission.id} className="border-slate-200 bg-white overflow-hidden">
+                                    <Card key={mission.id} className="border-[#E8EBF0] bg-white overflow-hidden rounded-xl hover:border-[#C5C8D4] transition-colors">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                                                <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                                            <div className="w-9 h-9 rounded-lg bg-[#EEF2FF] flex items-center justify-center flex-shrink-0">
+                                                <CheckCircle2 className="w-4 h-4 text-[#7C5CFC]" />
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-medium text-slate-900 truncate">{mission.name}</p>
-                                                <p className="text-xs text-slate-500">
+                                                <p className="font-medium text-[#12122A] truncate">{mission.name}</p>
+                                                <p className="text-xs text-[#8B8BA7]">
                                                     Equipe dediee
                                                     {mission._count?.sdrAssignments != null && ` \u00b7 ${mission._count.sdrAssignments} SDR(s)`}
                                                 </p>
@@ -587,7 +558,7 @@ export default function ClientPortal() {
                                             </Badge>
                                         </div>
                                         {/* Export options */}
-                                        <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                                        <div className="mt-3 pt-3 border-t border-[#E8EBF0] space-y-2">
                                             <div className="flex flex-wrap gap-2">
                                                 <Button
                                                     variant="ghost"
@@ -623,15 +594,15 @@ export default function ClientPortal() {
                     {/* Recent Meetings */}
                     {meetings.length > 0 && (
                         <div className="client-panel">
-                            <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                                <Video className="w-5 h-5 text-indigo-500" />
+                            <h2 className="text-lg font-semibold text-[#12122A] mb-4 flex items-center gap-2">
+                                <Video className="w-5 h-5 text-[#7C5CFC]" />
                                 RDV planifies
                             </h2>
                             <div className="space-y-3">
                                 {meetings.slice(0, 5).map((m) => (
                                     <Card
                                         key={m.id}
-                                        className="border-slate-200 bg-white"
+                                        className="border-[#E8EBF0] bg-white rounded-xl"
                                         role="article"
                                         tabIndex={0}
                                         aria-label={`RDV avec ${[m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ") || "Contact"}`}
@@ -641,11 +612,11 @@ export default function ClientPortal() {
                                                 <Calendar className="w-4 h-4 text-emerald-600" />
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-medium text-slate-900 truncate">
+                                                <p className="font-medium text-[#12122A] truncate">
                                                     {[m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ") || "Contact"} &middot; {m.contact.company.name}
                                                 </p>
-                                                <p className="text-xs text-slate-500">{m.campaign.mission.name}</p>
-                                                <p className="text-xs text-slate-400 mt-0.5">{formatDate(m.createdAt)}</p>
+                                                <p className="text-xs text-[#8B8BA7]">{m.campaign.mission.name}</p>
+                                                <p className="text-xs text-[#8B8BA7]/80 mt-0.5">{formatDate(m.createdAt)}</p>
                                             </div>
                                         </div>
                                     </Card>
@@ -656,32 +627,32 @@ export default function ClientPortal() {
 
                     {/* Contact CTA */}
                     <Link href="/client/contact">
-                        <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-violet-50 hover:from-indigo-100 hover:to-violet-100 hover:border-indigo-300 transition-all cursor-pointer group shadow-md hover:shadow-lg">
+                        <Card className="border-[#E8EBF0] bg-white hover:border-[#C5C8D4] hover:shadow-md transition-all cursor-pointer group rounded-xl">
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
-                                    <MessageSquare className="w-6 h-6 text-indigo-600" />
+                                <div className="w-12 h-12 rounded-xl bg-[#EEF2FF] flex items-center justify-center group-hover:bg-[#E0E7FF] transition-colors">
+                                    <MessageSquare className="w-6 h-6 text-[#7C5CFC]" />
                                 </div>
                                 <div className="flex-1">
-                                    <p className="font-semibold text-indigo-900">Contacter l&apos;equipe</p>
-                                    <p className="text-sm text-indigo-700">Echanger avec les SDR de vos missions</p>
+                                    <p className="font-semibold text-[#12122A]">Contacter l&apos;equipe</p>
+                                    <p className="text-sm text-[#8B8BA7]">Echanger avec les SDR de vos missions</p>
                                 </div>
-                                <ArrowRight className="w-5 h-5 text-indigo-500 group-hover:translate-x-1 transition-transform" />
+                                <ArrowRight className="w-5 h-5 text-[#7C5CFC] group-hover:translate-x-1 transition-transform" />
                             </div>
                         </Card>
                     </Link>
 
                     {/* Results CTA */}
                     <Link href="/client/results">
-                        <Card className="border-slate-200 bg-gradient-to-br from-slate-50 to-white hover:border-slate-300 transition-all cursor-pointer group shadow-sm hover:shadow-md mt-3">
+                        <Card className="border-[#E8EBF0] bg-white hover:border-[#C5C8D4] transition-all cursor-pointer group rounded-xl mt-3">
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center group-hover:bg-slate-200 transition-colors">
-                                    <BarChart3 className="w-6 h-6 text-slate-600" />
+                                <div className="w-12 h-12 rounded-xl bg-[#EEF2FF] flex items-center justify-center group-hover:bg-[#E0E7FF] transition-colors">
+                                    <BarChart3 className="w-6 h-6 text-[#7C5CFC]" />
                                 </div>
                                 <div className="flex-1">
-                                    <p className="font-semibold text-slate-900">Voir les resultats</p>
-                                    <p className="text-sm text-slate-500">Analyse detaillee de vos missions</p>
+                                    <p className="font-semibold text-[#12122A]">Voir les resultats</p>
+                                    <p className="text-sm text-[#8B8BA7]">Analyse detaillee de vos missions</p>
                                 </div>
-                                <ArrowRight className="w-5 h-5 text-slate-400 group-hover:translate-x-1 transition-transform" />
+                                <ArrowRight className="w-5 h-5 text-[#7C5CFC] group-hover:translate-x-1 transition-transform" />
                             </div>
                         </Card>
                     </Link>
@@ -689,14 +660,14 @@ export default function ClientPortal() {
             </div>
 
             {/* Info Notice */}
-            <Card className="border-slate-200 bg-slate-50/80" role="note" aria-label="Information sur les donnees">
+            <Card className="border-[#E8EBF0] bg-white rounded-xl" role="note" aria-label="Information sur les donnees">
                 <div className="flex items-start gap-4">
-                    <div className="w-11 h-11 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                        <TrendingUp className="w-5 h-5 text-indigo-600" />
+                    <div className="w-11 h-11 rounded-xl bg-[#EEF2FF] flex items-center justify-center flex-shrink-0">
+                        <TrendingUp className="w-5 h-5 text-[#7C5CFC]" />
                     </div>
                     <div>
-                        <h3 className="font-medium text-slate-900">Donnees a jour</h3>
-                        <p className="text-sm text-slate-600 mt-1">
+                        <h3 className="font-medium text-[#12122A]">Donnees a jour</h3>
+                        <p className="text-sm text-[#8B8BA7] mt-1">
                             Les indicateurs et contacts sont mis a jour automatiquement. Les opportunites vous sont transmises des qu&apos;elles sont qualifiees.
                         </p>
                     </div>

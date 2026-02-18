@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const missionId = searchParams.get("missionId");
         const listId = searchParams.get("listId");
+        const search = searchParams.get("search")?.trim() || null;
 
         // Build where clause with filters (include MEETING_BOOKED and MEETING_CANCELLED)
         const where: any = {
@@ -36,25 +37,22 @@ export async function GET(request: NextRequest) {
             };
         }
 
-        // Filter by List (via Contact -> Company -> List)
+        // Filter by List and/or search (Contact)
+        const contactConditions: any[] = [];
         if (listId) {
-            where.contact = {
-                company: {
-                    listId: listId,
-                },
-            };
+            contactConditions.push({ company: { listId } });
         }
-
-        // If both filters are present, combine them
-        if (missionId && listId) {
-            where.campaign = {
-                missionId: missionId,
-            };
-            where.contact = {
-                company: {
-                    listId: listId,
-                },
-            };
+        if (search) {
+            contactConditions.push({
+                OR: [
+                    { firstName: { contains: search, mode: "insensitive" as const } },
+                    { lastName: { contains: search, mode: "insensitive" as const } },
+                    { company: { name: { contains: search, mode: "insensitive" as const } } },
+                ],
+            });
+        }
+        if (contactConditions.length > 0) {
+            where.contact = contactConditions.length === 1 ? contactConditions[0] : { AND: contactConditions };
         }
 
         const meetings = await prisma.action.findMany({

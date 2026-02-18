@@ -7,6 +7,7 @@ import { UserRole } from "@prisma/client";
 import { SidebarProvider, useSidebar } from "./SidebarProvider";
 import { PermissionProvider } from "@/lib/permissions/PermissionProvider";
 import { GlobalSidebar, MobileMenuButton } from "./GlobalSidebar";
+import { GlobalSearchModal } from "./GlobalSearchModal";
 import { NavSection, getNavByRole, ROLE_CONFIG } from "@/lib/navigation/config";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ function InnerLayout({
     const { data: session, status } = useSession();
     const router = useRouter();
     const pathname = usePathname();
-    const { isCollapsed, isHovering } = useSidebar();
+    const { isCollapsed, isHovering, searchOpen, closeSearch } = useSidebar();
 
     const userRole = session?.user?.role as UserRole | undefined;
     const roleConfig = userRole ? ROLE_CONFIG[userRole] : null;
@@ -94,6 +95,11 @@ function InnerLayout({
 
     return (
         <div className="cp-layout">
+            <GlobalSearchModal
+                open={searchOpen}
+                onClose={closeSearch}
+                navigation={navigation}
+            />
             <GlobalSidebar navigation={navigation} />
 
             <main
