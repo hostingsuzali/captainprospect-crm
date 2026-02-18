@@ -164,6 +164,31 @@ export const DELETE = withErrorHandler(async (
         // Remove client-specific pipeline config (1:1)
         await tx.prospectPipelineConfig.deleteMany({ where: { clientId: id } });
 
+        // Campaign is cascade-deleted with Mission when Client is deleted; Action/File/EmailThread
+        // reference Campaign without onDelete, so we must clear them first.
+        const clientCampaignIds = await tx.campaign.findMany({
+            where: { mission: { clientId: id } },
+            select: { id: true },
+        }).then(rows => rows.map(r => r.id));
+
+        if (clientCampaignIds.length > 0) {
+            await tx.action.deleteMany({
+                where: { campaignId: { in: clientCampaignIds } },
+            });
+            await tx.file.updateMany({
+                where: { campaignId: { in: clientCampaignIds } },
+                data: { campaignId: null },
+            });
+            await tx.emailThread.updateMany({
+                where: { campaignId: { in: clientCampaignIds } },
+                data: { campaignId: null },
+            });
+            await tx.emailSequence.updateMany({
+                where: { campaignId: { in: clientCampaignIds } },
+                data: { campaignId: null },
+            });
+        }
+
         // Delete client; DB/Prisma cascades: Mission (and its Campaign, List, etc.),
         // ClientOnboarding, BusinessDeveloperClient, CommsChannel
         await tx.client.delete({
