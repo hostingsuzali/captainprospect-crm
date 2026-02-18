@@ -532,6 +532,57 @@ export default function SDRActionPage() {
         setTableFilterType("");
     };
 
+    // Why is the table empty? (so SDR/BD see a clear reason instead of a generic empty message)
+    const emptyTableReason = useMemo((): { title: string; description: string; icon: typeof AlertCircle } => {
+        if (missions.length === 0) {
+            return {
+                icon: AlertCircle,
+                title: "Aucune mission active",
+                description: "Vous n'avez aucune mission active assignée. Contactez votre manager pour être assigné à une mission et voir la file d'actions.",
+            };
+        }
+        if (!selectedMissionId) {
+            return {
+                icon: AlertCircle,
+                title: "Sélectionnez une mission",
+                description: "Choisissez une mission dans le filtre ci-dessus pour afficher la file d'actions (contacts à appeler, contacter par email ou LinkedIn).",
+            };
+        }
+        if (filteredLists.length === 0) {
+            return {
+                icon: AlertCircle,
+                title: "Cette mission n'a pas de listes",
+                description: "Aucune liste n'est associée à cette mission (ou les listes ne sont pas encore chargées). Demandez à votre manager d'ajouter des listes avec des sociétés et contacts.",
+            };
+        }
+        if (tableSearchApi && queueItems.length === 0) {
+            return {
+                icon: AlertCircle,
+                title: "Aucun résultat pour cette recherche",
+                description: `Aucun contact ou société ne correspond à « ${tableSearchApi} ». Modifiez la recherche dans le filtre ci-dessus ou videz le champ pour voir toute la file.`,
+            };
+        }
+        if (hasTableFiltersActive && queueItems.length > 0 && filteredQueueItems.length === 0) {
+            return {
+                icon: Filter,
+                title: "Aucun contact ne correspond aux filtres",
+                description: "Les filtres (statut, priorité, canal ou type) excluent tous les contacts. Cliquez sur « Réinitialiser » dans la zone Filtres pour tout réafficher.",
+            };
+        }
+        if (queueItems.length === 0) {
+            return {
+                icon: AlertCircle,
+                title: "File vide pour cette mission",
+                description: "Aucun contact éligible dans cette mission (et cette liste). Causes possibles : les listes sont vides ; les contacts n'ont pas les infos requises (téléphone pour Appel, email pour Email, LinkedIn pour LinkedIn) ; ou tous les contacts sont en cooldown (24h après dernière action). Vérifiez les listes côté manager ou actualisez plus tard.",
+            };
+        }
+        return {
+            icon: AlertCircle,
+            title: "Aucun contact affiché",
+            description: "Aucun contact ne correspond aux critères actuels. Réinitialisez les filtres ou la recherche.",
+        };
+    }, [missions.length, selectedMissionId, filteredLists.length, tableSearchApi, hasTableFiltersActive, queueItems.length, filteredQueueItems.length]);
+
     // Debounce mission search so we don't refetch on every keystroke
     useEffect(() => {
         if (!tableSearchInput.trim()) {
@@ -1635,6 +1686,26 @@ export default function SDRActionPage() {
                             }
                             className="rounded-2xl border-0"
                         />
+                    ) : filteredQueueItems.length === 0 ? (
+                        <EmptyState
+                            icon={emptyTableReason.icon}
+                            title={emptyTableReason.title}
+                            description={emptyTableReason.description}
+                            action={
+                                hasTableFiltersActive ? (
+                                    <Button variant="secondary" onClick={clearTableFilters} className="gap-2">
+                                        <RotateCcw className="w-4 h-4" />
+                                        Réinitialiser les filtres
+                                    </Button>
+                                ) : selectedMissionId ? (
+                                    <Button variant="secondary" onClick={() => refreshQueue()} className="gap-2">
+                                        <RefreshCw className="w-4 h-4" />
+                                        Actualiser
+                                    </Button>
+                                ) : undefined
+                            }
+                            className="rounded-2xl border-0"
+                        />
                     ) : (
                         <DataTable
                             data={filteredQueueItems}
@@ -1844,12 +1915,18 @@ export default function SDRActionPage() {
                     </div>
                 </div>
 
-                {/* Empty State Card */}
+                {/* Empty State Card — explain why the queue is empty */}
                 <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-12">
                     <EmptyState
                         icon={CheckCircle2}
                         title="File d'attente vide"
-                        description={currentAction?.message || "Aucun contact disponible pour le moment"}
+                        description={
+                            missions.length === 0
+                                ? "Aucune mission active assignée. Contactez votre manager pour être assigné à une mission."
+                                : !selectedMissionId
+                                    ? "Sélectionnez une mission ci-dessus pour afficher le prochain contact à contacter."
+                                    : (currentAction?.message || "Aucun contact disponible pour le moment (listes vides, contacts sans téléphone/email/LinkedIn, ou tous en cooldown 24h).")
+                        }
                         action={
                             <Button variant="secondary" onClick={loadNextAction} className="gap-2">
                                 <RefreshCw className="w-4 h-4" />

@@ -249,13 +249,13 @@ export default function BDClientOnboardingPage() {
                         channel: formData.missionChannel,
                         startDate: formData.targetLaunchDate || new Date().toISOString(),
                         endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(), // 90 days from now
-                        isActive: false, // Will be activated by manager
+                        isActive: true,
                     }),
                 });
 
                 const missionJson = await missionRes.json();
                 if (missionJson.success && scripts.intro) {
-                    // Create initial campaign with scripts
+                    // Create initial campaign with scripts (active by default)
                     await fetch("/api/campaigns", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -265,7 +265,7 @@ export default function BDClientOnboardingPage() {
                             icp: formData.icp,
                             pitch: formData.icp,
                             script: JSON.stringify(scripts),
-                            isActive: false,
+                            isActive: true,
                         }),
                     });
                 }

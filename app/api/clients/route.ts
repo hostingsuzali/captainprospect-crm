@@ -147,7 +147,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         });
     }
 
-    // Create mission if requested
+    // Create mission if requested (active by default when created with client)
     if (createMission && missionName) {
         const mission = await prisma.mission.create({
             data: {
@@ -157,11 +157,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                 channel: missionChannel || 'CALL',
                 startDate: targetLaunchDate ? new Date(targetLaunchDate) : new Date(),
                 endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
-                isActive: false, // Will be activated later
+                isActive: true,
             },
         });
 
-        // Create initial campaign if we have scripts/ICP
+        // Create initial campaign if we have scripts/ICP (active by default)
         if (scripts?.intro || onboardingData?.icp) {
             await prisma.campaign.create({
                 data: {
@@ -170,7 +170,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                     icp: onboardingData?.icp || 'ICP à définir',
                     pitch: onboardingData?.icp || 'Pitch à définir',
                     script: scripts ? JSON.stringify(scripts) : undefined,
-                    isActive: false,
+                    isActive: true,
                 },
             });
         }

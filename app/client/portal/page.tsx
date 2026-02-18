@@ -448,8 +448,8 @@ export default function ClientPortal() {
                         </button>
                         {dateFilterOpen && (
                             <>
-                                <div className="fixed inset-0 z-40" aria-hidden onClick={() => setDateFilterOpen(false)} />
-                                <div className="absolute right-0 top-full mt-1 z-50 max-w-[calc(100vw-2rem)]">
+                                <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setDateFilterOpen(false)} />
+                                <div className="absolute right-0 top-full mt-1 z-[110] max-w-[calc(100vw-2rem)]">
                                     <DateRangeFilter
                                         value={dateRange}
                                         onChange={setDateRange}

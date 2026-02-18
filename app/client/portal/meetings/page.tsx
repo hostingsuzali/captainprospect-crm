@@ -212,7 +212,7 @@ export default function ClientPortalMeetingsPage() {
             </div>
 
             {/* Filters — same glass bar, mission only */}
-            <div className="sticky top-4 z-30">
+            <div className={cn("sticky top-4", dateFilterOpen ? "z-[100]" : "z-30")}>
                 <div className="bg-white/90 backdrop-blur-md border border-white/20 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-full p-2 pl-6 flex flex-col md:flex-row items-center gap-4 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 whitespace-nowrap">
                         <Filter className="w-4 h-4 text-indigo-500" />
@@ -231,8 +231,8 @@ export default function ClientPortalMeetingsPage() {
                             </button>
                             {dateFilterOpen && (
                                 <>
-                                    <div className="fixed inset-0 z-40" aria-hidden onClick={() => setDateFilterOpen(false)} />
-                                    <div className="absolute left-0 top-full mt-1 z-50 max-w-[calc(100vw-2rem)]">
+                                    <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setDateFilterOpen(false)} />
+                                    <div className="absolute left-0 top-full mt-1 z-[110] max-w-[calc(100vw-2rem)]">
                                         <DateRangeFilter
                                             value={dateRange}
                                             onChange={setDateRange}

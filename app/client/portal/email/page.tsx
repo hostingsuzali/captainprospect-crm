@@ -8,6 +8,7 @@ import {
     Button,
     EmptyState,
     useToast,
+    ConfirmModal,
 } from "@/components/ui";
 import {
     Mail,
@@ -18,6 +19,8 @@ import {
     Eye,
     EyeOff,
     AlertCircle,
+    RefreshCw,
+    Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +78,9 @@ export default function ClientPortalEmailPage() {
     const [imapLoading, setImapLoading] = useState(false);
     const [imapError, setImapError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const fetchMailbox = useCallback(async () => {
         setIsLoadingMailbox(true);
@@ -196,6 +202,53 @@ export default function ClientPortalEmailPage() {
         }
     };
 
+    const handleSync = useCallback(async () => {
+        if (!mailbox) return;
+        setIsSyncing(true);
+        try {
+            const res = await fetch(`/api/email/mailboxes/${mailbox.id}/sync`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ maxThreads: 100 }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                toast.success("Synchronisation", "La boîte a été synchronisée.");
+                fetchMailbox();
+                fetchSentEmails();
+            } else {
+                toast.error("Erreur", json.error || "Échec de la synchronisation");
+            }
+        } catch {
+            toast.error("Erreur", "Impossible de lancer la synchronisation");
+        } finally {
+            setIsSyncing(false);
+        }
+    }, [mailbox, toast, fetchMailbox, fetchSentEmails]);
+
+    const handleDeleteMailbox = useCallback(async () => {
+        if (!mailbox) return;
+        setIsDeleting(true);
+        try {
+            const res = await fetch(`/api/email/mailboxes/${mailbox.id}`, {
+                method: "DELETE",
+            });
+            const json = await res.json();
+            if (json.success) {
+                toast.success("Boîte supprimée", "Votre boîte connectée a été supprimée.");
+                setMailbox(null);
+                setSentEmails([]);
+                setShowDeleteConfirm(false);
+            } else {
+                toast.error("Erreur", json.error || "Impossible de supprimer la boîte");
+            }
+        } catch {
+            toast.error("Erreur", "Impossible de supprimer la boîte");
+        } finally {
+            setIsDeleting(false);
+        }
+    }, [mailbox, toast]);
+
     const handleEmailChange = (email: string) => {
         const domain = email.split("@")[1]?.toLowerCase();
         const serverMap: Record<string, { imap: string; smtp: string }> = {
@@ -289,6 +342,32 @@ export default function ClientPortalEmailPage() {
                                     }
                                 )}
                             </p>
+                            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleSync}
+                                    disabled={isSyncing}
+                                    className="gap-2"
+                                >
+                                    {isSyncing ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <RefreshCw className="w-4 h-4" />
+                                    )}
+                                    {isSyncing ? "Synchronisation…" : "Synchroniser"}
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowDeleteConfirm(true)}
+                                    disabled={isSyncing}
+                                    className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    Supprimer la boîte
+                                </Button>
+                            </div>
                         </div>
                     ) : (
                         <div className="space-y-4">
@@ -509,6 +588,18 @@ export default function ClientPortalEmailPage() {
                     )}
                 </Card>
             </div>
+
+            <ConfirmModal
+                isOpen={showDeleteConfirm}
+                onClose={() => !isDeleting && setShowDeleteConfirm(false)}
+                onConfirm={handleDeleteMailbox}
+                title="Supprimer la boîte connectée"
+                message="Votre boîte email sera déconnectée. Vous pourrez en connecter une autre à tout moment. Continuer ?"
+                confirmText="Supprimer"
+                cancelText="Annuler"
+                variant="danger"
+                isLoading={isDeleting}
+            />
         </div>
     );
 }
