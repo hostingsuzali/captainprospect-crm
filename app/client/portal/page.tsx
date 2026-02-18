@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
@@ -11,6 +11,13 @@ import {
     EmptyState,
     useToast,
 } from "@/components/ui";
+import {
+    DateRangeFilter,
+    getPresetRange,
+    toISO,
+    type DateRangeValue,
+    type DateRangePreset,
+} from "@/components/dashboard/DateRangeFilter";
 import {
     Target,
     Phone,
@@ -31,6 +38,7 @@ import {
     ChevronDown,
     ChevronUp,
     Loader2,
+    Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClientOnboardingModal } from "@/components/client/ClientOnboardingModal";
@@ -110,53 +118,22 @@ const URGENCY_LABELS: Record<string, { label: string; class: string }> = {
     LONG: { label: "Long terme", class: "text-emerald-700 bg-emerald-50 border-emerald-200" },
 };
 
-const PERIOD_OPTIONS = [
-    { value: "today", label: "Aujourd'hui" },
-    { value: "week", label: "Semaine" },
-    { value: "month", label: "Mois" },
-] as const;
+const PRESET_LABELS: Record<DateRangePreset, string> = {
+    last7: "7 derniers jours",
+    last4weeks: "4 dernières semaines",
+    last6months: "6 derniers mois",
+    last12months: "12 derniers mois",
+    monthToDate: "Mois en cours",
+    quarterToDate: "Trimestre en cours",
+    yearToDate: "Année en cours",
+    allTime: "Tout",
+};
 
 function getGreeting(): string {
     const hour = new Date().getHours();
     if (hour < 12) return "Bonjour";
     if (hour < 18) return "Bon apres-midi";
     return "Bonsoir";
-}
-
-// ============================================
-// PERIOD SELECTOR COMPONENT
-// ============================================
-
-function PeriodSelector({
-    period,
-    onChange,
-}: {
-    period: string;
-    onChange: (v: string) => void;
-}) {
-    return (
-        <div
-            className="flex rounded-lg overflow-hidden bg-white border border-[#E8EBF0]"
-            role="group"
-            aria-label="Periode de temps"
-        >
-            {PERIOD_OPTIONS.map((p) => (
-                <button
-                    key={p.value}
-                    onClick={() => onChange(p.value)}
-                    aria-pressed={period === p.value}
-                    className={cn(
-                        "px-3 py-1.5 text-[12px] font-medium transition-colors duration-150",
-                        period === p.value
-                            ? "bg-[#7C5CFC] text-white"
-                            : "text-[#8B8BA7] hover:text-[#12122A]"
-                    )}
-                >
-                    {p.label}
-                </button>
-            ))}
-        </div>
-    );
 }
 
 // ============================================
@@ -255,7 +232,18 @@ export default function ClientPortal() {
     const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
     const [missions, setMissions] = useState<Mission[]>([]);
     const [meetings, setMeetings] = useState<ClientMeeting[]>([]);
-    const [period, setPeriod] = useState("month");
+    const [emailActivity, setEmailActivity] = useState<{
+        connected: boolean;
+        sentThisWeek: number;
+        opens: number;
+        replies: number;
+    } | null>(null);
+    const [dateRange, setDateRange] = useState<DateRangeValue>(() => {
+        const { start, end } = getPresetRange("monthToDate");
+        return { preset: "monthToDate", startDate: toISO(start), endDate: toISO(end) };
+    });
+    const [dateFilterOpen, setDateFilterOpen] = useState(false);
+    const dateFilterRef = useRef<HTMLDivElement>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [mounted, setMounted] = useState(false);
@@ -280,18 +268,28 @@ export default function ClientPortal() {
         if (refresh) setIsRefreshing(true);
         else setIsLoading(true);
         try {
-            const [statsRes, oppsRes, missionsRes, meetingsRes] = await Promise.all([
-                fetch(`/api/stats?period=${period}`),
+            let start = dateRange.startDate;
+            let end = dateRange.endDate;
+            if (!start || !end) {
+                const r = getPresetRange((dateRange.preset as DateRangePreset) || "monthToDate");
+                start = toISO(r.start);
+                end = toISO(r.end);
+            }
+            const statsUrl = start && end ? `/api/stats?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}` : "/api/stats";
+            const [statsRes, oppsRes, missionsRes, meetingsRes, emailActivityRes] = await Promise.all([
+                fetch(statsUrl),
                 fetch("/api/opportunities?limit=10"),
                 fetch("/api/missions?isActive=true"),
                 clientId ? fetch(`/api/clients/${clientId}/meetings`) : Promise.resolve(null),
+                fetch("/api/client/email-activity"),
             ]);
 
-            const [statsJson, oppsJson, missionsJson, meetingsJson] = await Promise.all([
+            const [statsJson, oppsJson, missionsJson, meetingsJson, emailActivityJson] = await Promise.all([
                 statsRes.json(),
                 oppsRes.json(),
                 missionsRes.json(),
                 meetingsRes?.ok ? meetingsRes.json() : Promise.resolve(null),
+                emailActivityRes?.ok ? emailActivityRes.json() : Promise.resolve(null),
             ]);
 
             if (statsJson.success) setStats(statsJson.data);
@@ -301,6 +299,11 @@ export default function ClientPortal() {
                 const data = meetingsJson.data as MeetingsResponse;
                 setMeetings(data?.allMeetings ?? []);
             }
+            if (emailActivityJson?.success && emailActivityJson.data) {
+                setEmailActivity(emailActivityJson.data);
+            } else {
+                setEmailActivity(null);
+            }
         } catch (error) {
             console.error("Failed to fetch data:", error);
             toast.error("Erreur de chargement", "Impossible de charger les donnees du tableau de bord");
@@ -308,7 +311,7 @@ export default function ClientPortal() {
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, [period, clientId, toast]);
+    }, [dateRange, clientId, toast]);
 
     useEffect(() => {
         fetchData();
@@ -403,7 +406,7 @@ export default function ClientPortal() {
     // LOADING SKELETON STATE
     // ============================================
 
-    const periodLabel = period === "today" ? "Aujourd'hui" : period === "week" ? "Semaine" : "Mois";
+    const dateRangeLabel = dateRange.preset ? PRESET_LABELS[dateRange.preset] : "Plage de dates";
 
     if (isLoading && !stats) {
         return (
@@ -429,11 +432,34 @@ export default function ClientPortal() {
                         Votre tableau de bord
                     </h1>
                     <p className="text-[13px] text-[#8B8BA7] mt-0.5">
-                        {periodLabel} · {getGreeting()}, {userName}
+                        {dateRangeLabel} · {getGreeting()}, {userName}
                     </p>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
-                    <PeriodSelector period={period} onChange={setPeriod} />
+                    <div className="relative" ref={dateFilterRef}>
+                        <button
+                            type="button"
+                            onClick={() => setDateFilterOpen((o) => !o)}
+                            className="flex items-center gap-2 h-10 px-4 text-sm font-medium text-[#12122A] bg-white border border-[#E8EBF0] rounded-lg hover:bg-[#F4F6F9] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/50"
+                        >
+                            <Calendar className="w-4 h-4 text-[#7C5CFC]" />
+                            <span>{dateRangeLabel}</span>
+                            <ChevronDown className={cn("w-3.5 h-3.5 text-[#8B8BA7] ml-1", dateFilterOpen && "rotate-180")} />
+                        </button>
+                        {dateFilterOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40" aria-hidden onClick={() => setDateFilterOpen(false)} />
+                                <div className="absolute right-0 top-full mt-1 z-50 max-w-[calc(100vw-2rem)]">
+                                    <DateRangeFilter
+                                        value={dateRange}
+                                        onChange={setDateRange}
+                                        onClose={() => setDateFilterOpen(false)}
+                                        isOpen={true}
+                                    />
+                                </div>
+                            </>
+                        )}
+                    </div>
                     <button
                         onClick={() => fetchData(true)}
                         disabled={isRefreshing}
@@ -589,6 +615,56 @@ export default function ClientPortal() {
                                 ))}
                             </div>
                         )}
+                    </div>
+
+                    {/* Email Activity */}
+                    <div className="client-panel">
+                        <h2 className="text-lg font-semibold text-[#12122A] mb-4 flex items-center gap-2">
+                            <Mail className="w-5 h-5 text-[#7C5CFC]" />
+                            Activité email
+                        </h2>
+                        <Link href="/client/portal/email">
+                            <Card className="border-[#E8EBF0] bg-white hover:border-[#C5C8D4] hover:shadow-md transition-all cursor-pointer group rounded-xl">
+                                {emailActivity?.connected ? (
+                                    <div className="space-y-3">
+                                        <p className="text-sm text-[#8B8BA7]">
+                                            Depuis votre boîte connectée
+                                        </p>
+                                        <div className="grid grid-cols-3 gap-2 text-center">
+                                            <div>
+                                                <p className="text-xl font-bold text-[#12122A] tabular-nums">
+                                                    {emailActivity.sentThisWeek}
+                                                </p>
+                                                <p className="text-xs text-[#8B8BA7]">envoyés cette semaine</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xl font-bold text-[#12122A] tabular-nums">
+                                                    {emailActivity.opens}
+                                                </p>
+                                                <p className="text-xs text-[#8B8BA7]">ouvertures</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xl font-bold text-[#12122A] tabular-nums">
+                                                    {emailActivity.replies}
+                                                </p>
+                                                <p className="text-xs text-[#8B8BA7]">réponses</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-end gap-1 text-sm font-medium text-[#7C5CFC] group-hover:underline">
+                                            Voir Mon Email
+                                            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-between gap-4">
+                                        <p className="text-sm text-[#8B8BA7]">
+                                            Connectez votre boîte pour voir l&apos;activité
+                                        </p>
+                                        <ArrowRight className="w-5 h-5 text-[#7C5CFC] group-hover:translate-x-1 transition-transform flex-shrink-0" />
+                                    </div>
+                                )}
+                            </Card>
+                        </Link>
                     </div>
 
                     {/* Recent Meetings */}

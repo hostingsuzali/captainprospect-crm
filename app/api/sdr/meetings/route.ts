@@ -23,12 +23,28 @@ export async function GET(request: NextRequest) {
         const missionId = searchParams.get("missionId");
         const listId = searchParams.get("listId");
         const search = searchParams.get("search")?.trim() || null;
+        const startDateParam = searchParams.get("startDate")?.trim() || null;
+        const endDateParam = searchParams.get("endDate")?.trim() || null;
 
         // Build where clause with filters (include MEETING_BOOKED and MEETING_CANCELLED)
         const where: any = {
             sdrId: session.user.id,
             result: { in: ["MEETING_BOOKED", "MEETING_CANCELLED"] },
         };
+        if (startDateParam || endDateParam) {
+            const dateFilter: { gte?: Date; lte?: Date } = {};
+            if (startDateParam) {
+                const from = new Date(startDateParam);
+                from.setHours(0, 0, 0, 0);
+                dateFilter.gte = from;
+            }
+            if (endDateParam) {
+                const to = new Date(endDateParam);
+                to.setHours(23, 59, 59, 999);
+                dateFilter.lte = to;
+            }
+            where.createdAt = dateFilter;
+        }
 
         // Filter by Mission (via Campaign -> Mission)
         if (missionId) {

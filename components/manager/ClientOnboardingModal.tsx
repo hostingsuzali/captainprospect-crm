@@ -11,6 +11,8 @@ import {
     Sparkles,
     ChevronRight,
     ChevronLeft,
+    ChevronDown,
+    ChevronUp,
     Check,
     Loader2,
     Plus,
@@ -34,9 +36,7 @@ import { cn } from "@/lib/utils";
 const STEPS = [
     { id: "client", label: "Fiche Client", icon: Building2, description: "Informations de base" },
     { id: "ai", label: "Analyse IA", icon: Brain, description: "Suggestions intelligentes" },
-    { id: "targets", label: "Cibles & ICP", icon: Target, description: "Profil client idéal" },
-    { id: "listing", label: "Base de données", icon: Users, description: "Critères de listing" },
-    { id: "scripts", label: "Scripts", icon: FileText, description: "Scripts d'appel" },
+    { id: "suggestions", label: "Suggestions IA", icon: Lightbulb, description: "Revoyez et ajustez les recommandations" },
     { id: "planning", label: "Planning", icon: Calendar, description: "Date de lancement" },
 ];
 
@@ -193,6 +193,15 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess }: ClientOnbo
         closing: string[];
     } | null>(null);
 
+    // Per-section regenerate loading
+    const [regeneratingSection, setRegeneratingSection] = useState<"icp" | "listing" | "scripts" | null>(null);
+    // Collapsed sections (power users: start collapsed with summary)
+    const [sectionsCollapsed, setSectionsCollapsed] = useState<Record<string, boolean>>({
+        cibles: false,
+        listing: false,
+        scripts: false,
+    });
+
     // ============================================
     // FORM HANDLERS
     // ============================================
@@ -303,6 +312,101 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess }: ClientOnbo
     };
 
     // ============================================
+    // PER-SECTION REGENERATE (Suggestions IA step)
+    // ============================================
+
+    const runSectionRegenerate = async (section: "icp" | "listing" | "scripts") => {
+        if (!formData.name.trim()) {
+            showError("Erreur", "Le nom du client est requis");
+            return;
+        }
+        setRegeneratingSection(section);
+
+        try {
+            if (section === "scripts") {
+                const icpText = formData.icp ||
+                    `Cibles: ${formData.targetJobTitles.join(", ") || "Décideurs"}. ` +
+                    `Industries: ${formData.targetIndustries.join(", ") || formData.industry || "B2B"}. ` +
+                    `Taille: ${formData.targetCompanySize || "PME/ETI"}.`;
+                const pitchText = aiAnalysis?.recommendations?.strategy?.channelReasoning ||
+                    `${formData.name} propose des solutions pour les entreprises du secteur ${formData.industry || "B2B"}.`;
+                const res = await fetch("/api/ai/mistral/script", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        channel: formData.missionChannel || "CALL",
+                        clientName: formData.name,
+                        icp: icpText,
+                        pitch: pitchText,
+                        section: "all",
+                        suggestionsCount: 2,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success && data.data?.suggestions) {
+                    const { suggestions } = data.data;
+                    if (suggestions.intro?.[0]) updateField("introScript", suggestions.intro[0]);
+                    if (suggestions.discovery?.[0]) updateField("discoveryScript", suggestions.discovery[0]);
+                    if (suggestions.objection?.[0]) updateField("objectionScript", suggestions.objection[0]);
+                    if (suggestions.closing?.[0]) updateField("closingScript", suggestions.closing[0]);
+                    setScriptSuggestions(data.data.suggestions);
+                    success("Scripts régénérés", "Les scripts ont été mis à jour");
+                } else {
+                    showError("Erreur", data.error || "Impossible de régénérer les scripts");
+                }
+            } else {
+                const res = await fetch("/api/ai/mistral/onboarding", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: formData.name,
+                        industry: formData.industry,
+                        website: formData.website,
+                        email: formData.email,
+                        icp: formData.icp,
+                        targetIndustries: formData.targetIndustries,
+                        targetCompanySize: formData.targetCompanySize,
+                        targetJobTitles: formData.targetJobTitles,
+                        targetGeographies: formData.targetGeographies,
+                        analysisType: section,
+                    }),
+                });
+                const data = await res.json();
+                if (data.success && data.data?.analysis) {
+                    const analysis = data.data.analysis as AIAnalysis;
+                    setAiAnalysis(prev => {
+                        const base = prev ?? { summary: "", confidence: 0, recommendations: {}, nextSteps: [] };
+                        const rec = { ...base.recommendations, ...analysis.recommendations };
+                        return { ...base, recommendations: rec };
+                    });
+                    const rec = analysis.recommendations;
+                    if (section === "icp" && rec?.icp) {
+                        if (rec.icp.description) updateField("icp", rec.icp.description);
+                        if (rec.icp.industries?.length) updateField("targetIndustries", rec.icp.industries);
+                        if (rec.icp.companySize) updateField("targetCompanySize", rec.icp.companySize);
+                        if (rec.icp.jobTitles?.length) updateField("targetJobTitles", rec.icp.jobTitles);
+                        if (rec.icp.geographies?.length) updateField("targetGeographies", rec.icp.geographies);
+                        success("Cibles & ICP régénérés", "Les recommandations ont été mises à jour");
+                    }
+                    if (section === "listing" && rec?.listing) {
+                        if (rec.listing.sources?.length) updateField("listingSources", rec.listing.sources);
+                        if (rec.listing.estimatedContacts) updateField("estimatedContacts", rec.listing.estimatedContacts);
+                        if (rec.listing.criteria) updateField("listingCriteria", rec.listing.criteria);
+                        success("Base de données régénérée", "Les sources et le volume ont été mis à jour");
+                    }
+                } else {
+                    showError("Erreur", data.error || "Impossible de régénérer cette section");
+                }
+            }
+        } catch (err) {
+            console.error("Section regenerate error:", err);
+            showError("Erreur", "Erreur de connexion à l'IA");
+        } finally {
+            setRegeneratingSection(null);
+        }
+    };
+
+    // ============================================
     // AI SCRIPT GENERATION
     // ============================================
 
@@ -391,14 +495,10 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess }: ClientOnbo
             case 0: // Client info
                 return formData.name.trim().length > 0;
             case 1: // AI Analysis
-                return true; // Can skip AI step
-            case 2: // Targets
                 return true;
-            case 3: // Listing
+            case 2: // Suggestions IA
                 return true;
-            case 4: // Scripts
-                return true;
-            case 5: // Planning
+            case 3: // Planning
                 return true;
             default:
                 return true;
@@ -772,357 +872,221 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess }: ClientOnbo
             case 1: // AI Analysis
                 return renderAIStep();
 
-            case 2: // Targets/ICP
+            case 2: // Suggestions IA — Revoyez et ajustez. IA badges + Regenerer par section + champs éditables
                 return (
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                Profil Client Idéal (ICP)
-                            </label>
-                            <textarea
-                                value={formData.icp}
-                                onChange={(e) => updateField("icp", e.target.value)}
-                                placeholder="Décrivez le profil type des prospects à cibler..."
-                                rows={3}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-sm"
-                            />
-                        </div>
+                    <div className="space-y-5">
+                        <p className="text-sm text-slate-600 mb-4">
+                            Suggestions IA — Revoyez et ajustez les recommandations. Cliquez sur un champ pour modifier.
+                        </p>
 
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                Secteurs cibles
-                            </label>
-                            <div className="flex flex-wrap gap-1.5 mb-2">
-                                {formData.targetIndustries.map(tag => (
-                                    <Badge key={tag} variant="primary" className="gap-1 text-xs">
-                                        {tag}
-                                        <button onClick={() => removeTag("targetIndustries", tag)}>
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    </Badge>
-                                ))}
-                            </div>
-                            <select
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        addTag("targetIndustries", e.target.value);
-                                        e.target.value = "";
-                                    }
-                                }}
-                                className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                        {/* Cibles & ICP */}
+                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                            <button
+                                type="button"
+                                onClick={() => setSectionsCollapsed(prev => ({ ...prev, cibles: !prev.cibles }))}
+                                className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
                             >
-                                <option value="">Ajouter un secteur...</option>
-                                {INDUSTRY_OPTIONS.filter(i => !formData.targetIndustries.includes(i)).map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                Taille d'entreprise cible
-                            </label>
-                            <select
-                                value={formData.targetCompanySize}
-                                onChange={(e) => updateField("targetCompanySize", e.target.value)}
-                                className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                            >
-                                <option value="">Sélectionner...</option>
-                                {COMPANY_SIZE_OPTIONS.map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                Titres/Fonctions cibles
-                            </label>
-                            <div className="flex flex-wrap gap-1.5 mb-2">
-                                {formData.targetJobTitles.map(tag => (
-                                    <Badge key={tag} variant="primary" className="gap-1 text-xs">
-                                        {tag}
-                                        <button onClick={() => removeTag("targetJobTitles", tag)}>
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    </Badge>
-                                ))}
-                            </div>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={newTag}
-                                    onChange={(e) => setNewTag(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            addTag("targetJobTitles", newTag);
-                                            setNewTag("");
-                                        }
-                                    }}
-                                    placeholder="Ex: CEO, CTO, Directeur Commercial..."
-                                    className="flex-1 h-10 px-3 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                                />
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => {
-                                        addTag("targetJobTitles", newTag);
-                                        setNewTag("");
-                                    }}
-                                    disabled={!newTag.trim()}
-                                    className="h-10 px-3"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                );
-
-            case 3: // Listing
-                return (
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                Sources de données
-                            </label>
-                            <div className="flex flex-wrap gap-1.5 mb-2">
-                                {formData.listingSources.map(tag => (
-                                    <Badge key={tag} variant="primary" className="gap-1 text-xs">
-                                        {tag}
-                                        <button onClick={() => removeTag("listingSources", tag)}>
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    </Badge>
-                                ))}
-                            </div>
-                            <select
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        addTag("listingSources", e.target.value);
-                                        e.target.value = "";
-                                    }
-                                }}
-                                className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                            >
-                                <option value="">Ajouter une source...</option>
-                                {LISTING_SOURCE_OPTIONS.filter(s => !formData.listingSources.includes(s)).map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                Critères de listing
-                            </label>
-                            <textarea
-                                value={formData.listingCriteria}
-                                onChange={(e) => updateField("listingCriteria", e.target.value)}
-                                placeholder="Critères spécifiques pour le sourcing des contacts..."
-                                rows={3}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-sm"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                Volume estimé de contacts
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.estimatedContacts}
-                                onChange={(e) => updateField("estimatedContacts", e.target.value)}
-                                placeholder="Ex: 500-1000 contacts"
-                                className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                            />
-                        </div>
-                    </div>
-                );
-
-            case 4: // Scripts
-                return (
-                    <div className="space-y-4">
-                        {/* AI Generation Button */}
-                        <div className="p-4 bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-200 rounded-xl">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                                        <Wand2 className="w-5 h-5 text-indigo-600" />
+                                <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <Target className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                                        <span className="font-semibold text-slate-900">Cibles & ICP</span>
+                                        <span className="text-[10px] font-medium px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">IA</span>
+                                    </div>
+                                    {sectionsCollapsed.cibles && (formData.icp || formData.targetIndustries.length > 0 || formData.targetCompanySize) && (
+                                        <p className="text-xs text-slate-500 truncate max-w-full pl-6">
+                                            {formData.icp?.slice(0, 80)}{formData.icp && formData.icp.length > 80 ? "…" : ""}
+                                            {!formData.icp && (formData.targetIndustries.join(", ") || formData.targetCompanySize || "")}
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={(e) => { e.stopPropagation(); runSectionRegenerate("icp"); }}
+                                        disabled={regeneratingSection !== null}
+                                        className="gap-1 h-8 text-xs"
+                                    >
+                                        {regeneratingSection === "icp" ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                        Régénérer
+                                    </Button>
+                                    {sectionsCollapsed.cibles ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronUp className="w-4 h-4 text-slate-500" />}
+                                </div>
+                            </button>
+                            {!sectionsCollapsed.cibles && (
+                                <div className="p-4 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Profil Client Idéal</label>
+                                        <textarea
+                                            value={formData.icp}
+                                            onChange={(e) => updateField("icp", e.target.value)}
+                                            placeholder="Entreprises SaaS B2B, 50-200 employés, en phase de croissance..."
+                                            rows={2}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm resize-none"
+                                        />
                                     </div>
                                     <div>
-                                        <h4 className="font-semibold text-indigo-900 text-sm">Génération IA</h4>
-                                        <p className="text-xs text-indigo-600">
-                                            Créez des scripts personnalisés basés sur l'ICP et le client
-                                        </p>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Secteurs</label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {formData.targetIndustries.map(tag => (
+                                                <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs">
+                                                    {tag}
+                                                    <button type="button" onClick={() => removeTag("targetIndustries", tag)} className="hover:text-red-600"><X className="w-3 h-3" /></button>
+                                                </span>
+                                            ))}
+                                            <select
+                                                onChange={(e) => { if (e.target.value) { addTag("targetIndustries", e.target.value); e.target.value = ""; } }}
+                                                className="text-xs border-0 bg-transparent text-slate-500 cursor-pointer focus:ring-0"
+                                            >
+                                                <option value="">+ Secteur</option>
+                                                {INDUSTRY_OPTIONS.filter(i => !formData.targetIndustries.includes(i)).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Taille</label>
+                                        <select
+                                            value={formData.targetCompanySize}
+                                            onChange={(e) => updateField("targetCompanySize", e.target.value)}
+                                            className="w-full h-9 px-3 border border-slate-200 rounded-lg bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            <option value="">Sélectionner...</option>
+                                            {COMPANY_SIZE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                        </select>
                                     </div>
                                 </div>
-                                <Button
-                                    variant="primary"
-                                    size="sm"
-                                    onClick={generateScripts}
-                                    disabled={isGeneratingScripts}
-                                    isLoading={isGeneratingScripts}
-                                    className="gap-2"
-                                >
-                                    {isGeneratingScripts ? (
-                                        "Génération..."
-                                    ) : (
-                                        <>
-                                            <Sparkles className="w-4 h-4" />
-                                            Générer les scripts
-                                        </>
+                            )}
+                        </div>
+
+                        {/* Base de données */}
+                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                            <button
+                                type="button"
+                                onClick={() => setSectionsCollapsed(prev => ({ ...prev, listing: !prev.listing }))}
+                                className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                            >
+                                <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <Users className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                                        <span className="font-semibold text-slate-900">Base de données</span>
+                                        <span className="text-[10px] font-medium px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">IA</span>
+                                    </div>
+                                    {sectionsCollapsed.listing && (formData.listingSources.length > 0 || formData.estimatedContacts) && (
+                                        <p className="text-xs text-slate-500 truncate max-w-full pl-6">
+                                            {formData.listingSources.slice(0, 3).join(", ")}{formData.estimatedContacts ? ` · ${formData.estimatedContacts} contacts` : ""}
+                                        </p>
                                     )}
-                                </Button>
-                            </div>
-                        </div>
-
-                        {/* Intro Script */}
-                        <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                                <label className="block text-sm font-medium text-slate-700">
-                                    Script d'introduction
-                                </label>
-                                {scriptSuggestions?.intro && scriptSuggestions.intro.length > 1 && (
-                                    <div className="flex gap-1">
-                                        {scriptSuggestions.intro.map((_, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => applyScriptSuggestion("introScript", scriptSuggestions.intro[i])}
-                                                className={cn(
-                                                    "text-[10px] px-2 py-0.5 rounded-full transition-colors",
-                                                    formData.introScript === scriptSuggestions.intro[i]
-                                                        ? "bg-indigo-500 text-white"
-                                                        : "bg-slate-100 text-slate-600 hover:bg-indigo-100"
-                                                )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={(e) => { e.stopPropagation(); runSectionRegenerate("listing"); }}
+                                        disabled={regeneratingSection !== null}
+                                        className="gap-1 h-8 text-xs"
+                                    >
+                                        {regeneratingSection === "listing" ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                        Régénérer
+                                    </Button>
+                                    {sectionsCollapsed.listing ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronUp className="w-4 h-4 text-slate-500" />}
+                                </div>
+                            </button>
+                            {!sectionsCollapsed.listing && (
+                                <div className="p-4 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Sources recommandées</label>
+                                        <div className="flex flex-wrap gap-1.5 items-center">
+                                            {formData.listingSources.map(tag => (
+                                                <span key={tag} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 text-slate-700 text-xs">
+                                                    {tag}
+                                                    <button type="button" onClick={() => removeTag("listingSources", tag)} className="hover:text-red-600"><X className="w-3 h-3" /></button>
+                                                </span>
+                                            ))}
+                                            <select
+                                                onChange={(e) => { if (e.target.value) { addTag("listingSources", e.target.value); e.target.value = ""; } }}
+                                                className="text-xs px-2 py-1 rounded-md border border-dashed border-slate-300 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 cursor-pointer"
                                             >
-                                                Option {i + 1}
-                                            </button>
-                                        ))}
+                                                <option value="">+ Ajouter</option>
+                                                {LISTING_SOURCE_OPTIONS.filter(s => !formData.listingSources.includes(s)).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                            </select>
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-                            <textarea
-                                value={formData.introScript}
-                                onChange={(e) => updateField("introScript", e.target.value)}
-                                placeholder="Bonjour, je suis [Prénom] de [Entreprise]..."
-                                rows={3}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-sm"
-                            />
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Volume estimé</label>
+                                        <input
+                                            type="text"
+                                            value={formData.estimatedContacts}
+                                            onChange={(e) => updateField("estimatedContacts", e.target.value)}
+                                            placeholder="800-1200 contacts"
+                                            className="w-full h-9 px-3 border border-slate-200 rounded-lg bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        {/* Discovery Script */}
-                        <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                                <label className="block text-sm font-medium text-slate-700">
-                                    Questions de découverte
-                                </label>
-                                {scriptSuggestions?.discovery && scriptSuggestions.discovery.length > 1 && (
-                                    <div className="flex gap-1">
-                                        {scriptSuggestions.discovery.map((_, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => applyScriptSuggestion("discoveryScript", scriptSuggestions.discovery[i])}
-                                                className={cn(
-                                                    "text-[10px] px-2 py-0.5 rounded-full transition-colors",
-                                                    formData.discoveryScript === scriptSuggestions.discovery[i]
-                                                        ? "bg-indigo-500 text-white"
-                                                        : "bg-slate-100 text-slate-600 hover:bg-indigo-100"
-                                                )}
-                                            >
-                                                Option {i + 1}
-                                            </button>
-                                        ))}
+                        {/* Scripts */}
+                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                            <button
+                                type="button"
+                                onClick={() => setSectionsCollapsed(prev => ({ ...prev, scripts: !prev.scripts }))}
+                                className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                            >
+                                <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                                        <span className="font-semibold text-slate-900">Scripts</span>
+                                        <span className="text-[10px] font-medium px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">IA</span>
                                     </div>
-                                )}
-                            </div>
-                            <textarea
-                                value={formData.discoveryScript}
-                                onChange={(e) => updateField("discoveryScript", e.target.value)}
-                                placeholder="Questions pour qualifier le prospect..."
-                                rows={3}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-sm"
-                            />
-                        </div>
-
-                        {/* Objection Script */}
-                        <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                                <label className="block text-sm font-medium text-slate-700">
-                                    Réponses aux objections
-                                </label>
-                                {scriptSuggestions?.objection && scriptSuggestions.objection.length > 1 && (
-                                    <div className="flex gap-1">
-                                        {scriptSuggestions.objection.map((_, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => applyScriptSuggestion("objectionScript", scriptSuggestions.objection[i])}
-                                                className={cn(
-                                                    "text-[10px] px-2 py-0.5 rounded-full transition-colors",
-                                                    formData.objectionScript === scriptSuggestions.objection[i]
-                                                        ? "bg-indigo-500 text-white"
-                                                        : "bg-slate-100 text-slate-600 hover:bg-indigo-100"
-                                                )}
-                                            >
-                                                Option {i + 1}
-                                            </button>
-                                        ))}
+                                    {sectionsCollapsed.scripts && formData.introScript && (
+                                        <p className="text-xs text-slate-500 truncate max-w-full pl-6">
+                                            {formData.introScript.slice(0, 60)}…
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={(e) => { e.stopPropagation(); runSectionRegenerate("scripts"); }}
+                                        disabled={regeneratingSection !== null}
+                                        className="gap-1 h-8 text-xs"
+                                    >
+                                        {regeneratingSection === "scripts" ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                        Régénérer
+                                    </Button>
+                                    {sectionsCollapsed.scripts ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronUp className="w-4 h-4 text-slate-500" />}
+                                </div>
+                            </button>
+                            {!sectionsCollapsed.scripts && (
+                                <div className="p-4 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Script d&apos;introduction</label>
+                                        <textarea
+                                            value={formData.introScript}
+                                            onChange={(e) => updateField("introScript", e.target.value)}
+                                            placeholder="Bonjour, je suis [Prénom] de [Entreprise]. Je vous contacte car..."
+                                            rows={2}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm resize-none"
+                                        />
                                     </div>
-                                )}
-                            </div>
-                            <textarea
-                                value={formData.objectionScript}
-                                onChange={(e) => updateField("objectionScript", e.target.value)}
-                                placeholder="Si le prospect dit 'Pas le temps' → ..."
-                                rows={3}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-sm"
-                            />
-                        </div>
-
-                        {/* Closing Script */}
-                        <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                                <label className="block text-sm font-medium text-slate-700">
-                                    Script de closing
-                                </label>
-                                {scriptSuggestions?.closing && scriptSuggestions.closing.length > 1 && (
-                                    <div className="flex gap-1">
-                                        {scriptSuggestions.closing.map((_, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => applyScriptSuggestion("closingScript", scriptSuggestions.closing[i])}
-                                                className={cn(
-                                                    "text-[10px] px-2 py-0.5 rounded-full transition-colors",
-                                                    formData.closingScript === scriptSuggestions.closing[i]
-                                                        ? "bg-indigo-500 text-white"
-                                                        : "bg-slate-100 text-slate-600 hover:bg-indigo-100"
-                                                )}
-                                            >
-                                                Option {i + 1}
-                                            </button>
-                                        ))}
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Questions de découverte</label>
+                                        <textarea
+                                            value={formData.discoveryScript}
+                                            onChange={(e) => updateField("discoveryScript", e.target.value)}
+                                            placeholder="1. Comment gérez-vous actuellement...?\n2. Quels sont vos principaux défis...?"
+                                            rows={3}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm resize-none"
+                                        />
                                     </div>
-                                )}
-                            </div>
-                            <textarea
-                                value={formData.closingScript}
-                                onChange={(e) => updateField("closingScript", e.target.value)}
-                                placeholder="Pour conclure et fixer un RDV..."
-                                rows={3}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-sm"
-                            />
+                                </div>
+                            )}
                         </div>
-
-                        {/* Regenerate hint */}
-                        {scriptSuggestions && (
-                            <p className="text-xs text-slate-500 text-center">
-                                💡 Cliquez sur "Option 1" ou "Option 2" pour alterner entre les suggestions
-                            </p>
-                        )}
                     </div>
                 );
 
-            case 5: // Planning
+            case 3: // Planning
                 return (
                     <div className="space-y-4">
                         <div>
@@ -1325,7 +1289,7 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess }: ClientOnbo
                             disabled={!canProceed()}
                             className="gap-2"
                         >
-                            Suivant
+                            {currentStep === 2 ? "Confirmer" : "Suivant"}
                             <ChevronRight className="w-4 h-4" />
                         </Button>
                     )}

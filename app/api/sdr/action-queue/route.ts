@@ -57,6 +57,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             last_action_result: string | null;
             last_action_note: string | null;
             last_action_created: Date | null;
+            last_action_sdr_id: string | null;
+            last_action_sdr_name: string | null;
         }>
     >(
         `
@@ -150,8 +152,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 a."contactId",
                 a.result,
                 a.note,
-                a."createdAt"
+                a."createdAt",
+                a."sdrId",
+                u.name as sdr_name
             FROM "Action" a
+            INNER JOIN "User" u ON u.id = a."sdrId"
             WHERE a."contactId" IN (SELECT contact_id FROM all_targets WHERE contact_id IS NOT NULL)
             ORDER BY a."contactId", a."createdAt" DESC
         ),
@@ -160,8 +165,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 a."companyId",
                 a.result,
                 a.note,
-                a."createdAt"
+                a."createdAt",
+                a."sdrId",
+                u.name as sdr_name
             FROM "Action" a
+            INNER JOIN "User" u ON u.id = a."sdrId"
             WHERE a."companyId" IN (SELECT company_id FROM all_targets WHERE contact_id IS NULL)
               AND a."companyId" IS NOT NULL
             ORDER BY a."companyId", a."createdAt" DESC
@@ -171,7 +179,9 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 at.*,
                 COALESCE(lac.result, lac2.result)::text as last_action_result,
                 COALESCE(lac.note, lac2.note) as last_action_note,
-                COALESCE(lac."createdAt", lac2."createdAt") as last_action_created
+                COALESCE(lac."createdAt", lac2."createdAt") as last_action_created,
+                COALESCE(lac."sdrId", lac2."sdrId") as last_action_sdr_id,
+                COALESCE(lac.sdr_name, lac2.sdr_name) as last_action_sdr_name
             FROM all_targets at
             LEFT JOIN last_actions_contacts lac ON at.contact_id = lac."contactId"
             LEFT JOIN last_actions_companies lac2 ON at.contact_id IS NULL AND at.company_id = lac2."companyId"
@@ -258,6 +268,9 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 note: row.last_action_note,
                 createdAt: row.last_action_created?.toISOString(),
             }
+            : null,
+        lastActionBy: row.last_action_sdr_id
+            ? { id: row.last_action_sdr_id, name: row.last_action_sdr_name || null }
             : null,
         priority: row._priorityLabel,
     }));

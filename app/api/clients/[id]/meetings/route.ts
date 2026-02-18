@@ -55,6 +55,8 @@ export const GET = withErrorHandler(async (
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search')?.trim() || null;
+    const startDateParam = searchParams.get('startDate')?.trim() || null;
+    const endDateParam = searchParams.get('endDate')?.trim() || null;
 
     const meetingWhere: Record<string, unknown> = {
         result: 'MEETING_BOOKED',
@@ -62,6 +64,20 @@ export const GET = withErrorHandler(async (
             missionId: { in: missionIds },
         },
     };
+    if (startDateParam || endDateParam) {
+        const dateFilter: { gte?: Date; lte?: Date } = {};
+        if (startDateParam) {
+            const from = new Date(startDateParam);
+            from.setHours(0, 0, 0, 0);
+            dateFilter.gte = from;
+        }
+        if (endDateParam) {
+            const to = new Date(endDateParam);
+            to.setHours(23, 59, 59, 999);
+            dateFilter.lte = to;
+        }
+        meetingWhere.createdAt = dateFilter;
+    }
     if (search) {
         meetingWhere.contact = {
             OR: [

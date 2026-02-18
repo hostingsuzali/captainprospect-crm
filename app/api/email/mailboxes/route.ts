@@ -140,8 +140,8 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Only allow certain roles
-        const allowedRoles = ['MANAGER', 'SDR', 'BUSINESS_DEVELOPER'];
+        // Only allow certain roles (CLIENT for portal IMAP connection)
+        const allowedRoles = ['MANAGER', 'SDR', 'BUSINESS_DEVELOPER', 'CLIENT'];
         if (!allowedRoles.includes(session.user.role)) {
             return NextResponse.json(
                 { success: false, error: 'Rôle non autorisé' },
@@ -158,8 +158,10 @@ export async function POST(req: NextRequest) {
             smtpHost,
             smtpPort,
             password,
-            type = 'PERSONAL',
+            type: requestedType,
         } = body;
+
+        const type = session.user.role === 'CLIENT' ? 'CLIENT' : (requestedType || 'PERSONAL');
 
         // Validate required fields
         if (!email?.trim()) {

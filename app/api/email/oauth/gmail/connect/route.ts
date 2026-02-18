@@ -18,8 +18,8 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        // Allow managers, SDRs, BDs, and developers to connect email
-        const allowedRoles = ['MANAGER', 'SDR', 'BUSINESS_DEVELOPER', 'DEVELOPER'];
+        // Allow managers, SDRs, BDs, developers, and clients to connect email
+        const allowedRoles = ['MANAGER', 'SDR', 'BUSINESS_DEVELOPER', 'DEVELOPER', 'CLIENT'];
         if (!allowedRoles.includes(session.user.role)) {
             return NextResponse.json(
                 { success: false, error: 'Rôle non autorisé' },
@@ -27,11 +27,13 @@ export async function GET(req: NextRequest) {
             );
         }
 
+        const defaultReturn = session.user.role === 'CLIENT' ? '/client/portal/email' : '/manager/email/mailboxes';
+
         // Create state token with user ID for callback verification
         const state = Buffer.from(JSON.stringify({
             userId: session.user.id,
             timestamp: Date.now(),
-            returnUrl: req.nextUrl.searchParams.get('returnUrl') || '/manager/email/mailboxes',
+            returnUrl: req.nextUrl.searchParams.get('returnUrl') || defaultReturn,
         })).toString('base64url');
 
         // Get OAuth URL

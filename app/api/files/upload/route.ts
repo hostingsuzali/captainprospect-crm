@@ -18,12 +18,22 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     try {
         const formData = await request.formData();
         const file = formData.get('file') as File;
-        const folderId = formData.get('folderId') as string | null;
+        let folderId = formData.get('folderId') as string | null;
         const missionId = formData.get('missionId') as string | null;
-        const clientId = formData.get('clientId') as string | null;
+        let clientId = formData.get('clientId') as string | null;
         const campaignId = formData.get('campaignId') as string | null;
         const description = formData.get('description') as string | null;
         const tags = formData.get('tags') as string | null;
+
+        // CLIENT role: enforce clientId from session; use default "Portail" folder
+        if (session.user.role === 'CLIENT') {
+            const sessionClientId = (session.user as { clientId?: string })?.clientId;
+            if (!sessionClientId) {
+                return errorResponse('Client non associé à un compte', 403);
+            }
+            clientId = sessionClientId;
+            folderId = null; // Will resolve or create default folder below
+        }
 
         if (!file) {
             return errorResponse('Aucun fichier fourni', 400);
@@ -56,6 +66,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
         // Convert file to buffer
         const buffer = Buffer.from(await file.arrayBuffer());
+
+        // Resolve folder: for client uploads without folderId, use or create folder named after the client
+        if (clientId && !folderId) {
+            const client = await prisma.client.findUnique({
+                where: { id: clientId },
+                select: { name: true },
+            });
+            const folderName = client?.name?.trim() || 'Portail Client';
+
+            let portailFolder = await prisma.folder.findFirst({
+                where: { clientId, parentId: null, name: folderName },
+            });
+            if (!portailFolder) {
+                portailFolder = await prisma.folder.create({
+                    data: { name: folderName, clientId },
+                });
+            }
+            folderId = portailFolder.id;
+        }
 
         // Determine folder based on context
         let folder = 'general';

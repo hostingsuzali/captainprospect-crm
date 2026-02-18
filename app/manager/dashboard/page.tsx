@@ -14,8 +14,17 @@ import {
     ArrowRight,
     Loader2,
     MoreHorizontal,
+    Calendar,
+    ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
+import {
+    DateRangeFilter,
+    getPresetRange,
+    toISO,
+    type DateRangeValue,
+    type DateRangePreset,
+} from "@/components/dashboard/DateRangeFilter";
 import {
     AreaChart,
     Area,
@@ -29,6 +38,7 @@ import {
     Tooltip,
     ResponsiveContainer,
 } from "recharts";
+import { cn } from "@/lib/utils";
 
 interface DashboardStats {
     period: string;
@@ -73,11 +83,16 @@ interface RecentActivityItem {
     campaignName?: string;
 }
 
-const PERIOD_OPTIONS = [
-    { key: "today", label: "Aujourd'hui" },
-    { key: "week", label: "Semaine" },
-    { key: "month", label: "Mois" },
-] as const;
+const PRESET_LABELS: Record<DateRangePreset, string> = {
+    last7: "7 derniers jours",
+    last4weeks: "4 dernières semaines",
+    last6months: "6 derniers mois",
+    last12months: "12 derniers mois",
+    monthToDate: "Mois en cours",
+    quarterToDate: "Trimestre en cours",
+    yearToDate: "Année en cours",
+    allTime: "Tout",
+};
 
 const RDV_WEEKLY_GOAL = 30;
 
@@ -136,7 +151,12 @@ export default function ManagerDashboard() {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [missions, setMissions] = useState<MissionSummaryItem[]>([]);
     const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
-    const [period, setPeriod] = useState<"today" | "week" | "month">("month");
+    const [dateRange, setDateRange] = useState<DateRangeValue>(() => {
+        const { start, end } = getPresetRange("last12months");
+        return { preset: "last12months", startDate: toISO(start), endDate: toISO(end) };
+    });
+    const [dateFilterOpen, setDateFilterOpen] = useState(false);
+    const dateFilterRef = useRef<HTMLDivElement>(null);
     const [missionFilter, setMissionFilter] = useState<string>("");
     const [isLoading, setIsLoading] = useState(true);
     const [heroAnimated, setHeroAnimated] = useState(false);
@@ -146,10 +166,17 @@ export default function ManagerDashboard() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const statsUrl = `/api/stats?period=${period}${missionFilter ? `&missionId=${missionFilter}` : ""}`;
+            let start = dateRange.startDate;
+            let end = dateRange.endDate;
+            if (!start || !end) {
+                const r = getPresetRange((dateRange.preset as DateRangePreset) || "last12months");
+                start = toISO(r.start);
+                end = toISO(r.end);
+            }
+            const statsUrl = `/api/stats?startDate=${start}&endDate=${end}${missionFilter ? `&missionId=${missionFilter}` : ""}`;
             const [statsRes, missionsRes, recentRes] = await Promise.all([
                 fetch(statsUrl),
-                fetch(`/api/stats/missions-summary?period=${period}&limit=10`),
+                fetch(`/api/stats/missions-summary?startDate=${start}&endDate=${end}&limit=10`),
                 fetch("/api/actions/recent?limit=20"),
             ]);
 
@@ -170,7 +197,7 @@ export default function ManagerDashboard() {
         } finally {
             setIsLoading(false);
         }
-    }, [period, missionFilter]);
+    }, [dateRange, missionFilter]);
 
     useEffect(() => {
         fetchData();
@@ -265,24 +292,44 @@ export default function ManagerDashboard() {
                 <div>
                     <h1 className="text-[22px] font-bold text-[#12122A] tracking-tight">Tableau de bord</h1>
                     <p className="text-[13px] text-[#8B8BA7] mt-0.5">
-                        {period === "today" ? "Aujourd'hui" : period === "week" ? "Semaine" : "Mois"} · {missionFilter ? "Mission sélectionnée" : "Toutes les missions"}
+                        {dateRange.preset
+                            ? PRESET_LABELS[dateRange.preset]
+                            : dateRange.startDate && dateRange.endDate
+                                ? `Du ${new Date(dateRange.startDate).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })} au ${new Date(dateRange.endDate).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}`
+                                : "Période"}{" "}
+                        · {missionFilter ? "Mission sélectionnée" : "Toutes les missions"}
                     </p>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex items-center bg-white border border-[#E8EBF0] rounded-lg overflow-hidden">
-                        {PERIOD_OPTIONS.map((p) => (
-                            <button
-                                key={p.key}
-                                onClick={() => setPeriod(p.key)}
-                                className={`px-3 py-1.5 text-[12px] font-medium transition-colors duration-150 ${
-                                    period === p.key
-                                        ? "bg-[#7C5CFC] text-white"
-                                        : "text-[#8B8BA7] hover:text-[#12122A]"
-                                }`}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
+                    <div className="relative" ref={dateFilterRef}>
+                        <button
+                            type="button"
+                            onClick={() => setDateFilterOpen((o) => !o)}
+                            className="flex items-center gap-2 px-3 py-2 text-[12px] font-medium text-[#12122A] bg-white border border-[#E8EBF0] rounded-lg hover:border-[#C5C8D4] transition-colors"
+                        >
+                            <Calendar className="w-4 h-4 text-[#7C5CFC]" />
+                            <span>{dateRange.preset ? PRESET_LABELS[dateRange.preset] : "Plage de dates"}</span>
+                            <ChevronDown className={cn("w-3.5 h-3.5 text-[#8B8BA7] transition-transform", dateFilterOpen && "rotate-180")} />
+                        </button>
+                        {dateFilterOpen && (
+                            <>
+                                <div
+                                    className="fixed inset-0 z-40"
+                                    aria-hidden
+                                    onClick={() => setDateFilterOpen(false)}
+                                />
+                                <div className="absolute right-0 top-full mt-1 z-50 max-w-[calc(100vw-2rem)]">
+                                    <DateRangeFilter
+                                        value={dateRange}
+                                        onChange={(v) => {
+                                            setDateRange(v);
+                                        }}
+                                        onClose={() => setDateFilterOpen(false)}
+                                        isOpen={true}
+                                    />
+                                </div>
+                            </>
+                        )}
                     </div>
                     <select
                         value={missionFilter}

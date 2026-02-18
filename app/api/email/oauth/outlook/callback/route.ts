@@ -112,6 +112,8 @@ export async function GET(req: NextRequest) {
             );
         }
 
+        const mailboxType = session.user.role === 'CLIENT' ? 'CLIENT' : 'PERSONAL';
+
         // Create new mailbox
         await prisma.mailbox.create({
             data: {
@@ -122,7 +124,7 @@ export async function GET(req: NextRequest) {
                 accessToken: encrypt(tokens.accessToken),
                 refreshToken: tokens.refreshToken ? encrypt(tokens.refreshToken) : null,
                 tokenExpiry: tokens.expiresAt,
-                type: 'PERSONAL',
+                type: mailboxType,
                 syncStatus: 'PENDING',
                 isActive: true,
             },

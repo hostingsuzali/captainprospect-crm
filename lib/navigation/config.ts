@@ -369,7 +369,7 @@ export const DEVELOPER_NAV: NavSection[] = [
 ];
 
 // ============================================
-// CLIENT NAVIGATION — Flat (only 3 items)
+// CLIENT NAVIGATION — Portal + Outils groups
 // ============================================
 
 export const CLIENT_NAV: NavSection[] = [
@@ -395,8 +395,31 @@ export const CLIENT_NAV: NavSection[] = [
       },
       {
         href: "/client/contact",
+        icon: Inbox,
+        label: "Messages",
+        permission: "pages.dashboard",
+      },
+      {
+        href: "/client/contact",
         icon: MessageSquare,
         label: "Contacter",
+        permission: "pages.dashboard",
+      },
+    ],
+  },
+  {
+    title: "Outils",
+    items: [
+      {
+        href: "/client/portal/email",
+        icon: Mail,
+        label: "Mon Email",
+        permission: "pages.dashboard",
+      },
+      {
+        href: "/client/portal/files",
+        icon: FileText,
+        label: "Mes Fichiers",
         permission: "pages.dashboard",
       },
     ],

@@ -80,6 +80,7 @@ interface NextActionData {
         note?: string;
         createdAt: string;
     };
+    lastActionBy?: { id: string; name: string | null } | null;
 }
 
 interface Mission {
@@ -105,6 +106,7 @@ interface QueueItem {
     channel: string;
     missionName: string;
     lastAction: NextActionData["lastAction"] | null;
+    lastActionBy?: { id: string; name: string | null } | null;
     priority: string;
     _displayName?: string;
     _companyName?: string;
@@ -1281,12 +1283,18 @@ export default function SDRActionPage() {
                         ENVOIE_MAIL: { badge: "bg-blue-50 text-blue-700 border-blue-200", dot: "bg-blue-400" },
                     };
                     const color = resultColor[row.lastAction.result] || { badge: "bg-slate-100 text-slate-600 border-slate-200", dot: "bg-slate-400" };
+                    const contactedByOther = row.lastActionBy?.id && row.lastActionBy.id !== session?.user?.id;
                     return (
                         <div className="space-y-1.5">
                             <Badge className={cn("text-xs border font-medium", color.badge)}>
                                 {RESULT_ICON_MAP[row.lastAction.result]}
                                 <span className="ml-1">{statusLabels[row.lastAction.result] ?? row.lastAction.result}</span>
                             </Badge>
+                            {contactedByOther && row.lastActionBy?.name && (
+                                <p className="text-[11px] text-amber-700 font-medium">
+                                    Contacté par {row.lastActionBy.name}
+                                </p>
+                            )}
                             {row.lastAction.note && (
                                 <div className="flex items-start gap-1.5 max-w-[220px]" title={row.lastAction.note}>
                                     <MessageSquare className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
@@ -2237,6 +2245,9 @@ export default function SDRActionPage() {
                                     <History className="w-4 h-4 text-amber-600" />
                                     <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">Dernière interaction</p>
                                 </div>
+                                {currentAction.lastActionBy?.id && currentAction.lastActionBy.id !== session?.user?.id && currentAction.lastActionBy.name && (
+                                    <p className="text-xs font-medium text-amber-700 mb-2">Contacté par {currentAction.lastActionBy.name}</p>
+                                )}
                                 <div className="flex items-center gap-2 mb-2">
                                     <Badge className={cn("text-xs border font-medium", {
                                         "bg-slate-100 text-slate-600 border-slate-200": currentAction.lastAction.result === "NO_RESPONSE",

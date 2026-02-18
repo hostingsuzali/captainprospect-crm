@@ -5,6 +5,13 @@ import { Card, Badge, Button, DataTable, useToast, TableSkeleton, EmptyState } f
 import type { Column } from "@/components/ui/DataTable";
 import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
 import {
+    DateRangeFilter,
+    getPresetRange,
+    toISO,
+    type DateRangeValue,
+    type DateRangePreset,
+} from "@/components/dashboard/DateRangeFilter";
+import {
     History,
     Filter,
     RefreshCw,
@@ -17,6 +24,7 @@ import {
     Eye,
     Calendar,
     Clock,
+    ChevronDown,
 } from "lucide-react";
 import { formatCallbackDateTime } from "@/lib/utils/parseDateFromNote";
 import { ACTION_RESULT_LABELS, CHANNEL_LABELS } from "@/lib/types";
@@ -87,6 +95,17 @@ const CHANNEL_ICONS = {
     LINKEDIN: Linkedin,
 };
 
+const PRESET_LABELS: Record<DateRangePreset, string> = {
+    last7: "7 derniers jours",
+    last4weeks: "4 dernières semaines",
+    last6months: "6 derniers mois",
+    last12months: "12 derniers mois",
+    monthToDate: "Mois en cours",
+    quarterToDate: "Trimestre en cours",
+    yearToDate: "Année en cours",
+    allTime: "Tout",
+};
+
 // ============================================
 // SDR HISTORY PAGE
 // ============================================
@@ -98,8 +117,12 @@ export default function SDRHistoryPage() {
     const [fetchError, setFetchError] = useState<string | null>(null);
     const [missions, setMissions] = useState<Mission[]>([]);
 
-    const [dateFrom, setDateFrom] = useState("");
-    const [dateTo, setDateTo] = useState("");
+    const [dateRange, setDateRange] = useState<DateRangeValue>(() => {
+        const { start, end } = getPresetRange("last12months");
+        return { preset: "last12months", startDate: toISO(start), endDate: toISO(end) };
+    });
+    const [dateFilterOpen, setDateFilterOpen] = useState(false);
+    const dateFilterRef = useRef<HTMLDivElement>(null);
     const [selectedMissionId, setSelectedMissionId] = useState<string>("");
     const [selectedResult, setSelectedResult] = useState<string>("");
     const [selectedChannel, setSelectedChannel] = useState<string>("");
@@ -120,11 +143,18 @@ export default function SDRHistoryPage() {
         try {
             setIsLoading(true);
             setFetchError(null);
+            let start = dateRange.startDate;
+            let end = dateRange.endDate;
+            if (!start || !end) {
+                const r = getPresetRange((dateRange.preset as DateRangePreset) || "last12months");
+                start = toISO(r.start);
+                end = toISO(r.end);
+            }
             const params = new URLSearchParams();
             params.set("period", "all");
             params.set("limit", "300");
-            if (dateFrom) params.set("dateFrom", new Date(dateFrom).toISOString());
-            if (dateTo) params.set("dateTo", new Date(dateTo + "T23:59:59.999Z").toISOString());
+            if (start) params.set("dateFrom", new Date(start).toISOString());
+            if (end) params.set("dateTo", new Date(end + "T23:59:59.999").toISOString());
             if (selectedMissionId) params.set("missionId", selectedMissionId);
             if (selectedResult) params.set("result", selectedResult);
             if (selectedChannel) params.set("channel", selectedChannel);
@@ -146,7 +176,7 @@ export default function SDRHistoryPage() {
             if (!signal.aborted) setIsLoading(false);
             if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
         }
-    }, [dateFrom, dateTo, selectedMissionId, selectedResult, selectedChannel, showError]);
+    }, [dateRange, selectedMissionId, selectedResult, selectedChannel, showError]);
 
     useEffect(() => {
         fetch("/api/sdr/missions")
@@ -370,23 +400,30 @@ export default function SDRHistoryPage() {
                 </div>
                 <div className="p-5">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Du</label>
-                            <input
-                                type="date"
-                                value={dateFrom}
-                                onChange={(e) => setDateFrom(e.target.value)}
-                                className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Au</label>
-                            <input
-                                type="date"
-                                value={dateTo}
-                                onChange={(e) => setDateTo(e.target.value)}
-                                className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400"
-                            />
+                        <div className="relative" ref={dateFilterRef}>
+                            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">Période</label>
+                            <button
+                                type="button"
+                                onClick={() => setDateFilterOpen((o) => !o)}
+                                className="flex items-center gap-2 w-full h-10 px-3 text-sm font-medium text-slate-900 bg-white border border-slate-200 rounded-xl hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400"
+                            >
+                                <Calendar className="w-4 h-4 text-indigo-500" />
+                                <span className="truncate">{dateRange.preset ? PRESET_LABELS[dateRange.preset] : "Plage de dates"}</span>
+                                <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 ml-auto shrink-0", dateFilterOpen && "rotate-180")} />
+                            </button>
+                            {dateFilterOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40" aria-hidden onClick={() => setDateFilterOpen(false)} />
+                                    <div className="absolute left-0 top-full mt-1 z-50 right-0 max-w-[calc(100vw-2rem)]">
+                                        <DateRangeFilter
+                                            value={dateRange}
+                                            onChange={setDateRange}
+                                            onClose={() => setDateFilterOpen(false)}
+                                            isOpen={true}
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mission</label>

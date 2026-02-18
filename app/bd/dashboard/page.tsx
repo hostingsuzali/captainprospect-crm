@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     Building2,
     Target,
@@ -14,9 +14,30 @@ import {
     CheckCircle2,
     AlertCircle,
     ArrowRight,
+    Calendar,
+    ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, Button, Badge, LoadingState, StatCard, PageHeader, EmptyState } from "@/components/ui";
+import {
+    DateRangeFilter,
+    getPresetRange,
+    toISO,
+    type DateRangeValue,
+    type DateRangePreset,
+} from "@/components/dashboard/DateRangeFilter";
+import { cn } from "@/lib/utils";
+
+const PRESET_LABELS: Record<DateRangePreset, string> = {
+    last7: "7 derniers jours",
+    last4weeks: "4 dernières semaines",
+    last6months: "6 derniers mois",
+    last12months: "12 derniers mois",
+    monthToDate: "Mois en cours",
+    quarterToDate: "Trimestre en cours",
+    yearToDate: "Année en cours",
+    allTime: "Tout",
+};
 
 // ============================================
 // TYPES
@@ -54,6 +75,12 @@ export default function BDDashboardPage() {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [clients, setClients] = useState<Client[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [dateRange, setDateRange] = useState<DateRangeValue>(() => {
+        const { start, end } = getPresetRange("monthToDate");
+        return { preset: "monthToDate", startDate: toISO(start), endDate: toISO(end) };
+    });
+    const [dateFilterOpen, setDateFilterOpen] = useState(false);
+    const dateFilterRef = useRef<HTMLDivElement>(null);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -95,6 +122,30 @@ export default function BDDashboardPage() {
                 icon={<><TrendingUp className="w-4 h-4" /><span>Vue d'ensemble</span></>}
                 actions={
                     <div className="flex items-center gap-3">
+                        <div className="relative" ref={dateFilterRef}>
+                            <button
+                                type="button"
+                                onClick={() => setDateFilterOpen((o) => !o)}
+                                className="flex items-center gap-2 h-10 px-4 text-sm font-medium text-white/90 bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/50"
+                            >
+                                <Calendar className="w-4 h-4" />
+                                <span>{dateRange.preset ? PRESET_LABELS[dateRange.preset] : "Plage de dates"}</span>
+                                <ChevronDown className={cn("w-3.5 h-3.5 ml-1 opacity-80", dateFilterOpen && "rotate-180")} />
+                            </button>
+                            {dateFilterOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40" aria-hidden onClick={() => setDateFilterOpen(false)} />
+                                    <div className="absolute right-0 top-full mt-1 z-50 max-w-[calc(100vw-2rem)]">
+                                        <DateRangeFilter
+                                            value={dateRange}
+                                            onChange={setDateRange}
+                                            onClose={() => setDateFilterOpen(false)}
+                                            isOpen={true}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                        </div>
                         <button
                             onClick={fetchData}
                             className="p-2.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"

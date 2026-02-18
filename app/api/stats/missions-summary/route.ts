@@ -15,29 +15,32 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     await requireRole(['MANAGER'], request);
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'month';
+    const startDateParam = searchParams.get('startDate');
+    const endDateParam = searchParams.get('endDate');
     const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10) || 20, 50);
 
-    let dateFilter: Date;
-    switch (period) {
-        case 'today':
-            dateFilter = new Date();
-            dateFilter.setHours(0, 0, 0, 0);
-            break;
-        case 'week':
-            dateFilter = new Date();
-            dateFilter.setDate(dateFilter.getDate() - 7);
-            break;
-        case 'month':
-            dateFilter = new Date();
-            dateFilter.setMonth(dateFilter.getMonth() - 1);
-            break;
-        case 'quarter':
-            dateFilter = new Date();
-            dateFilter.setDate(dateFilter.getDate() - 90);
-            break;
-        default:
-            dateFilter = new Date();
-            dateFilter.setMonth(dateFilter.getMonth() - 1);
+    let dateFrom: Date;
+    if (startDateParam && endDateParam) {
+        dateFrom = new Date(startDateParam);
+        dateFrom.setHours(0, 0, 0, 0);
+    } else {
+        dateFrom = new Date();
+        dateFrom.setHours(0, 0, 0, 0);
+        switch (period) {
+            case 'today':
+                break;
+            case 'week':
+                dateFrom.setDate(dateFrom.getDate() - 7);
+                break;
+            case 'month':
+                dateFrom.setMonth(dateFrom.getMonth() - 1);
+                break;
+            case 'quarter':
+                dateFrom.setDate(dateFrom.getDate() - 90);
+                break;
+            default:
+                dateFrom.setMonth(dateFrom.getMonth() - 1);
+        }
     }
 
     const [missions, actionsInPeriod] = await Promise.all([
@@ -54,7 +57,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             },
         }),
         prisma.action.findMany({
-            where: { createdAt: { gte: dateFilter } },
+            where: {
+                createdAt: {
+                    gte: dateFrom,
+                    ...(endDateParam ? { lte: new Date(new Date(endDateParam).setHours(23, 59, 59, 999)) } : {}),
+                },
+            },
             select: {
                 result: true,
                 createdAt: true,

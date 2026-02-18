@@ -1,8 +1,15 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Card, Badge, Button, Select, Modal } from "@/components/ui";
+import {
+    DateRangeFilter,
+    getPresetRange,
+    toISO,
+    type DateRangeValue,
+    type DateRangePreset,
+} from "@/components/dashboard/DateRangeFilter";
 import {
     Calendar,
     Clock,
@@ -20,8 +27,20 @@ import {
     ArrowRight,
     Save,
     RotateCcw,
+    ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const PRESET_LABELS: Record<DateRangePreset, string> = {
+    last7: "7 derniers jours",
+    last4weeks: "4 dernières semaines",
+    last6months: "6 derniers mois",
+    last12months: "12 derniers mois",
+    monthToDate: "Mois en cours",
+    quarterToDate: "Trimestre en cours",
+    yearToDate: "Année en cours",
+    allTime: "Tout",
+};
 
 // ============================================
 // TYPES
@@ -97,6 +116,13 @@ export default function SDRMeetingsPage() {
     const missionId = searchParams.get("missionId") || "";
     const listId = searchParams.get("listId") || "";
 
+    const [dateRange, setDateRange] = useState<DateRangeValue>(() => {
+        const { start, end } = getPresetRange("last12months");
+        return { preset: "last12months", startDate: toISO(start), endDate: toISO(end) };
+    });
+    const [dateFilterOpen, setDateFilterOpen] = useState(false);
+    const dateFilterRef = useRef<HTMLDivElement>(null);
+
     // Fetch missions and lists for filters
     useEffect(() => {
         const fetchFilters = async () => {
@@ -126,9 +152,18 @@ export default function SDRMeetingsPage() {
         const fetchMeetings = async () => {
             setIsLoading(true);
             try {
+                let start = dateRange.startDate;
+                let end = dateRange.endDate;
+                if (!start || !end) {
+                    const r = getPresetRange((dateRange.preset as DateRangePreset) || "last12months");
+                    start = toISO(r.start);
+                    end = toISO(r.end);
+                }
                 const params = new URLSearchParams();
                 if (missionId) params.set("missionId", missionId);
                 if (listId) params.set("listId", listId);
+                if (start) params.set("startDate", start);
+                if (end) params.set("endDate", end);
 
                 const res = await fetch(`/api/sdr/meetings?${params.toString()}`);
                 const json = await res.json();
@@ -143,7 +178,7 @@ export default function SDRMeetingsPage() {
         };
 
         fetchMeetings();
-    }, [missionId, listId]);
+    }, [missionId, listId, dateRange]);
 
     // Update URL when filters change
     const handleMissionChange = (value: string) => {
@@ -306,6 +341,31 @@ export default function SDRMeetingsPage() {
                     </div>
 
                     <div className="flex-1 w-full flex flex-wrap md:flex-nowrap items-center gap-2 py-1">
+                        <div className="relative" ref={dateFilterRef}>
+                            <button
+                                type="button"
+                                onClick={() => setDateFilterOpen((o) => !o)}
+                                className="flex items-center gap-2 min-w-[180px] h-10 px-3 text-sm font-medium text-slate-900 bg-white/80 border border-slate-200 rounded-full hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                            >
+                                <Calendar className="w-4 h-4 text-indigo-500" />
+                                <span className="truncate">{dateRange.preset ? PRESET_LABELS[dateRange.preset] : "Plage de dates"}</span>
+                                <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 ml-auto shrink-0", dateFilterOpen && "rotate-180")} />
+                            </button>
+                            {dateFilterOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40" aria-hidden onClick={() => setDateFilterOpen(false)} />
+                                    <div className="absolute left-0 top-full mt-1 z-50 max-w-[calc(100vw-2rem)]">
+                                        <DateRangeFilter
+                                            value={dateRange}
+                                            onChange={setDateRange}
+                                            onClose={() => setDateFilterOpen(false)}
+                                            isOpen={true}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="h-6 w-px bg-slate-200 mx-2" />
                         <div className="min-w-[200px]">
                             <Select
                                 placeholder="Toutes les missions"

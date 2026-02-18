@@ -1285,6 +1285,9 @@ export function UnifiedActionDrawer({
                                             if (value === "ENVOIE_MAIL") {
                                                 onOpenEmailModal?.();
                                             }
+                                            if (value === "MEETING_BOOKED" && clientBookingUrl && contactId) {
+                                                setShowBookingModal(true);
+                                            }
                                         }}
                                     />
 

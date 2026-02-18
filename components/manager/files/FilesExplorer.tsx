@@ -446,6 +446,8 @@ export default function FilesExplorer() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [clientFilter, setClientFilter] = useState<string>("");
+  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
 
   // Selection
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -504,12 +506,14 @@ export default function FilesExplorer() {
     try {
       const foldersParams = new URLSearchParams();
       foldersParams.set("parentId", currentFolder ?? "root");
+      if (clientFilter) foldersParams.set("clientId", clientFilter);
       const foldersRes = await fetch(`/api/folders?${foldersParams}`);
       const foldersJson = await foldersRes.json();
       if (foldersJson.success) setFolders(foldersJson.data.folders);
 
       const filesParams = new URLSearchParams();
       if (currentFolder) filesParams.set("folderId", currentFolder);
+      if (clientFilter) filesParams.set("clientId", clientFilter);
       if (search) filesParams.set("search", search);
       if (typeFilter) filesParams.set("type", typeFilter);
       const filesRes = await fetch(`/api/files?${filesParams}`);
@@ -520,7 +524,7 @@ export default function FilesExplorer() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentFolder, search, typeFilter, showError]);
+  }, [currentFolder, search, typeFilter, clientFilter, showError]);
 
   const fetchDriveStatus = useCallback(async () => {
     try {
@@ -561,6 +565,22 @@ export default function FilesExplorer() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const fetchClients = useCallback(async () => {
+    try {
+      const res = await fetch("/api/clients?limit=200");
+      const json = await res.json();
+        if (json.success && json.data) {
+        setClients(Array.isArray(json.data) ? json.data : []);
+      }
+    } catch {
+      // silent
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchClients();
+  }, [fetchClients]);
 
   useEffect(() => {
     fetchDriveStatus();
@@ -1285,6 +1305,19 @@ export default function FilesExplorer() {
                   icon={<Search className="w-4 h-4 text-slate-400" />}
                 />
               </div>
+              <select
+                value={clientFilter}
+                onChange={(e) => setClientFilter(e.target.value)}
+                className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                title="Filtrer par client"
+              >
+                <option value="">Tous les fichiers</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
