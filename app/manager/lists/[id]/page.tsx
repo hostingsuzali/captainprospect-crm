@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Card, Badge, Button, DataTable, ConfirmModal, useToast } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
@@ -93,6 +93,7 @@ const STATUS_CONFIG = {
 export default function ListDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { data: session } = useSession();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { success, error: showError } = useToast();
 
     const isManager = session?.user?.role === "MANAGER";
@@ -112,6 +113,8 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     const [showContactDrawer, setShowContactDrawer] = useState(false);
     const [isCreatingCompany, setIsCreatingCompany] = useState(false);
     const [isCreatingContact, setIsCreatingContact] = useState(false);
+
+    const hasAppliedUrlDrawers = useRef(false);
 
     // Resolve params
     useEffect(() => {
@@ -158,6 +161,30 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
             fetchList();
         }
     }, [listId]);
+
+    // Open contact + company drawers from URL (e.g. from global search)
+    useEffect(() => {
+        const contactId = searchParams.get("contactId");
+        const companyId = searchParams.get("companyId");
+        if (!contactId || !companyId || isLoading || !list || hasAppliedUrlDrawers.current || companies.length === 0) return;
+        const allContacts: (Contact & { companyName: string })[] = companies.flatMap((company) =>
+            company.contacts.map((contact) => ({
+                ...contact,
+                companyId: company.id,
+                companyName: company.name,
+            }))
+        );
+        const contact = allContacts.find((c) => c.id === contactId);
+        const company = companies.find((c) => c.id === companyId);
+        if (contact && company) {
+            hasAppliedUrlDrawers.current = true;
+            setSelectedCompany(company);
+            setSelectedContact(contact);
+            setShowCompanyDrawer(true);
+            setShowContactDrawer(true);
+            router.replace(`/manager/lists/${listId}`, { scroll: false });
+        }
+    }, [searchParams, isLoading, list, companies, listId, router]);
 
     // ============================================
     // DRAWER HANDLERS

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Card, Badge, Button, DataTable, useToast } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
@@ -83,6 +83,7 @@ const STATUS_CONFIG = {
 export default function SDRListDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { data: session } = useSession();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { success, error: showError } = useToast();
 
     const [listId, setListId] = useState<string>("");
@@ -94,6 +95,8 @@ export default function SDRListDetailPage({ params }: { params: Promise<{ id: st
     // Drawer state (contact or company fiche — view and edit)
     const [editContact, setEditContact] = useState<Contact | null>(null);
     const [editCompany, setEditCompany] = useState<Company | null>(null);
+
+    const hasAppliedUrlDrawers = useRef(false);
 
     // Resolve params
     useEffect(() => {
@@ -142,6 +145,28 @@ export default function SDRListDetailPage({ params }: { params: Promise<{ id: st
             fetchList();
         }
     }, [listId]);
+
+    // Open contact + company drawers from URL (e.g. from global search)
+    useEffect(() => {
+        const contactId = searchParams.get("contactId");
+        const companyId = searchParams.get("companyId");
+        if (!contactId || !companyId || isLoading || !list || hasAppliedUrlDrawers.current || companies.length === 0) return;
+        const allContacts = companies.flatMap((company) =>
+            company.contacts.map((contact) => ({
+                ...contact,
+                companyId: company.id,
+                companyName: company.name,
+            }))
+        );
+        const contact = allContacts.find((c) => c.id === contactId);
+        const company = companies.find((c) => c.id === companyId);
+        if (contact && company) {
+            hasAppliedUrlDrawers.current = true;
+            setEditCompany({ ...company, missionId: list.mission?.id } as Company & { missionId?: string });
+            setEditContact({ ...contact, companyName: company.name, missionId: list.mission?.id } as Contact & { companyName?: string; missionId?: string });
+            router.replace(`/sdr/lists/${listId}`, { scroll: false });
+        }
+    }, [searchParams, isLoading, list, companies, listId, router]);
 
     // ============================================
     // EDIT HANDLERS

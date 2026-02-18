@@ -115,21 +115,31 @@ export function GlobalSearchModal({ open, onClose, navigation }: GlobalSearchMod
         );
         const json = await res.json();
         if (!json.success || !Array.isArray(json.data)) return [];
+        const isManager = userRole === "MANAGER";
+        const listBase = isManager ? "/manager/lists" : "/sdr/lists";
+        const noListHref = isManager ? "/manager/lists" : `/sdr/contacts`;
         return json.data.map(
             (c: {
                 id: string;
                 firstName?: string | null;
                 lastName?: string | null;
-                company?: { name: string };
-            }) => ({
-                type: "contact" as const,
-                id: c.id,
-                href: `/sdr/contacts/${c.id}`,
-                label: [c.firstName, c.lastName].filter(Boolean).join(" ") || "Sans nom",
-                subtitle: c.company?.name ?? "",
-            })
+                company?: { id: string; name: string; listId?: string | null };
+            }) => {
+                const companyId = c.company?.id ?? "";
+                const listId = c.company?.listId ?? null;
+                const href = listId
+                    ? `${listBase}/${listId}?contactId=${c.id}&companyId=${companyId}`
+                    : isManager ? "/manager/lists" : `${noListHref}/${c.id}`;
+                return {
+                    type: "contact" as const,
+                    id: c.id,
+                    href,
+                    label: [c.firstName, c.lastName].filter(Boolean).join(" ") || "Sans nom",
+                    subtitle: c.company?.name ?? "",
+                };
+            }
         );
-    }, []);
+    }, [userRole]);
 
     const fetchMeetingsSdr = useCallback(async (q: string) => {
         const res = await fetch(`/api/sdr/meetings?search=${encodeURIComponent(q)}`);

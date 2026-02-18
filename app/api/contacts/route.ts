@@ -65,7 +65,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             where,
             include: {
                 company: {
-                    select: { id: true, name: true, industry: true },
+                    select: { id: true, name: true, industry: true, listId: true },
                 },
                 _count: { select: { actions: true, opportunities: true } },
             },
