@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Card, Badge, Button, Select, Modal } from "@/components/ui";
+import { Card, Badge, Button, Select, Modal, ConfirmModal, ContextMenu, useContextMenu, useToast } from "@/components/ui";
 import {
     DateRangeFilter,
     getPresetRange,
@@ -16,20 +16,26 @@ import {
     User,
     Building2,
     Video,
-    MapPin,
     Loader2,
     Filter,
     X,
     Mail,
     Phone,
-    Globe,
     Linkedin,
     ArrowRight,
     Save,
     RotateCcw,
     ChevronDown,
+    Eye,
+    CalendarClock,
+    XCircle,
+    Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+    MEETING_CANCELLATION_REASONS,
+    getMeetingCancellationLabel,
+} from "@/lib/constants/meetingCancellationReasons";
 
 const PRESET_LABELS: Record<DateRangePreset, string> = {
     last7: "7 derniers jours",
@@ -53,7 +59,8 @@ interface Meeting {
     createdAt: string;
     result?: MeetingResult;
     note?: string;
-    description?: string;
+    callbackDate?: string | null;
+    cancellationReason?: string;
     contact: {
         id: string;
         firstName: string | null;
@@ -221,6 +228,38 @@ export default function SDRMeetingsPage() {
     const [savingError, setSavingError] = useState<string | null>(null);
     const [remettreSubmitting, setRemettreSubmitting] = useState(false);
 
+    // Cancel-with-reason modal
+    const [cancelModalMeeting, setCancelModalMeeting] = useState<Meeting | null>(null);
+    const [cancelReason, setCancelReason] = useState<string>("");
+    const [cancelNote, setCancelNote] = useState("");
+    const [cancelSubmitting, setCancelSubmitting] = useState(false);
+
+    // Reschedule modal
+    const [rescheduleMeeting, setRescheduleMeeting] = useState<Meeting | null>(null);
+    const [rescheduleDateValue, setRescheduleDateValue] = useState("");
+    const [rescheduleNote, setRescheduleNote] = useState("");
+    const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
+
+    // Delete confirm
+    const [deleteConfirmMeeting, setDeleteConfirmMeeting] = useState<Meeting | null>(null);
+    const [deleting, setDeleting] = useState(false);
+
+    // Context menu (right-click)
+    const { position: contextMenuPosition, contextData: contextMenuMeeting, handleContextMenu, close: closeContextMenu } = useContextMenu();
+    const { success: showSuccess, error: showError } = useToast();
+
+    function formatScheduledDate(meeting: Meeting): string {
+        const date = meeting.callbackDate ? new Date(meeting.callbackDate) : new Date(meeting.createdAt);
+        return date.toLocaleDateString("fr-FR", {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    }
+
     // Sync edit state when modal opens
     useEffect(() => {
         if (selectedMeeting) {
@@ -264,42 +303,149 @@ export default function SDRMeetingsPage() {
         }
     };
 
-    const handleRemettreEnProspection = async () => {
-        if (!selectedMeeting) return;
-        setRemettreSubmitting(true);
+    const openCancelModal = (meeting: Meeting) => {
+        setCancelModalMeeting(meeting);
+        setCancelReason("");
+        setCancelNote("");
+    };
+
+    const handleConfirmCancel = async () => {
+        if (!cancelModalMeeting || !cancelReason.trim()) return;
+        setCancelSubmitting(true);
         setSavingError(null);
         try {
-            const note = editNote.trim() || "RDV annulé, contact remis en prospection";
-            const res = await fetch(`/api/actions/${selectedMeeting.id}`, {
+            const res = await fetch(`/api/actions/${cancelModalMeeting.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ result: "MEETING_CANCELLED", note }),
+                body: JSON.stringify({
+                    result: "MEETING_CANCELLED",
+                    cancellationReason: cancelReason,
+                    note: cancelNote.trim() || undefined,
+                }),
             });
             const json = await res.json();
             if (!json.success) {
                 setSavingError(json.error || "Erreur");
                 return;
             }
+            const updated = {
+                ...cancelModalMeeting,
+                result: "MEETING_CANCELLED" as const,
+                note: cancelNote.trim() || cancelModalMeeting.note,
+                cancellationReason: cancelReason,
+            };
             setMeetings((prev) =>
-                prev.map((m) =>
-                    m.id === selectedMeeting.id
-                        ? { ...m, result: "MEETING_CANCELLED" as const, note }
-                        : m
-                )
+                prev.map((m) => (m.id === cancelModalMeeting.id ? updated : m))
             );
-            setSelectedMeeting((prev) =>
-                prev && prev.id === selectedMeeting.id
-                    ? { ...prev, result: "MEETING_CANCELLED", note }
-                    : prev
-            );
-            setEditResult("MEETING_CANCELLED");
-            setEditNote(note);
+            if (selectedMeeting?.id === cancelModalMeeting.id) {
+                setSelectedMeeting(updated);
+                setEditResult("MEETING_CANCELLED");
+                setEditNote(cancelNote.trim() || (updated.note ?? ""));
+            }
+            setCancelModalMeeting(null);
+            showSuccess("RDV annulé");
         } catch (err) {
             setSavingError("Erreur réseau");
         } finally {
-            setRemettreSubmitting(false);
+            setCancelSubmitting(false);
         }
     };
+
+    const openRescheduleModal = (meeting: Meeting) => {
+        setRescheduleMeeting(meeting);
+        const base = meeting.callbackDate ? new Date(meeting.callbackDate) : new Date(meeting.createdAt);
+        setRescheduleDateValue(base.toISOString().slice(0, 16));
+        setRescheduleNote("");
+    };
+
+    const handleConfirmReschedule = async () => {
+        if (!rescheduleMeeting || !rescheduleDateValue) return;
+        setRescheduleSubmitting(true);
+        setSavingError(null);
+        try {
+            const res = await fetch(`/api/actions/${rescheduleMeeting.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    callbackDate: new Date(rescheduleDateValue).toISOString(),
+                    note: rescheduleNote.trim() ? rescheduleNote.trim() : rescheduleMeeting.note,
+                }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                setSavingError(json.error || "Erreur");
+                return;
+            }
+            const updated = {
+                ...rescheduleMeeting,
+                callbackDate: new Date(rescheduleDateValue).toISOString(),
+                note: rescheduleNote.trim() || rescheduleMeeting.note,
+            };
+            setMeetings((prev) =>
+                prev.map((m) => (m.id === rescheduleMeeting.id ? updated : m))
+            );
+            if (selectedMeeting?.id === rescheduleMeeting.id) setSelectedMeeting(updated);
+            setRescheduleMeeting(null);
+            showSuccess("RDV reprogrammé");
+        } catch (err) {
+            setSavingError("Erreur réseau");
+        } finally {
+            setRescheduleSubmitting(false);
+        }
+    };
+
+    const handleDeleteMeeting = async () => {
+        if (!deleteConfirmMeeting) return;
+        setDeleting(true);
+        try {
+            const res = await fetch(`/api/actions/${deleteConfirmMeeting.id}`, {
+                method: "DELETE",
+            });
+            if (!res.ok) {
+                const json = await res.json().catch(() => ({}));
+                showError(json?.error || "Erreur lors de la suppression");
+                return;
+            }
+            setMeetings((prev) => prev.filter((m) => m.id !== deleteConfirmMeeting.id));
+            if (selectedMeeting?.id === deleteConfirmMeeting.id) setSelectedMeeting(null);
+            setDeleteConfirmMeeting(null);
+            closeContextMenu();
+            showSuccess("Rendez-vous supprimé");
+        } catch (err) {
+            showError("Erreur de connexion");
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    const getContextMenuItems = (meeting: Meeting) => [
+        {
+            label: "Ouvrir",
+            icon: <Eye className="w-4 h-4" />,
+            onClick: () => setSelectedMeeting(meeting),
+        },
+        ...(meeting.result === "MEETING_BOOKED"
+            ? [
+                  {
+                      label: "Reprogrammer le RDV",
+                      icon: <CalendarClock className="w-4 h-4" />,
+                      onClick: () => openRescheduleModal(meeting),
+                  },
+                  {
+                      label: "Annuler le RDV",
+                      icon: <XCircle className="w-4 h-4" />,
+                      onClick: () => openCancelModal(meeting),
+                  },
+              ]
+            : []),
+        {
+            label: "Supprimer",
+            icon: <Trash2 className="w-4 h-4" />,
+            onClick: () => setDeleteConfirmMeeting(meeting),
+            variant: "danger" as const,
+            divider: true,
+        },
+    ];
 
     if (isLoading) {
         return (
@@ -432,6 +578,7 @@ export default function SDRMeetingsPage() {
                             key={meeting.id}
                             className="group relative bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] transition-all duration-300 hover:-translate-y-1 cursor-pointer"
                             onClick={() => setSelectedMeeting(meeting)}
+                            onContextMenu={(e) => handleContextMenu(e, meeting)}
                         >
                             <div className="flex flex-col md:flex-row">
                                 {/* Date Ticket Stub */}
@@ -484,7 +631,14 @@ export default function SDRMeetingsPage() {
 
                                         <div className="flex flex-wrap items-center gap-2">
                                             {meeting.result === "MEETING_CANCELLED" ? (
-                                                <Badge className="bg-red-50 text-red-700 border-red-200">Annulé</Badge>
+                                                <>
+                                                    <Badge className="bg-red-50 text-red-700 border-red-200">Annulé</Badge>
+                                                    {meeting.cancellationReason && (
+                                                        <span className="text-xs text-slate-500">
+                                                            {getMeetingCancellationLabel(meeting.cancellationReason)}
+                                                        </span>
+                                                    )}
+                                                </>
                                             ) : (
                                                 <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Confirmé</Badge>
                                             )}
@@ -535,23 +689,10 @@ export default function SDRMeetingsPage() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="md:col-span-1 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl p-5 text-white flex flex-col justify-between shadow-lg shadow-indigo-200">
                                 <div>
-                                    <p className="text-indigo-100 text-sm font-medium uppercase tracking-wide">Date & Heure</p>
-                                    <p className="text-3xl font-bold mt-2">
-                                        {new Date(selectedMeeting.createdAt).toLocaleTimeString('fr-FR', {
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                        })}
+                                    <p className="text-indigo-100 text-sm font-medium uppercase tracking-wide">Date & Heure du RDV</p>
+                                    <p className="text-lg font-semibold mt-2">
+                                        {formatScheduledDate(selectedMeeting)}
                                     </p>
-                                </div>
-                                <div>
-                                    <p className="text-lg font-semibold">
-                                        {new Date(selectedMeeting.createdAt).toLocaleDateString('fr-FR', {
-                                            weekday: 'long',
-                                            day: 'numeric',
-                                            month: 'long',
-                                        })}
-                                    </p>
-                                    <p className="text-indigo-100 text-sm mt-1">{new Date(selectedMeeting.createdAt).getFullYear()}</p>
                                 </div>
                             </div>
 
@@ -561,7 +702,10 @@ export default function SDRMeetingsPage() {
                                         <p className="text-slate-500 text-sm font-bold uppercase tracking-wide">Statut du RDV</p>
                                         <Select
                                             value={editResult}
-                                            onChange={(v) => setEditResult(v as MeetingResult)}
+                                            onChange={(v) => {
+                                                if (v === "MEETING_CANCELLED") openCancelModal(selectedMeeting);
+                                                else setEditResult(v as MeetingResult);
+                                            }}
                                             options={[
                                                 { value: "MEETING_BOOKED", label: "Confirmé" },
                                                 { value: "MEETING_CANCELLED", label: "Annulé" },
@@ -570,26 +714,45 @@ export default function SDRMeetingsPage() {
                                         />
                                     </div>
                                     {editResult === "MEETING_CANCELLED" && (
-                                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
-                                            Le contact redevient disponible dans la file de prospection (Actions).
-                                        </p>
+                                        <>
+                                            {selectedMeeting.cancellationReason && (
+                                                <p className="text-sm text-slate-600 bg-slate-100 rounded-lg px-3 py-2">
+                                                    Raison : {getMeetingCancellationLabel(selectedMeeting.cancellationReason)}
+                                                </p>
+                                            )}
+                                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
+                                                Le contact redevient disponible dans la file de prospection (Actions).
+                                            </p>
+                                        </>
                                     )}
                                     {editResult === "MEETING_BOOKED" && (
-                                        <Button
-                                            type="button"
-                                            variant="secondary"
-                                            size="sm"
-                                            onClick={handleRemettreEnProspection}
-                                            disabled={saving || remettreSubmitting}
-                                            className="mt-3 gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
-                                        >
-                                            {remettreSubmitting ? (
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                            ) : (
-                                                <RotateCcw className="w-4 h-4" />
-                                            )}
-                                            Remettre en prospection
-                                        </Button>
+                                        <div className="flex flex-wrap gap-2 mt-3">
+                                            <Button
+                                                type="button"
+                                                variant="secondary"
+                                                size="sm"
+                                                onClick={() => openRescheduleModal(selectedMeeting)}
+                                                className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                                            >
+                                                <CalendarClock className="w-4 h-4" />
+                                                Reprogrammer le RDV
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="secondary"
+                                                size="sm"
+                                                onClick={() => openCancelModal(selectedMeeting)}
+                                                disabled={saving || cancelSubmitting}
+                                                className="gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
+                                            >
+                                                {cancelSubmitting ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    <RotateCcw className="w-4 h-4" />
+                                                )}
+                                                Annuler le RDV
+                                            </Button>
+                                        </div>
                                     )}
                                     <div className="flex flex-wrap gap-2">
                                         {selectedMeeting.mission && (
@@ -714,6 +877,118 @@ export default function SDRMeetingsPage() {
                     </div>
                 </Modal>
             )}
+
+            {/* Cancel meeting modal (reason required) */}
+            <Modal
+                isOpen={!!cancelModalMeeting}
+                onClose={() => { setCancelModalMeeting(null); setCancelReason(""); setCancelNote(""); }}
+                title="Annuler le rendez-vous"
+                size="sm"
+            >
+                <div className="space-y-4">
+                    <p className="text-slate-600 text-sm">
+                        Indiquez la raison de l&apos;annulation. Le contact redevient disponible dans la file de prospection.
+                    </p>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Raison d&apos;annulation *</label>
+                        <Select
+                            value={cancelReason}
+                            onChange={setCancelReason}
+                            options={[
+                                { value: "", label: "Choisir une raison..." },
+                                ...MEETING_CANCELLATION_REASONS.map((r) => ({ value: r.code, label: r.label })),
+                            ]}
+                            className="w-full border border-slate-200 rounded-xl"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Note (optionnel)</label>
+                        <textarea
+                            value={cancelNote}
+                            onChange={(e) => setCancelNote(e.target.value)}
+                            placeholder="Précision..."
+                            className="w-full min-h-[80px] px-3 py-2 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            rows={2}
+                        />
+                    </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-slate-100">
+                    <Button variant="ghost" onClick={() => { setCancelModalMeeting(null); setCancelReason(""); setCancelNote(""); }}>
+                        Fermer
+                    </Button>
+                    <Button
+                        variant="secondary"
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        onClick={handleConfirmCancel}
+                        disabled={!cancelReason.trim() || cancelSubmitting}
+                    >
+                        {cancelSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                        Confirmer l&apos;annulation
+                    </Button>
+                </div>
+            </Modal>
+
+            {/* Reschedule meeting modal */}
+            <Modal
+                isOpen={!!rescheduleMeeting}
+                onClose={() => { setRescheduleMeeting(null); setRescheduleDateValue(""); setRescheduleNote(""); }}
+                title="Reprogrammer le RDV"
+                size="sm"
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Nouvelle date et heure *</label>
+                        <input
+                            type="datetime-local"
+                            value={rescheduleDateValue}
+                            onChange={(e) => setRescheduleDateValue(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Note (optionnel)</label>
+                        <textarea
+                            value={rescheduleNote}
+                            onChange={(e) => setRescheduleNote(e.target.value)}
+                            placeholder="Ex: RDV reporté au..."
+                            className="w-full min-h-[60px] px-3 py-2 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            rows={2}
+                        />
+                    </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-slate-100">
+                    <Button variant="ghost" onClick={() => { setRescheduleMeeting(null); setRescheduleDateValue(""); setRescheduleNote(""); }}>
+                        Fermer
+                    </Button>
+                    <Button
+                        onClick={handleConfirmReschedule}
+                        disabled={!rescheduleDateValue || rescheduleSubmitting}
+                        className="gap-2"
+                    >
+                        {rescheduleSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4" />}
+                        Enregistrer la nouvelle date
+                    </Button>
+                </div>
+            </Modal>
+
+            {/* Delete confirmation */}
+            <ConfirmModal
+                isOpen={!!deleteConfirmMeeting}
+                onClose={() => setDeleteConfirmMeeting(null)}
+                onConfirm={handleDeleteMeeting}
+                title="Supprimer ce rendez-vous ?"
+                message="Cette action est irréversible. Le rendez-vous sera définitivement supprimé."
+                confirmText="Supprimer"
+                variant="danger"
+                isLoading={deleting}
+            />
+
+            {/* Right-click context menu */}
+            <ContextMenu
+                items={contextMenuMeeting ? getContextMenuItems(contextMenuMeeting) : []}
+                position={contextMenuPosition}
+                onClose={closeContextMenu}
+            />
         </div>
     );
 }

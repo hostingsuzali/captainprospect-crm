@@ -29,20 +29,6 @@ enum Channel {
   LINKEDIN
 }
 
-// In-app call system
-enum CallDirection {
-  INBOUND
-  OUTBOUND
-}
-
-enum CallStatus {
-  queued
-  ringing
-  in_progress
-  completed
-  failed
-}
-
 enum ListType {
   SUZALI
   CLIENT
@@ -154,6 +140,20 @@ enum PdpSubmissionStatus {
 enum PaymentMatchStatus {
   MATCHED
   CONFIRMED
+}
+
+enum OffreTarifStatut {
+  ACTIF
+  ARCHIVE
+}
+
+enum EngagementStatut {
+  BROUILLON
+  ACTIF
+  EXPIRE
+  RENOUVELE
+  RESILIE
+  ARCHIVE
 }
 
 // ============================================
@@ -327,10 +327,6 @@ model User {
   timezone             String?   @default("Europe/Paris")
   preferences          Json?     // notifications, appearance, workingHours
 
-  // In-app telephony: unique outbound number per SDR (enforced in app logic)
-  outboundPhoneNumber  String?   @unique
-  calls                Call[]   @relation("CallUser")
-  
   // Business Developer portfolio
   bdPortfolio          BusinessDeveloperClient[]
   
@@ -456,6 +452,10 @@ model Client {
   prospectRules       ProspectRule[]
   prospectPipelineConfig ProspectPipelineConfig?
   
+  // Billing: client-level engagements and billing profile
+  engagements    Engagement[]
+  billingClient  BillingClient?
+  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -522,7 +522,6 @@ model Campaign {
   isActive      Boolean   @default(true)
   actions       Action[]
   files         File[]
-  calls         Call[]
   
   // Email Hub relations
   emailThreads  EmailThread[]
@@ -563,7 +562,6 @@ model Company {
   contacts      Contact[]
   opportunities Opportunity[]
   actions       Action[]  // Actions can be on companies too
-  calls         Call[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -584,7 +582,6 @@ model Contact {
   status        CompletenessStatus @default(INCOMPLETE)
   actions       Action[]
   opportunities Opportunity[]
-  calls         Call[]
   
   // Email Hub relations
   emailThreads         EmailThread[]
@@ -611,9 +608,9 @@ model Action {
   channel       Channel
   result        ActionResult
   note          String?      @db.Text
-  callbackDate  DateTime?    // Auto-detected from note for CALLBACK_REQUESTED
+  callbackDate  DateTime?    // Auto-detected from note for CALLBACK_REQUESTED; for MEETING_BOOKED = scheduled meeting date
   duration      Int?         // Duration in seconds
-  call          Call?        // Reverse relation: Call.actionId -> this Action
+  cancellationReason String? // When result = MEETING_CANCELLED: by_mistake, wrong_contact, client_cancelled, double_booking, other
   createdAt     DateTime     @default(now())
   
   @@index([companyId])
@@ -656,36 +653,6 @@ model ActionNextStep {
   updatedAt      DateTime       @updatedAt
 
   @@index([scopeType, scopeId])
-}
-
-// In-app call system: one record per call, linked to User (SDR) and optionally Action after logging
-model Call {
-  id              String        @id @default(cuid())
-  direction       CallDirection
-  fromNumber      String
-  toNumber        String
-  userId          String
-  user            User          @relation("CallUser", fields: [userId], references: [id], onDelete: Cascade)
-  contactId       String?
-  contact         Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  companyId       String?
-  company         Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  campaignId      String?
-  campaign        Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  startTime       DateTime      @default(now())
-  endTime         DateTime?
-  status          CallStatus    @default(queued)
-  durationSeconds Int?
-  recordingUrl    String?       @db.Text
-  externalCallId  String?       // e.g. external provider call ID
-  actionId        String?       @unique // Set when SDR logs outcome (creates Action); link from Call -> Action
-  action          Action?       @relation(fields: [actionId], references: [id], onDelete: SetNull)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  @@index([userId])
-  @@index([startTime])
-  @@index([status])
 }
 
 model Opportunity {
@@ -2036,6 +2003,47 @@ model CommsMessageTemplate {
 // BILLING MODULE
 // ============================================
 
+model OffreTarif {
+  id            String            @id @default(cuid())
+  nom           String
+  fixeMensuel   Decimal           @db.Decimal(10, 2)
+  prixParRdv    Decimal            @db.Decimal(10, 2)
+  description   String?            @db.Text
+  statut        OffreTarifStatut   @default(ACTIF)
+  
+  engagements   Engagement[]
+  
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  
+  @@index([statut])
+}
+
+model Engagement {
+  id               String           @id @default(cuid())
+  clientId         String
+  client           Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  offreTarifId     String
+  offreTarif       OffreTarif       @relation(fields: [offreTarifId], references: [id], onDelete: Restrict)
+  fixeOverride     Decimal?         @db.Decimal(10, 2)
+  rdvOverride      Decimal?         @db.Decimal(10, 2)
+  dureeMois        Int
+  debut            DateTime
+  fin              DateTime
+  statut           EngagementStatut @default(BROUILLON)
+  penaliteResiliation String?        @db.Text
+  renouvellement   String?          @db.Text
+  
+  invoices         Invoice[]
+  
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  
+  @@index([clientId])
+  @@index([offreTarifId])
+  @@index([statut])
+}
+
 model CompanyIssuer {
   id            String    @id @default(cuid())
   legalName     String
@@ -2082,6 +2090,9 @@ model BillingClient {
   email         String?
   phone         String?
   
+  clientId      String?   @unique
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  
   invoices      Invoice[]
   
   createdAt     DateTime  @default(now())
@@ -2089,6 +2100,7 @@ model BillingClient {
   
   @@index([siret])
   @@index([vatNumber])
+  @@index([clientId])
 }
 
 model Invoice {
@@ -2135,6 +2147,17 @@ model Invoice {
   createdById     String
   createdBy       User            @relation("InvoiceCreator", fields: [createdById], references: [id])
   
+  // Engagement-driven invoice (fixed + RDV)
+  engagementId    String?
+  engagement      Engagement?     @relation(fields: [engagementId], references: [id], onDelete: SetNull)
+  periodStart     DateTime?       // First day of invoice month
+  periodEnd       DateTime?       // Last day of invoice month
+  nbRdvTotal      Int?
+  montantFixe     Decimal?        @db.Decimal(10, 2)
+  montantVariable Decimal?        @db.Decimal(10, 2)
+  isAutoGenerated Boolean         @default(false)
+  missionBreakdown Json?          // [{ missionId, missionName, rdvCount }] for display
+  
   validatedAt     DateTime?
   sentAt          DateTime?
   paidAt          DateTime?
@@ -2156,6 +2179,8 @@ model Invoice {
   @@index([relatedInvoiceId])
   @@index([transactionType])
   @@index([pdpSubmissionStatus])
+  @@index([engagementId])
+  @@index([periodStart])
 }
 
 model InvoiceItem {

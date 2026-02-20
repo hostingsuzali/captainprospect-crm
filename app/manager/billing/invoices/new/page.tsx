@@ -19,6 +19,13 @@ import { ClientSearch } from "@/components/billing/ClientSearch";
 import { InvoiceItemsTable, InvoiceItem } from "@/components/billing/InvoiceItemsTable";
 import Link from "next/link";
 
+interface OffreOption {
+    id: string;
+    nom: string;
+    fixeMensuel: number;
+    prixParRdv: number;
+}
+
 interface BillingClient {
     id?: string;
     legalName: string;
@@ -48,6 +55,8 @@ export default function NewInvoicePage() {
     const [paymentTermsDays, setPaymentTermsDays] = useState(30);
     const [paymentTermsText, setPaymentTermsText] = useState("");
     const [notes, setNotes] = useState("");
+    const [offres, setOffres] = useState<OffreOption[]>([]);
+    const [selectedOffreId, setSelectedOffreId] = useState<string>("");
 
     useEffect(() => {
         fetch("/api/billing/company-issuer")
@@ -65,6 +74,55 @@ export default function NewInvoicePage() {
             })
             .catch(() => {});
     }, []);
+
+    useEffect(() => {
+        fetch("/api/billing/offres")
+            .then((res) => res.json())
+            .then((json) => {
+                if (json.success && json.data?.length) {
+                    setOffres(json.data.map((o: any) => ({
+                        id: o.id,
+                        nom: o.nom,
+                        fixeMensuel: Number(o.fixeMensuel),
+                        prixParRdv: Number(o.prixParRdv),
+                    })));
+                }
+            })
+            .catch(() => {});
+    }, []);
+
+    const applyOffre = (offreId: string) => {
+        setSelectedOffreId(offreId);
+        if (!offreId) {
+            setItems([{ description: "", quantity: 1, unitPriceHt: 0, vatRate: 20 }]);
+            return;
+        }
+        const o = offres.find((x) => x.id === offreId);
+        if (!o) return;
+        const fixeHt = o.fixeMensuel;
+        const rdvHt = o.prixParRdv;
+        const vat = 20;
+        setItems([
+            {
+                description: `${o.nom} — Forfait mensuel`,
+                quantity: 1,
+                unitPriceHt: fixeHt,
+                vatRate: vat,
+                totalHt: Math.round(fixeHt * 100) / 100,
+                totalVat: Math.round(fixeHt * (vat / 100) * 100) / 100,
+                totalTtc: Math.round((fixeHt * (1 + vat / 100)) * 100) / 100,
+            },
+            {
+                description: `${o.nom} — Prestation RDV`,
+                quantity: 0,
+                unitPriceHt: rdvHt,
+                vatRate: vat,
+                totalHt: 0,
+                totalVat: 0,
+                totalTtc: 0,
+            },
+        ]);
+    };
 
     const handlePaymentTermsChange = (days: number) => {
         setPaymentTermsDays(days);
@@ -207,11 +265,30 @@ export default function NewInvoicePage() {
 
                     {/* Items */}
                     <div className="rounded-2xl border border-slate-200 bg-white p-6">
-                        <div className="flex items-center gap-2 mb-5">
-                            <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
-                                <ShoppingBag className="w-3.5 h-3.5 text-violet-600" />
+                        <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
+                            <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
+                                    <ShoppingBag className="w-3.5 h-3.5 text-violet-600" />
+                                </div>
+                                <h2 className="text-base font-semibold text-slate-900">Articles & prestations</h2>
                             </div>
-                            <h2 className="text-base font-semibold text-slate-900">Articles & prestations</h2>
+                            {offres.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <label className="text-sm text-slate-500 whitespace-nowrap">Partir d&apos;une offre :</label>
+                                    <select
+                                        value={selectedOffreId}
+                                        onChange={(e) => applyOffre(e.target.value)}
+                                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-800 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                                    >
+                                        <option value="">— Choisir une offre —</option>
+                                        {offres.map((o) => (
+                                            <option key={o.id} value={o.id}>
+                                                {o.nom} ({o.fixeMensuel} € + {o.prixParRdv} €/RDV)
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
                         <InvoiceItemsTable items={items} onChange={setItems} />
                     </div>

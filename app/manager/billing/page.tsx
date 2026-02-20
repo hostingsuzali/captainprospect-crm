@@ -23,6 +23,8 @@ import {
     ChevronRight,
     Zap,
     Shield,
+    Tag,
+    CalendarDays,
 } from "lucide-react";
 import { Button, Card } from "@/components/ui";
 import Link from "next/link";
@@ -423,6 +425,18 @@ export default function BillingDashboardPage() {
                                     <Users className="w-4 h-4 text-indigo-600" />
                                 </div>
                                 <span className="text-sm text-slate-700 group-hover:text-indigo-700">Gérer les clients</span>
+                            </Link>
+                            <Link href="/manager/billing/offres" className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-indigo-50 transition-colors group">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                    <Tag className="w-4 h-4 text-indigo-600" />
+                                </div>
+                                <span className="text-sm text-slate-700 group-hover:text-indigo-700">Offres & Tarifs</span>
+                            </Link>
+                            <Link href="/manager/billing/engagements" className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-indigo-50 transition-colors group">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                    <CalendarDays className="w-4 h-4 text-indigo-600" />
+                                </div>
+                                <span className="text-sm text-slate-700 group-hover:text-indigo-700">Engagements</span>
                             </Link>
                         </div>
                     </div>
