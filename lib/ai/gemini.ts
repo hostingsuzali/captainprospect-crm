@@ -4,7 +4,7 @@
  */
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const DEFAULT_MODEL = 'gemini-1.5-flash';
+const DEFAULT_MODEL = 'gemini-2.0-flash';
 
 export interface GeminiGenerateOptions {
     model?: string;
@@ -29,7 +29,7 @@ export async function geminiGenerate(
     options: GeminiGenerateOptions = {}
 ): Promise<GeminiGenerateResult> {
     const model = options.model ?? DEFAULT_MODEL;
-    const url = `${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const url = `${GEMINI_BASE}/${model}:generateContent`;
 
     const body: Record<string, unknown> = {
         systemInstruction: {
@@ -53,7 +53,10 @@ export async function geminiGenerate(
 
     const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': apiKey,
+        },
         body: JSON.stringify(body),
     });
 

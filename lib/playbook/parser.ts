@@ -1,15 +1,17 @@
 // ============================================
 // PLAYBOOK PARSER (AI)
 // Parses Notion/markdown sales playbook into structured CRM entities
+// Uses Mistral API (MISTRAL_API_KEY)
 // ============================================
 
 import type { ParsedPlaybook } from './types';
 
-const OPENAI_MODEL = 'gpt-4o';
+const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
+const MISTRAL_MODEL = 'mistral-large-latest';
 const MAX_INPUT_CHARS = 120000; // ~30k tokens safety
 
-function getOpenAIKey(): string | undefined {
-  return process.env.OPENAI_API_KEY;
+function getMistralKey(): string | undefined {
+  return process.env.MISTRAL_API_KEY;
 }
 
 /**
@@ -70,27 +72,28 @@ Règles:
 - Ne invente pas de données: si une section manque, mets null ou tableau vide.`;
 
 /**
- * Parse a playbook markdown string into structured ParsedPlaybook using OpenAI.
+ * Parse a playbook markdown string into structured ParsedPlaybook using Mistral.
  */
 export async function parsePlaybook(content: string): Promise<ParsedPlaybook> {
-  const apiKey = getOpenAIKey();
+  const apiKey = getMistralKey();
   if (!apiKey) {
-    throw new Error('OPENAI_API_KEY non configurée');
+    throw new Error('MISTRAL_API_KEY non configurée');
   }
 
   const truncated = truncateContent(content);
+  const userPrompt = `Extrais les données du playbook suivant:\n\n${truncated}`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(MISTRAL_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: OPENAI_MODEL,
+      model: MISTRAL_MODEL,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `Extrais les données du playbook suivant:\n\n${truncated}` },
+        { role: 'user', content: userPrompt },
       ],
       temperature: 0.2,
       max_tokens: 4000,
@@ -100,18 +103,31 @@ export async function parsePlaybook(content: string): Promise<ParsedPlaybook> {
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`OpenAI API error: ${response.status} ${err}`);
+    throw new Error(`Mistral API error: ${response.status} ${err}`);
   }
 
-  const data = await response.json();
-  const raw = data.choices?.[0]?.message?.content;
-  if (!raw || typeof raw !== 'string') {
-    throw new Error('Réponse OpenAI invalide');
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const text = data.choices?.[0]?.message?.content;
+  if (!text || typeof text !== 'string') {
+    throw new Error('Réponse Mistral invalide');
   }
 
+  const raw = stripJsonMarkdown(text);
   const parsed = JSON.parse(raw) as Record<string, unknown>;
 
   return normalizeParsedPlaybook(parsed);
+}
+
+/** Strip optional markdown code fence around JSON. */
+function stripJsonMarkdown(s: string): string {
+  const t = s.trim();
+  if (t.startsWith('```')) {
+    const end = t.indexOf('```', 3);
+    return end > 0 ? t.slice(3, end).replace(/^json\s*\n?/i, '').trim() : t.replace(/^```\w*\n?/i, '').trim();
+  }
+  return t;
 }
 
 /**
@@ -217,5 +233,5 @@ function arrayOfScriptSections(v: unknown): { title?: string; content: string }[
 }
 
 export function isPlaybookParsingAvailable(): boolean {
-  return !!getOpenAIKey();
+  return !!getMistralKey();
 }
