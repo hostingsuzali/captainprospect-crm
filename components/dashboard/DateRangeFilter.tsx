@@ -60,13 +60,10 @@ export function getPresetRange(preset: DateRangePreset): { start: Date; end: Dat
         case "last4weeks":
             start.setDate(start.getDate() - 4 * 7);
             break;
-        case "lastMonth": {
-            start.setMonth(start.getMonth() - 1);
-            start.setDate(1);
-            const endLastMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0);
-            endLastMonth.setHours(23, 59, 59, 999);
-            return { start, end: endLastMonth };
-        }
+        case "lastMonth":
+            // Rolling 30 days: from today back 30 days (not calendar month 1–30)
+            start.setDate(start.getDate() - 30);
+            break;
         case "last6months":
             start.setMonth(start.getMonth() - 6);
             break;
