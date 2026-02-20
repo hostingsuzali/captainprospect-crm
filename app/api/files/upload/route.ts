@@ -7,6 +7,7 @@ import {
     requireAuth,
     withErrorHandler,
 } from '@/lib/api-utils';
+import { createClientPortalNotification } from '@/lib/notifications';
 
 // ============================================
 // POST /api/files/upload - Upload file
@@ -131,6 +132,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                 },
             },
         });
+
+        if (fileRecord.clientId && session.user.role !== 'CLIENT') {
+            await createClientPortalNotification(fileRecord.clientId, {
+                title: 'Nouveau fichier',
+                message: `« ${fileRecord.originalName} » a été déposé dans vos fichiers.`,
+                type: 'info',
+                link: '/client/portal/files',
+            });
+        }
 
         return successResponse(fileRecord, 201);
     } catch (error) {

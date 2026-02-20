@@ -191,3 +191,44 @@ export async function createScheduleCancelNotification({
         link,
     });
 }
+
+// ============================================
+// CLIENT PORTAL NOTIFICATIONS
+// ============================================
+
+export interface CreateClientPortalNotificationParams {
+    title: string;
+    message: string;
+    type?: "info" | "success" | "warning" | "error";
+    link?: string;
+}
+
+/**
+ * Create a notification for all active CLIENT users linked to the given client.
+ * Used for: new opportunity, new RDV, new message, new file.
+ */
+export async function createClientPortalNotification(
+    clientId: string,
+    params: CreateClientPortalNotificationParams
+) {
+    const { title, message, type = "info", link } = params;
+    try {
+        const users = await prisma.user.findMany({
+            where: {
+                role: "CLIENT",
+                clientId,
+                isActive: true,
+            },
+            select: { id: true },
+        });
+        const results = await Promise.allSettled(
+            users.map((u) =>
+                createNotification({ userId: u.id, title, message, type, link })
+            )
+        );
+        return results.every((r) => r.status === "fulfilled");
+    } catch (error) {
+        console.error("Failed to create client portal notification:", error);
+        return false;
+    }
+}

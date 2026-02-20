@@ -20,6 +20,7 @@ import {
   Receipt,
   Search,
   History,
+  HelpCircle,
   LucideIcon,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
@@ -420,6 +421,23 @@ export const CLIENT_NAV: NavSection[] = [
         href: "/client/portal/files",
         icon: FileText,
         label: "Mes Fichiers",
+        permission: "pages.dashboard",
+      },
+      {
+        href: "/client/portal/aide",
+        icon: HelpCircle,
+        label: "Aide",
+        permission: "pages.dashboard",
+      },
+    ],
+  },
+  {
+    title: "Compte",
+    items: [
+      {
+        href: "/client/portal/settings",
+        icon: Settings,
+        label: "Paramètres",
         permission: "pages.dashboard",
       },
     ],

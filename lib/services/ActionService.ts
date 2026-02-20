@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { parseDateFromNote } from '@/lib/utils/parseDateFromNote';
+import { createClientPortalNotification } from '@/lib/notifications';
 import type { EffectiveStatusDefinition } from './StatusConfigService';
 
 // ============================================
@@ -137,6 +138,33 @@ export class ActionService {
 
             return action;
         });
+
+        // 4. Notify client portal (outside transaction)
+        if (action.result === 'MEETING_BOOKED' || action.result === 'INTERESTED') {
+            const campaign = await prisma.campaign.findUnique({
+                where: { id: action.campaignId },
+                select: { mission: { select: { clientId: true } } },
+            });
+            const clientId = campaign?.mission?.clientId;
+            if (clientId) {
+                if (action.result === 'MEETING_BOOKED') {
+                    await createClientPortalNotification(clientId, {
+                        title: 'Nouveau RDV réservé',
+                        message: 'Un nouveau rendez-vous a été réservé pour une de vos missions.',
+                        type: 'success',
+                        link: '/client/portal/meetings',
+                    });
+                } else {
+                    await createClientPortalNotification(clientId, {
+                        title: 'Nouvelle opportunité',
+                        message: 'Un nouveau contact qualifié est disponible sur votre tableau de bord.',
+                        type: 'info',
+                        link: '/client/portal',
+                    });
+                }
+            }
+        }
+        return action;
     }
 
     // ============================================

@@ -9,6 +9,7 @@ import {
     validateRequest,
     getPaginationParams,
 } from '@/lib/api-utils';
+import { createClientPortalNotification } from '@/lib/notifications';
 import { z } from 'zod';
 
 // ============================================
@@ -140,7 +141,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     // Verify contact and company exist and are linked
     const contact = await prisma.contact.findUnique({
         where: { id: data.contactId },
-        include: { company: true },
+        include: {
+            company: {
+                include: {
+                    list: {
+                        include: {
+                            mission: { select: { clientId: true } },
+                        },
+                    },
+                },
+            },
+        },
     });
 
     if (!contact) {
@@ -167,6 +178,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             company: true,
         },
     });
+
+    const clientId = contact.company.list.mission.clientId;
+    if (clientId) {
+        await createClientPortalNotification(clientId, {
+            title: 'Nouvelle opportunité',
+            message: 'Un nouveau contact qualifié est disponible sur votre tableau de bord.',
+            type: 'info',
+            link: '/client/portal',
+        });
+    }
 
     return successResponse(opportunity, 201);
 });

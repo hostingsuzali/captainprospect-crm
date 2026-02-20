@@ -28,6 +28,9 @@ export function NotificationBell() {
     // Get the correct notifications page based on user role
     const getNotificationsPageUrl = () => {
         const role = session?.user?.role;
+        if (role === "CLIENT") {
+            return "/client/portal/notifications";
+        }
         if (role === "SDR" || role === "BUSINESS_DEVELOPER") {
             return "/sdr/notifications";
         } else if (role === "MANAGER") {

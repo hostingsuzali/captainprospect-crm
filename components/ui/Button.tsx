@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-    variant?: "primary" | "secondary" | "success" | "danger" | "ghost";
+    variant?: "primary" | "secondary" | "outline" | "success" | "danger" | "ghost";
     size?: "sm" | "md" | "lg";
     isLoading?: boolean;
 }
@@ -29,6 +29,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             primary:
                 "bg-gradient-to-br from-indigo-500 to-indigo-600 text-white hover:from-indigo-400 hover:to-indigo-500 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/30",
             secondary:
+                "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:border-slate-400",
+            outline:
                 "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:border-slate-400",
             success:
                 "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white hover:-translate-y-0.5 hover:shadow-lg hover:shadow-emerald-500/30",

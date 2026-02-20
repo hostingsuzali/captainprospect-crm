@@ -475,8 +475,9 @@ export default function ClientPortalEmailPage() {
                             ) : (
                                 <div className="flex flex-col gap-2">
                                     <Button
+                                        variant="primary"
                                         onClick={handleConnectGmail}
-                                        className="w-full justify-center gap-2"
+                                        className="w-full justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-500"
                                     >
                                         <svg className="w-4 h-4" viewBox="0 0 24 24">
                                             <path
@@ -489,7 +490,7 @@ export default function ClientPortalEmailPage() {
                                     <Button
                                         variant="outline"
                                         onClick={handleConnectOutlook}
-                                        className="w-full justify-center gap-2"
+                                        className="w-full justify-center gap-2 bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                                     >
                                         <img src="/icons/outlook.svg" alt="" className="w-4 h-4" aria-hidden />
                                         Connecter Outlook
@@ -497,7 +498,7 @@ export default function ClientPortalEmailPage() {
                                     <Button
                                         variant="outline"
                                         onClick={() => setShowImapForm(true)}
-                                        className="w-full justify-center gap-2"
+                                        className="w-full justify-center gap-2 bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                                     >
                                         <Server className="w-4 h-4" />
                                         IMAP / SMTP

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole, withErrorHandler, validateRequest } from '@/lib/api-utils';
+import { createClientPortalNotification } from '@/lib/notifications';
 import { z } from 'zod';
 
 // ============================================
@@ -88,6 +89,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             },
         },
     });
+
+    const clientId = contact.company.list.mission.clientId;
+    if (clientId) {
+        await createClientPortalNotification(clientId, {
+            title: 'Nouveau RDV réservé',
+            message: 'Un nouveau rendez-vous a été réservé pour une de vos missions.',
+            type: 'success',
+            link: '/client/portal/meetings',
+        });
+    }
 
     return NextResponse.json({
         success: true,
