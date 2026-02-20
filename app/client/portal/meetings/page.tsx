@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 const PRESET_LABELS: Record<DateRangePreset, string> = {
     last7: "7 derniers jours",
     last4weeks: "4 dernières semaines",
+    lastMonth: "Mois dernier",
     last6months: "6 derniers mois",
     last12months: "12 derniers mois",
     monthToDate: "Mois en cours",

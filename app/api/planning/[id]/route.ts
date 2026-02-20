@@ -48,6 +48,7 @@ export const GET = withErrorHandler(async (request: NextRequest, { params }: Rou
                     },
                 },
             },
+            missionPlan: { select: { id: true, status: true } },
             createdBy: {
                 select: {
                     id: true,
@@ -75,6 +76,7 @@ const updateBlockSchema = z.object({
     endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     notes: z.string().optional().nullable(),
     status: z.enum(['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
+    suggestionStatus: z.enum(['SUGGESTED', 'CONFIRMED', 'REJECTED']).optional(),
 });
 
 export const PUT = withErrorHandler(async (request: NextRequest, { params }: RouteParams) => {
@@ -130,16 +132,16 @@ export const PUT = withErrorHandler(async (request: NextRequest, { params }: Rou
         }
     }
 
-    // Update block
     const block = await prisma.scheduleBlock.update({
         where: { id },
         data: {
-            missionId: data.missionId,
-            date: data.date ? newDate : undefined,
-            startTime: data.startTime,
-            endTime: data.endTime,
-            notes: data.notes,
-            status: data.status,
+            ...(data.missionId !== undefined && { missionId: data.missionId }),
+            ...(data.date && { date: newDate }),
+            ...(data.startTime !== undefined && { startTime: data.startTime }),
+            ...(data.endTime !== undefined && { endTime: data.endTime }),
+            ...(data.notes !== undefined && { notes: data.notes }),
+            ...(data.status !== undefined && { status: data.status }),
+            ...(data.suggestionStatus !== undefined && { suggestionStatus: data.suggestionStatus }),
         },
         include: {
             sdr: {
@@ -160,6 +162,7 @@ export const PUT = withErrorHandler(async (request: NextRequest, { params }: Rou
                     },
                 },
             },
+            missionPlan: { select: { id: true, status: true } },
             createdBy: {
                 select: {
                     name: true,

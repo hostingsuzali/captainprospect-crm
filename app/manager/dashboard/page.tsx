@@ -86,6 +86,7 @@ interface RecentActivityItem {
 const PRESET_LABELS: Record<DateRangePreset, string> = {
     last7: "7 derniers jours",
     last4weeks: "4 dernières semaines",
+    lastMonth: "Mois dernier",
     last6months: "6 derniers mois",
     last12months: "12 derniers mois",
     monthToDate: "Mois en cours",
@@ -152,8 +153,8 @@ export default function ManagerDashboard() {
     const [missions, setMissions] = useState<MissionSummaryItem[]>([]);
     const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
     const [dateRange, setDateRange] = useState<DateRangeValue>(() => {
-        const { start, end } = getPresetRange("last12months");
-        return { preset: "last12months", startDate: toISO(start), endDate: toISO(end) };
+        const { start, end } = getPresetRange("lastMonth");
+        return { preset: "lastMonth", startDate: toISO(start), endDate: toISO(end) };
     });
     const [dateFilterOpen, setDateFilterOpen] = useState(false);
     const dateFilterRef = useRef<HTMLDivElement>(null);
@@ -169,7 +170,7 @@ export default function ManagerDashboard() {
             let start = dateRange.startDate;
             let end = dateRange.endDate;
             if (!start || !end) {
-                const r = getPresetRange((dateRange.preset as DateRangePreset) || "last12months");
+                const r = getPresetRange((dateRange.preset as DateRangePreset) || "lastMonth");
                 start = toISO(r.start);
                 end = toISO(r.end);
             }

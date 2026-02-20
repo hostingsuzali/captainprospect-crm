@@ -14,6 +14,7 @@ import {
     Phone,
     ArrowRight,
     X,
+    FileText,
 } from "lucide-react";
 import Link from "next/link";
 import { ClientOnboardingModal } from "@/components/manager/ClientOnboardingModal";
@@ -143,6 +144,13 @@ export default function ClientsPage() {
                     >
                         <RefreshCw className={`w-4 h-4 text-slate-500 ${isLoading ? "animate-spin" : ""}`} />
                     </button>
+                    <Link
+                        href="/manager/playbook/import"
+                        className="flex items-center gap-2 h-10 px-5 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                        <FileText className="w-4 h-4" />
+                        Importer un playbook
+                    </Link>
                     <button
                         onClick={() => setShowOnboardingModal(true)}
                         className="mgr-btn-primary flex items-center gap-2 h-10 px-5 text-sm font-medium"

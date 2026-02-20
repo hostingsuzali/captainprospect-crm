@@ -30,20 +30,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const sourceEnd = new Date(sourceStart);
     sourceEnd.setDate(sourceEnd.getDate() + 7);
 
-    // Build where clause
-    const where: Record<string, unknown> = {
+    // Build where clause: only copy CONFIRMED or legacy (null) blocks, not SUGGESTED
+    const where = {
         date: {
             gte: sourceStart,
             lt: sourceEnd,
         },
-        status: { not: 'CANCELLED' },
+        status: { not: 'CANCELLED' as const },
+        OR: [
+            { suggestionStatus: null },
+            { suggestionStatus: 'CONFIRMED' as const },
+        ],
+        ...(data.sdrIds && data.sdrIds.length > 0 ? { sdrId: { in: data.sdrIds } } : {}),
     };
 
-    if (data.sdrIds && data.sdrIds.length > 0) {
-        where.sdrId = { in: data.sdrIds };
-    }
-
-    // Get source blocks
     const sourceBlocks = await prisma.scheduleBlock.findMany({ where });
 
     if (sourceBlocks.length === 0) {
@@ -118,6 +118,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                     startTime: block.startTime,
                     endTime: block.endTime,
                     notes: block.notes,
+                    suggestionStatus: 'CONFIRMED',
+                    missionPlanId: null,
                     createdById: session.user.id,
                 },
             });

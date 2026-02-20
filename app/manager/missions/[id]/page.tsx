@@ -31,6 +31,8 @@ import {
     ListChecks,
 } from "lucide-react";
 import Link from "next/link";
+import { MissionPlanForm } from "./_components/MissionPlanForm";
+import { EditMissionDialog } from "./_components/EditMissionDialog";
 
 // ============================================
 // TYPES
@@ -128,6 +130,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [isToggling, setIsToggling] = useState(false);
 
     // Modals
+    const [showEditMissionDialog, setShowEditMissionDialog] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [showDeleteListModal, setShowDeleteListModal] = useState(false);
     const [listToDelete, setListToDelete] = useState<Mission["lists"][0] | null>(null);
@@ -158,6 +161,21 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [isSavingTeamLead, setIsSavingTeamLead] = useState(false);
     const [showStatusWorkflowDrawer, setShowStatusWorkflowDrawer] = useState(false);
 
+    // Plan de mission (schedule plan)
+    const [missionPlan, setMissionPlan] = useState<{
+        id: string;
+        missionId: string;
+        frequency: number;
+        preferredDays: string[];
+        timePreference: string;
+        customStartTime: string | null;
+        customEndTime: string | null;
+        startDate: string;
+        endDate: string | null;
+        status: string;
+        assignedSdrs: Array<{ sdrId: string; sdr: { id: string; name: string; email: string; role?: string } }>;
+    } | null>(null);
+
     // ============================================
     // FETCH MISSION
     // ============================================
@@ -187,6 +205,41 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     useEffect(() => {
         fetchMission();
     }, [resolvedParams.id]);
+
+    const fetchMissionPlan = async () => {
+        if (!mission?.id) return;
+        try {
+            const res = await fetch(`/api/mission-plans?missionId=${mission.id}`);
+            const json = await res.json();
+            if (json.success && json.data) {
+                const p = json.data;
+                setMissionPlan({
+                    id: p.id,
+                    missionId: p.missionId,
+                    frequency: p.frequency,
+                    preferredDays: p.preferredDays ?? [],
+                    timePreference: p.timePreference,
+                    customStartTime: p.customStartTime ?? null,
+                    customEndTime: p.customEndTime ?? null,
+                    startDate: p.startDate ? new Date(p.startDate).toISOString().slice(0, 10) : "",
+                    endDate: p.endDate ? new Date(p.endDate).toISOString().slice(0, 10) : null,
+                    status: p.status,
+                    assignedSdrs: (p.assignedSdrs ?? []).map((a: { sdrId: string; sdr: { id: string; name: string; email: string; role?: string } }) => ({
+                        sdrId: a.sdrId,
+                        sdr: a.sdr,
+                    })),
+                });
+            } else {
+                setMissionPlan(null);
+            }
+        } catch {
+            setMissionPlan(null);
+        }
+    };
+
+    useEffect(() => {
+        if (mission?.id) fetchMissionPlan();
+    }, [mission?.id]);
 
     // ============================================
     // FETCH AVAILABLE SDRS / BDS
@@ -528,25 +581,28 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const channel = CHANNEL_CONFIG[mission.channel];
     const ChannelIcon = channel.icon;
 
+    const dateRangeStr = mission.startDate
+        ? `${new Date(mission.startDate).toLocaleDateString("fr-FR")} → ${mission.endDate ? new Date(mission.endDate).toLocaleDateString("fr-FR") : "En cours"}`
+        : "—";
+
     return (
         <div className="space-y-6">
-            {/* Premium Hero Header */}
-            <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-8 text-white">
-                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSIvPjwvc3ZnPg==')] opacity-50" />
-                <div className="relative z-10">
-                    <div className="flex items-center gap-3 mb-6">
+            {/* Compact header with inline stats */}
+            <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-6 text-white">
+                <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 flex-wrap">
                         <Link
                             href="/manager/missions"
-                            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors shrink-0"
                         >
                             <ArrowLeft className="w-4 h-4" />
                         </Link>
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-xl font-bold">
+                        <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center text-lg font-bold shrink-0">
                             {mission.client?.name?.[0] || "M"}
                         </div>
-                        <div className="flex-1">
-                            <div className="flex items-center gap-3 flex-wrap mb-1">
-                                <h1 className="text-2xl font-bold">{mission.name}</h1>
+                        <div>
+                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                <h1 className="text-xl font-bold">{mission.name}</h1>
                                 <span className={mission.isActive ? "mgr-badge-active" : "mgr-badge-paused"}>
                                     {mission.isActive ? "Actif" : "Pause"}
                                 </span>
@@ -555,38 +611,31 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                     {channel.label}
                                 </span>
                             </div>
-                            <p className="text-slate-400">
-                                {mission.client?.name}
-                                {mission.objective && ` · ${mission.objective}`}
+                            <p className="text-sm text-slate-400">
+                                {assignedSDRs.length} SDR{assignedSDRs.length !== 1 ? "s" : ""} · {assignedBDs.length} BD{assignedBDs.length !== 1 ? "s" : ""} · {mission._count.lists} liste{mission._count.lists !== 1 ? "s" : ""} · {dateRangeStr}
                             </p>
                         </div>
                     </div>
-
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={toggleActive}
                             disabled={isToggling}
-                            className="flex items-center gap-2 h-9 px-4 text-sm font-medium bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-lg transition-colors"
+                            className="flex items-center gap-2 h-9 px-3 text-sm font-medium bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-lg transition-colors"
                         >
-                            {isToggling ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : mission.isActive ? (
-                                <PauseCircle className="w-4 h-4" />
-                            ) : (
-                                <PlayCircle className="w-4 h-4" />
-                            )}
+                            {isToggling ? <Loader2 className="w-4 h-4 animate-spin" /> : mission.isActive ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
                             {mission.isActive ? "Pause" : "Activer"}
                         </button>
-                        <Link
-                            href={`/manager/missions/${mission.id}/edit`}
-                            className="flex items-center gap-2 h-9 px-4 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                        <button
+                            type="button"
+                            onClick={() => setShowEditMissionDialog(true)}
+                            className="flex items-center gap-2 h-9 px-3 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
                         >
                             <Edit className="w-4 h-4" />
                             Modifier
-                        </Link>
+                        </button>
                         <button
                             onClick={() => setShowDeleteModal(true)}
-                            className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors"
+                            className="flex items-center gap-2 h-9 px-3 text-sm font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors"
                         >
                             <Trash2 className="w-4 h-4" />
                         </button>
@@ -594,448 +643,350 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                 </div>
             </div>
 
-            {/* Premium Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
-                <div className="mgr-stat-card">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center">
-                            <Users className="w-6 h-6 text-indigo-600" />
+            {/* Two columns: left = action (62%), right = config (38%) */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+                {/* ——— LEFT COLUMN (action-oriented) ——— */}
+                <div className="space-y-6">
+                    {/* Plan de mission — largest, top */}
+                    <div id="plan" className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-cyan-500">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 rounded-xl bg-cyan-100 flex items-center justify-center">
+                                <Calendar className="w-5 h-5 text-cyan-600" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-semibold text-slate-900">Plan de mission</h2>
+                                <p className="text-sm text-slate-500">Fréquence, jours et SDRs pour générer le planning</p>
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-2xl font-bold text-slate-900">{assignedSDRs.length}</p>
-                            <p className="text-sm text-slate-500">SDRs assignés</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="mgr-stat-card">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center">
-                            <Briefcase className="w-6 h-6 text-violet-600" />
-                        </div>
-                        <div>
-                            <p className="text-2xl font-bold text-slate-900">{assignedBDs.length}</p>
-                            <p className="text-sm text-slate-500">BDs assignés</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="mgr-stat-card">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
-                            <Target className="w-6 h-6 text-emerald-600" />
-                        </div>
-                        <div>
-                            <p className="text-2xl font-bold text-slate-900">{mission.campaigns.length > 0 ? "Oui" : "Non"}</p>
-                            <p className="text-sm text-slate-500">Stratégie</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="mgr-stat-card">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
-                            <ListIcon className="w-6 h-6 text-amber-600" />
-                        </div>
-                        <div>
-                            <p className="text-2xl font-bold text-slate-900">{mission._count.lists}</p>
-                            <p className="text-sm text-slate-500">Listes</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="mgr-stat-card">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-cyan-100 flex items-center justify-center">
-                            <Calendar className="w-6 h-6 text-cyan-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-slate-900">
-                                {mission.startDate ? new Date(mission.startDate).toLocaleDateString("fr-FR") : "-"}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                                → {mission.endDate ? new Date(mission.endDate).toLocaleDateString("fr-FR") : "En cours"}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Team lead: who can see all teammates' rappels and notes */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-amber-500">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                            <Eye className="w-5 h-5 text-amber-600" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-semibold text-slate-900">Responsable d&apos;équipe</h2>
-                            <p className="text-sm text-slate-500">Voit tous les rappels et notes des membres de la mission</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 min-w-[220px]">
-                        <Select
-                            placeholder="Aucun"
-                            value={teamLeadSdrId}
-                            onChange={(v) => handleTeamLeadChange(v)}
-                            disabled={isSavingTeamLead || (mission.sdrAssignments.length === 0)}
-                            options={[
-                                { value: "", label: "Aucun" },
-                                ...mission.sdrAssignments.map((a) => ({
-                                    value: a.sdr.id,
-                                    label: `${a.sdr.name}${a.sdr.role === "BUSINESS_DEVELOPER" ? " (BD)" : ""}`,
-                                })),
-                            ]}
+                        <MissionPlanForm
+                            missionId={mission.id}
+                            missionName={mission.name}
+                            sdrAssignments={mission.sdrAssignments}
+                            existingPlan={missionPlan}
+                            onPlanSaved={fetchMissionPlan}
                         />
-                        {isSavingTeamLead && <Loader2 className="w-4 h-4 animate-spin text-slate-400 shrink-0" />}
                     </div>
-                </div>
-            </div>
 
-            {/* Statuts et workflow */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-teal-500">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
-                            <ListChecks className="w-5 h-5 text-teal-600" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-semibold text-slate-900">Statuts et workflow</h2>
-                            <p className="text-sm text-slate-500">Statuts d&apos;appel et priorités pour cette mission</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => setShowStatusWorkflowDrawer(true)}
-                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-teal-600 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors"
-                    >
-                        Gérer les statuts
-                        <ChevronRight className="w-4 h-4" />
-                    </button>
-                </div>
-            </div>
-
-            {/* SDRs & BDs two-column layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left: SDRs */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-indigo-500">
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
-                                <Users className="w-5 h-5 text-indigo-600" />
+                    {/* Stratégie & Script */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                                    <Target className="w-5 h-5 text-emerald-600" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-slate-900">Stratégie & Script</h2>
+                                    <p className="text-sm text-slate-500">ICP, pitch et script de prospection</p>
+                                </div>
                             </div>
-                            <h2 className="text-lg font-semibold text-slate-900">SDRs</h2>
-                        </div>
-                        <button
-                            onClick={() => {
-                                fetchAvailableSDRs();
-                                setShowAssignSDRModal(true);
-                            }}
-                            className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                        >
-                            <UserPlus className="w-4 h-4" />
-                            Assigner
-                        </button>
-                    </div>
-                    {assignedSDRs.length === 0 ? (
-                        <div className="text-center py-10">
-                            <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                            <p className="text-sm text-slate-500">Aucun SDR assigné</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar" aria-label="Liste des SDRs assignés">
-                            {assignedSDRs.map((assignment) => (
-                                <div
-                                    key={assignment.id}
-                                    className="mgr-mission-card flex items-center gap-4 p-4"
-                                >
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-600 shrink-0">
-                                        {assignment.sdr.name.split(" ").map(n => n[0]).join("")}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-slate-900 truncate">{assignment.sdr.name}</p>
-                                        <p className="text-sm text-slate-500 truncate">{assignment.sdr.email}</p>
-                                    </div>
-                                    <button
-                                        onClick={() => handleUnassign(assignment.sdr.id)}
-                                        disabled={unassigningId === assignment.sdr.id}
-                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 shrink-0"
-                                        title="Retirer de la mission"
-                                    >
-                                        {unassigningId === assignment.sdr.id ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <UserMinus className="w-4 h-4" />
-                                        )}
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* Right: BDs */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-violet-500">
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
-                                <Briefcase className="w-5 h-5 text-violet-600" />
-                            </div>
-                            <h2 className="text-lg font-semibold text-slate-900">BDs</h2>
-                        </div>
-                        <button
-                            onClick={() => {
-                                fetchAvailableBDs();
-                                setShowAssignBDModal(true);
-                            }}
-                            className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-lg transition-colors"
-                        >
-                            <UserPlus className="w-4 h-4" />
-                            Assigner
-                        </button>
-                    </div>
-                    {assignedBDs.length === 0 ? (
-                        <div className="text-center py-10">
-                            <Briefcase className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                            <p className="text-sm text-slate-500">Aucun BD assigné</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar" aria-label="Liste des BDs assignés">
-                            {assignedBDs.map((assignment) => (
-                                <div
-                                    key={assignment.id}
-                                    className="mgr-mission-card flex items-center gap-4 p-4"
-                                >
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-100 to-violet-200 flex items-center justify-center text-xs font-bold text-violet-600 shrink-0">
-                                        {assignment.sdr.name.split(" ").map(n => n[0]).join("")}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-slate-900 truncate">{assignment.sdr.name}</p>
-                                        <p className="text-sm text-slate-500 truncate">{assignment.sdr.email}</p>
-                                    </div>
-                                    <button
-                                        onClick={() => handleUnassign(assignment.sdr.id)}
-                                        disabled={unassigningId === assignment.sdr.id}
-                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 shrink-0"
-                                        title="Retirer de la mission"
-                                    >
-                                        {unassigningId === assignment.sdr.id ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <UserMinus className="w-4 h-4" />
-                                        )}
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Campaigns Section — inline view */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-                            <Target className="w-5 h-5 text-emerald-600" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-semibold text-slate-900">Stratégie & Script</h2>
-                            <p className="text-sm text-slate-500">ICP, pitch et script de prospection</p>
-                        </div>
-                    </div>
-                    {mission.campaigns.length > 0 && (
-                        <Link
-                            href={`/manager/campaigns/${mission.campaigns[0].id}`}
-                            className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
-                        >
-                            <Edit className="w-4 h-4" />
-                            Modifier
-                        </Link>
-                    )}
-                </div>
-
-                {mission.campaigns.length === 0 ? (
-                    <div className="text-center py-12">
-                        <Target className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                        <p className="text-sm text-slate-500">Aucune stratégie configurée</p>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        {mission.campaigns.slice(0, 1).map((campaign) => (
-                            <div key={campaign.id} className="space-y-4">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className={campaign.isActive ? "mgr-badge-active" : "mgr-badge-paused"}>
-                                        {campaign.isActive ? "Actif" : "Pause"}
-                                    </span>
-                                </div>
-                                <p className="text-sm text-slate-500">
-                                    Consultez et modifiez l&apos;ICP, le pitch et le script via la page de détails de la campagne.
-                                </p>
+                            {mission.campaigns.length > 0 && (
                                 <Link
-                                    href={`/manager/campaigns/${campaign.id}`}
-                                    className="mgr-mission-card group flex items-center gap-4 p-4 block"
+                                    href={`/manager/campaigns/${mission.campaigns[0].id}`}
+                                    className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
                                 >
-                                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                                        <Target className="w-5 h-5 text-emerald-600" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="font-medium text-slate-900 group-hover:text-indigo-600 transition-colors">Voir le script & la stratégie</p>
-                                    </div>
-                                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+                                    <Edit className="w-4 h-4" />
+                                    Modifier
                                 </Link>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Lists Section */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                            <ListIcon className="w-5 h-5 text-amber-600" />
+                            )}
                         </div>
-                        <h2 className="text-lg font-semibold text-slate-900">Listes de contacts</h2>
-                    </div>
-                    <Link
-                        href={`/manager/lists/new?missionId=${mission.id}`}
-                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
-                    >
-                        <ListIcon className="w-4 h-4" />
-                        Nouvelle
-                    </Link>
-                </div>
-
-                {mission.lists.length === 0 ? (
-                    <div className="text-center py-12">
-                        <ListIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                        <p className="text-sm text-slate-500">Aucune liste</p>
-                    </div>
-                ) : (
-                    <div className="space-y-2">
-                        {mission.lists.map((list) => (
-                            <div
-                                key={list.id}
-                                className="relative"
-                                onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    handleListContextMenu(e, list);
-                                }}
+                        {mission.campaigns.length === 0 ? (
+                            <p className="text-sm text-slate-500">Aucune stratégie configurée</p>
+                        ) : (
+                            <Link
+                                href={`/manager/campaigns/${mission.campaigns[0].id}`}
+                                className="mgr-mission-card group flex items-center gap-4 p-4 block"
                             >
-                                <Link
-                                    href={`/manager/lists/${list.id}`}
-                                    className="mgr-mission-card group flex items-center gap-4 p-4 block"
-                                >
-                                    <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                                        <ListIcon className="w-5 h-5 text-amber-600" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="font-medium text-slate-900 group-hover:text-indigo-600 transition-colors">{list.name}</p>
-                                        <p className="text-sm text-slate-500">
-                                            {list._count?.companies || 0} sociétés · {list._count?.contacts || 0} contacts
-                                        </p>
-                                    </div>
-                                    <span className="text-xs font-medium text-slate-500 px-2 py-1 bg-slate-100 rounded">{list.type}</span>
-                                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
-                                </Link>
+                                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <Target className="w-5 h-5 text-emerald-600" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="font-medium text-slate-900 group-hover:text-indigo-600 transition-colors">Voir le script & la stratégie</p>
+                                </div>
+                                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+                            </Link>
+                        )}
+                    </div>
+
+                    {/* Listes de contacts */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                                    <ListIcon className="w-5 h-5 text-amber-600" />
+                                </div>
+                                <h2 className="text-lg font-semibold text-slate-900">Listes de contacts</h2>
                             </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Email Templates Section */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-indigo-500">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center">
-                            <Mail className="w-5 h-5 text-indigo-600" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-semibold text-slate-900">Email Templates</h2>
-                            <p className="text-sm text-slate-500">Templates pour envoi rapide</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => {
-                            fetchAvailableTemplates();
-                            setShowAddTemplateModal(true);
-                        }}
-                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Ajouter
-                    </button>
-                </div>
-
-                {isLoadingTemplates ? (
-                    <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
-                    </div>
-                ) : missionTemplates.length === 0 ? (
-                    <div className="text-center py-12">
-                        <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                            <FileText className="w-8 h-8 text-slate-400" />
-                        </div>
-                        <h3 className="text-base font-medium text-slate-900 mb-1">Aucun template</h3>
-                        <p className="text-sm text-slate-500 mb-4">
-                            Aucun template pour le moment. Créez-en un pour envoyer des emails depuis cette mission.
-                        </p>
-                        <a
-                            href="/manager/email/templates"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                        >
-                            <Plus className="w-4 h-4" />
-                            Créer un template
-                            <ExternalLink className="w-4 h-4" />
-                        </a>
-                    </div>
-                ) : (
-                    <div className="grid gap-3">
-                        {missionTemplates.map((mt) => (
-                            <div
-                                key={mt.id}
-                                className="group flex items-center gap-4 p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all"
+                            <Link
+                                href={`/manager/lists/new?missionId=${mission.id}`}
+                                className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
                             >
-                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center flex-shrink-0">
-                                    <Sparkles className="w-6 h-6 text-white" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <p className="font-medium text-slate-900 truncate">{mt.template.name}</p>
-                                        <span className="px-2 py-0.5 text-xs font-medium text-indigo-600 bg-indigo-100 rounded-full">
-                                            {mt.template.category}
-                                        </span>
-                                    </div>
-                                    <p className="text-sm text-slate-500 truncate">{mt.template.subject}</p>
-                                </div>
-                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        onClick={() => {
-                                            setPreviewTemplate(mt.template);
-                                            setShowPreviewModal(true);
+                                <ListIcon className="w-4 h-4" />
+                                Nouvelle
+                            </Link>
+                        </div>
+                        {mission.lists.length === 0 ? (
+                            <p className="text-sm text-slate-500">Aucune liste</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {mission.lists.map((list) => (
+                                    <div
+                                        key={list.id}
+                                        className="relative"
+                                        onContextMenu={(e) => {
+                                            e.preventDefault();
+                                            handleListContextMenu(e, list);
                                         }}
-                                        className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                        title="Prévisualiser"
                                     >
-                                        <Eye className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => handleRemoveTemplate(mt.template.id)}
-                                        disabled={removingTemplateId === mt.template.id}
-                                        className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                                        title="Retirer"
-                                    >
-                                        {removingTemplateId === mt.template.id ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <X className="w-4 h-4" />
-                                        )}
-                                    </button>
+                                        <Link
+                                            href={`/manager/lists/${list.id}`}
+                                            className="mgr-mission-card group flex items-center gap-4 p-4 block"
+                                        >
+                                            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                <ListIcon className="w-5 h-5 text-amber-600" />
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="font-medium text-slate-900 group-hover:text-indigo-600 transition-colors">{list.name}</p>
+                                                <p className="text-sm text-slate-500">
+                                                    {list._count?.companies || 0} sociétés · {list._count?.contacts || 0} contacts
+                                                </p>
+                                            </div>
+                                            <span className="text-xs font-medium text-slate-500 px-2 py-1 bg-slate-100 rounded">{list.type}</span>
+                                            <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
+                                        </Link>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Email Templates */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-indigo-500">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center">
+                                    <Mail className="w-5 h-5 text-indigo-600" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-slate-900">Email Templates</h2>
+                                    <p className="text-sm text-slate-500">Templates pour envoi rapide</p>
                                 </div>
                             </div>
-                        ))}
+                            <button
+                                onClick={() => {
+                                    fetchAvailableTemplates();
+                                    setShowAddTemplateModal(true);
+                                }}
+                                className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Ajouter
+                            </button>
+                        </div>
+                        {isLoadingTemplates ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                            </div>
+                        ) : missionTemplates.length === 0 ? (
+                            <p className="text-sm text-slate-500 mb-3">Aucun template.</p>
+                        ) : (
+                            <div className="grid gap-2">
+                                {missionTemplates.map((mt) => (
+                                    <div
+                                        key={mt.id}
+                                        className="group flex items-center gap-4 p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all"
+                                    >
+                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center flex-shrink-0">
+                                            <Sparkles className="w-5 h-5 text-white" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-medium text-slate-900 truncate text-sm">{mt.template.name}</p>
+                                            <p className="text-xs text-slate-500 truncate">{mt.template.subject}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={() => { setPreviewTemplate(mt.template); setShowPreviewModal(true); }}
+                                                className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                                                title="Prévisualiser"
+                                            >
+                                                <Eye className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleRemoveTemplate(mt.template.id)}
+                                                disabled={removingTemplateId === mt.template.id}
+                                                className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                                                title="Retirer"
+                                            >
+                                                {removingTemplateId === mt.template.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {missionTemplates.length === 0 && (
+                            <a
+                                href="/manager/email/templates"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 mt-2 text-sm font-medium text-indigo-600 hover:underline"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Créer un template
+                                <ExternalLink className="w-4 h-4" />
+                            </a>
+                        )}
                     </div>
-                )}
+                </div>
+
+                {/* ——— RIGHT COLUMN (reference / config) ——— */}
+                <div className="space-y-6">
+                    {/* Équipe (unified: responsable + SDRs + BDs) */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-indigo-500">
+                        <h2 className="text-lg font-semibold text-slate-900 mb-4">Équipe</h2>
+                        <div className="space-y-4">
+                            <div>
+                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Responsable</p>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 min-w-0">
+                                        <Select
+                                            placeholder="Aucun"
+                                            value={teamLeadSdrId}
+                                            onChange={(v) => handleTeamLeadChange(v)}
+                                            disabled={isSavingTeamLead || (mission.sdrAssignments.length === 0)}
+                                            options={[
+                                                { value: "", label: "Aucun" },
+                                                ...mission.sdrAssignments.map((a) => ({
+                                                    value: a.sdr.id,
+                                                    label: `${a.sdr.name}${a.sdr.role === "BUSINESS_DEVELOPER" ? " (BD)" : ""}`,
+                                                })),
+                                            ]}
+                                        />
+                                    </div>
+                                    {isSavingTeamLead && <Loader2 className="w-4 h-4 animate-spin text-slate-400 shrink-0" />}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">SDRs assignés ({assignedSDRs.length})</p>
+                                    <button
+                                        onClick={() => { fetchAvailableSDRs(); setShowAssignSDRModal(true); }}
+                                        className="text-xs font-medium text-indigo-600 hover:underline"
+                                    >
+                                        + Assigner
+                                    </button>
+                                </div>
+                                {assignedSDRs.length === 0 ? (
+                                    <p className="text-sm text-slate-500">Aucun SDR</p>
+                                ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                        {assignedSDRs.map((assignment) => (
+                                            <span
+                                                key={assignment.id}
+                                                className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-800 text-sm"
+                                            >
+                                                <span className="w-6 h-6 rounded-full bg-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-700">
+                                                    {assignment.sdr.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                                                </span>
+                                                {assignment.sdr.name.split(" ")[0]}
+                                                <button
+                                                    onClick={() => handleUnassign(assignment.sdr.id)}
+                                                    disabled={unassigningId === assignment.sdr.id}
+                                                    className="p-0.5 rounded hover:bg-indigo-200/50 text-indigo-600 disabled:opacity-50"
+                                                    title="Retirer"
+                                                >
+                                                    {unassigningId === assignment.sdr.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">BDs ({assignedBDs.length})</p>
+                                    <button
+                                        onClick={() => { fetchAvailableBDs(); setShowAssignBDModal(true); }}
+                                        className="text-xs font-medium text-violet-600 hover:underline"
+                                    >
+                                        + Assigner
+                                    </button>
+                                </div>
+                                {assignedBDs.length === 0 ? (
+                                    <p className="text-sm text-slate-500">Aucun BD</p>
+                                ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                        {assignedBDs.map((assignment) => (
+                                            <span
+                                                key={assignment.id}
+                                                className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1.5 rounded-lg bg-violet-50 text-violet-800 text-sm"
+                                            >
+                                                <span className="w-6 h-6 rounded-full bg-violet-200 flex items-center justify-center text-xs font-bold text-violet-700">
+                                                    {assignment.sdr.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                                                </span>
+                                                {assignment.sdr.name.split(" ")[0]}
+                                                <button
+                                                    onClick={() => handleUnassign(assignment.sdr.id)}
+                                                    disabled={unassigningId === assignment.sdr.id}
+                                                    className="p-0.5 rounded hover:bg-violet-200/50 text-violet-600 disabled:opacity-50"
+                                                    title="Retirer"
+                                                >
+                                                    {unassigningId === assignment.sdr.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Statuts et workflow */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-teal-500">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <h2 className="text-lg font-semibold text-slate-900">Statuts et workflow</h2>
+                                <p className="text-sm text-slate-500">Statuts d&apos;appel et priorités</p>
+                            </div>
+                            <button
+                                onClick={() => setShowStatusWorkflowDrawer(true)}
+                                className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-teal-600 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors shrink-0"
+                            >
+                                Gérer les statuts
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Infos mission */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                        <h2 className="text-lg font-semibold text-slate-900 mb-4">Infos mission</h2>
+                        <dl className="space-y-3 text-sm">
+                            <div>
+                                <dt className="text-slate-500 font-medium">Canal</dt>
+                                <dd className="text-slate-900 flex items-center gap-2 mt-0.5">
+                                    <ChannelIcon className="w-4 h-4 text-slate-500" />
+                                    {channel.label}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-slate-500 font-medium">Client</dt>
+                                <dd className="text-slate-900 mt-0.5">{mission.client?.name ?? "—"}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-slate-500 font-medium">Début</dt>
+                                <dd className="text-slate-900 mt-0.5">
+                                    {mission.startDate ? new Date(mission.startDate).toLocaleDateString("fr-FR") : "—"}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-slate-500 font-medium">Fin</dt>
+                                <dd className="text-slate-900 mt-0.5">
+                                    {mission.endDate ? new Date(mission.endDate).toLocaleDateString("fr-FR") : "En cours"}
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+                </div>
             </div>
 
             {/* Add Template Modal */}
@@ -1192,6 +1143,13 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                 </div>
             )}
+
+            <EditMissionDialog
+                isOpen={showEditMissionDialog}
+                onClose={() => setShowEditMissionDialog(false)}
+                mission={mission}
+                onSaved={fetchMission}
+            />
 
             {/* Delete Confirmation Modal */}
             <ConfirmModal

@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 export type DateRangePreset =
     | "last7"
     | "last4weeks"
+    | "lastMonth"
     | "last6months"
     | "last12months"
     | "monthToDate"
@@ -23,6 +24,7 @@ export interface DateRangeValue {
 const PRESETS: { key: DateRangePreset; label: string }[] = [
     { key: "last7", label: "7 derniers jours" },
     { key: "last4weeks", label: "4 dernières semaines" },
+    { key: "lastMonth", label: "Mois dernier" },
     { key: "last6months", label: "6 derniers mois" },
     { key: "last12months", label: "12 derniers mois" },
     { key: "monthToDate", label: "Mois en cours" },
@@ -58,6 +60,13 @@ export function getPresetRange(preset: DateRangePreset): { start: Date; end: Dat
         case "last4weeks":
             start.setDate(start.getDate() - 4 * 7);
             break;
+        case "lastMonth": {
+            start.setMonth(start.getMonth() - 1);
+            start.setDate(1);
+            const endLastMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+            endLastMonth.setHours(23, 59, 59, 999);
+            return { start, end: endLastMonth };
+        }
         case "last6months":
             start.setMonth(start.getMonth() - 6);
             break;

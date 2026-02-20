@@ -15,6 +15,7 @@ import { z } from 'zod';
 // ============================================
 
 const updateMissionSchema = z.object({
+    clientId: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     objective: z.string().min(1).optional(),
     channel: z.enum(['CALL', 'EMAIL', 'LINKEDIN']).optional(),

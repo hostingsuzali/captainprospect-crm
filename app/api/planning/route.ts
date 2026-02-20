@@ -39,6 +39,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
     if (sdrId) where.sdrId = sdrId;
     if (missionId) where.missionId = missionId;
+    // Hide REJECTED suggestions from view
+    where.AND = [
+        {
+            OR: [
+                { suggestionStatus: null },
+                { suggestionStatus: 'SUGGESTED' },
+                { suggestionStatus: 'CONFIRMED' },
+            ],
+        },
+    ];
 
     const blocks = await prisma.scheduleBlock.findMany({
         where,
@@ -48,6 +58,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                     id: true,
                     name: true,
                     email: true,
+                    role: true,
                 },
             },
             mission: {
@@ -55,12 +66,20 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                     id: true,
                     name: true,
                     channel: true,
+                    startDate: true,
+                    endDate: true,
                     client: {
                         select: {
                             id: true,
                             name: true,
                         },
                     },
+                },
+            },
+            missionPlan: {
+                select: {
+                    id: true,
+                    status: true,
                 },
             },
             createdBy: {
@@ -76,7 +95,20 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         ],
     });
 
-    return successResponse(blocks);
+    // Only return blocks whose date is within the mission's startDate/endDate
+    const missionStart = (m: { startDate: Date } | null) => (m?.startDate ? new Date(m.startDate).getTime() : -Infinity);
+    const missionEnd = (m: { endDate: Date } | null) => (m?.endDate ? new Date(m.endDate).getTime() : Infinity);
+    const blockDateMs = (b: { date: Date }) => new Date(b.date).setHours(0, 0, 0, 0);
+    const filtered = blocks.filter((b) => {
+        const m = b.mission as { startDate?: Date; endDate?: Date } | null;
+        if (!m) return true;
+        const start = missionStart(m);
+        const end = missionEnd(m);
+        const d = blockDateMs(b);
+        return d >= start && d <= end;
+    });
+
+    return successResponse(filtered);
 });
 
 // ============================================
@@ -106,27 +138,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const [year, month, day] = data.date.split('-').map(Number);
     const blockDate = new Date(year, month - 1, day, 0, 0, 0, 0);
 
-    // Check for overlapping blocks
+    // Check for overlapping blocks (only CONFIRMED or legacy blocks block the slot)
     const overlapping = await prisma.scheduleBlock.findFirst({
         where: {
             sdrId: data.sdrId,
             date: blockDate,
             status: { not: 'CANCELLED' },
-            OR: [
-                // New block starts during existing block
+            AND: [
                 {
-                    startTime: { lte: data.startTime },
-                    endTime: { gt: data.startTime },
+                    OR: [
+                        { suggestionStatus: null },
+                        { suggestionStatus: 'CONFIRMED' },
+                    ],
                 },
-                // New block ends during existing block
                 {
-                    startTime: { lt: data.endTime },
-                    endTime: { gte: data.endTime },
-                },
-                // New block encompasses existing block
-                {
-                    startTime: { gte: data.startTime },
-                    endTime: { lte: data.endTime },
+                    OR: [
+                        { startTime: { lte: data.startTime }, endTime: { gt: data.startTime } },
+                        { startTime: { lt: data.endTime }, endTime: { gte: data.endTime } },
+                        { startTime: { gte: data.startTime }, endTime: { lte: data.endTime } },
+                    ],
                 },
             ],
         },
@@ -148,7 +178,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         return errorResponse('Le SDR n\'est pas assigné à cette mission', 400);
     }
 
-    // Create block
+    // Create block (manual = CONFIRMED, no mission plan)
     const block = await prisma.scheduleBlock.create({
         data: {
             sdrId: data.sdrId,
@@ -157,6 +187,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             startTime: data.startTime,
             endTime: data.endTime,
             notes: data.notes,
+            suggestionStatus: 'CONFIRMED',
+            missionPlanId: null,
             createdById: session.user.id,
         },
         include: {
@@ -171,6 +203,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                 select: {
                     id: true,
                     name: true,
+                    channel: true,
                     client: {
                         select: {
                             name: true,
@@ -178,6 +211,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                     },
                 },
             },
+            missionPlan: { select: { id: true, status: true } },
             createdBy: {
                 select: {
                     name: true,

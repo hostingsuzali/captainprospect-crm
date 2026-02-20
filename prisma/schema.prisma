@@ -333,6 +333,7 @@ model User {
   // Scheduling (for SDRs)
   scheduleBlocks       ScheduleBlock[] @relation("SDRScheduleBlocks")
   createdScheduleBlocks ScheduleBlock[] @relation("CreatedScheduleBlocks")
+  missionPlanSdrAssignments MissionPlanSdr[]
   
   // CRM Activity Tracking
   crmActivityDays     CrmActivityDay[]
@@ -474,6 +475,7 @@ model Mission {
   lists         List[]
   sdrAssignments SDRAssignment[]
   scheduleBlocks ScheduleBlock[]
+  missionPlans   MissionPlan[]
   folders       Folder[]
   files         File[]
 
@@ -1012,41 +1014,108 @@ model ProjectTemplate {
 // MANAGER PLANNING / SCHEDULING
 // ============================================
 
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+}
+
+enum TimePreference {
+  MORNING
+  AFTERNOON
+  FULL_DAY
+  CUSTOM
+}
+
+enum MissionPlanStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum SuggestionStatus {
+  SUGGESTED
+  CONFIRMED
+  REJECTED
+}
+
+model MissionPlan {
+  id               String            @id @default(cuid())
+  missionId        String
+  mission          Mission           @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  frequency        Int               // 1-5 days per week
+  preferredDays    DayOfWeek[]
+  timePreference   TimePreference
+  customStartTime  String?           // HH:mm, only when CUSTOM
+  customEndTime    String?           // HH:mm, only when CUSTOM
+  startDate        DateTime         @db.Date
+  endDate          DateTime?        @db.Date  // null = ongoing
+  status           MissionPlanStatus @default(DRAFT)
+  assignedSdrs     MissionPlanSdr[]
+  scheduleBlocks   ScheduleBlock[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([missionId])
+  @@index([status])
+}
+
+model MissionPlanSdr {
+  id            String     @id @default(cuid())
+  missionPlanId String
+  missionPlan   MissionPlan @relation(fields: [missionPlanId], references: [id], onDelete: Cascade)
+  sdrId         String
+  sdr           User       @relation(fields: [sdrId], references: [id], onDelete: Cascade)
+  createdAt     DateTime   @default(now())
+
+  @@unique([missionPlanId, sdrId])
+  @@index([sdrId])
+}
+
 model ScheduleBlock {
-  id            String    @id @default(cuid())
+  id                String    @id @default(cuid())
   
   // The SDR being scheduled
-  sdrId         String
-  sdr           User      @relation("SDRScheduleBlocks", fields: [sdrId], references: [id], onDelete: Cascade)
+  sdrId             String
+  sdr               User      @relation("SDRScheduleBlocks", fields: [sdrId], references: [id], onDelete: Cascade)
   
   // The mission they're working on
-  missionId     String
-  mission       Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  missionId         String
+  mission           Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
   
   // Time slot
-  date          DateTime  @db.Date
-  startTime     String    // HH:mm format (e.g., "09:00")
-  endTime       String    // HH:mm format (e.g., "12:00")
+  date              DateTime  @db.Date
+  startTime         String    // HH:mm format (e.g., "09:00")
+  endTime           String    // HH:mm format (e.g., "12:00")
   
   // Optional notes
-  notes         String?
+  notes             String?
   
   // Status
-  status        ScheduleBlockStatus @default(SCHEDULED)
+  status            ScheduleBlockStatus @default(SCHEDULED)
+  
+  // Suggestion workflow (null = legacy/manual, treat as CONFIRMED)
+  suggestionStatus  SuggestionStatus?
+  missionPlanId     String?
+  missionPlan       MissionPlan? @relation(fields: [missionPlanId], references: [id], onDelete: SetNull)
+  generatedAt       DateTime?
   
   // Created by (manager)
-  createdById   String
-  createdBy     User      @relation("CreatedScheduleBlocks", fields: [createdById], references: [id])
+  createdById       String
+  createdBy         User      @relation("CreatedScheduleBlocks", fields: [createdById], references: [id])
   
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
   
   @@index([sdrId])
   @@index([missionId])
   @@index([date])
   @@index([createdById])
-  // Ensure no overlapping blocks for same SDR on same day
-  @@unique([sdrId, date, startTime])
+  @@index([missionPlanId])
+  @@index([suggestionStatus])
 }
 
 enum ScheduleBlockStatus {
