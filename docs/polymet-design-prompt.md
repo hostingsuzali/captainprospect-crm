@@ -65,7 +65,7 @@ Design a **complete UX/UI overhaul** so that:
    - SDR: Appeler (main call screen), Rappels, Historique.  
    - Client: Portal home, Mes RDV, Résultats.  
    Optional: BD dashboard, Developer dashboard, Email sequences list.
-4. **SDR “Appeler” flow** — Step-by-step UX: how the next contact is presented, how result is logged, how RDV is booked, how “next” is triggered. Aim for **minimum steps and maximum speed**.
+4. **SDR “Appeler” flow** — Step-by-step UX: how the next contact is presented, how result is logged, how RDV is booked, how “next” is triggered. Aim for **minimum steps and maximum speed**   .   
 5. **Billing UX** — How Offres, Engagements, and Factures connect visually (e.g. from Client → Engagement → Factures), and how invoice detail shows forfait + RDV breakdown + per-mission RDV.
 6. **Responsive and states** — Which screens are desktop-first vs mobile-friendly; empty states, loading, and error states for main views.
 

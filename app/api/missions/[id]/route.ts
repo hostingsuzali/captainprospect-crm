@@ -51,7 +51,7 @@ export const GET = withErrorHandler(async (
                 },
             },
             sdrAssignments: {
-                include: { sdr: { select: { id: true, name: true, email: true, role: true } } },
+                include: { sdr: { select: { id: true, name: true, email: true, role: true, selectedListId: true, selectedMissionId: true } } },
             },
             teamLeadSdr: { select: { id: true, name: true, email: true } },
             _count: {

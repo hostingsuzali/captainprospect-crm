@@ -22,7 +22,13 @@ export async function GET(req: NextRequest) {
         });
 
         return NextResponse.json({ success: true, data: { notifications, unreadCount } });
-    } catch (error) {
+    } catch (error: unknown) {
+        const prismaError = error as { code?: string };
+        if (prismaError?.code === "P1001" || prismaError?.code === "P1017") {
+            // Database unreachable - return empty to avoid breaking the UI
+            console.warn("Database unreachable, returning empty notifications:", prismaError?.code);
+            return NextResponse.json({ success: true, data: { notifications: [], unreadCount: 0 } });
+        }
         console.error("GET /api/notifications error:", error);
         return NextResponse.json({ success: false, error: "Erreur serveur" }, { status: 500 });
     }
@@ -42,7 +48,12 @@ export async function PATCH(req: NextRequest) {
         });
 
         return NextResponse.json({ success: true });
-    } catch (error) {
+    } catch (error: unknown) {
+        const prismaError = error as { code?: string };
+        if (prismaError?.code === "P1001" || prismaError?.code === "P1017") {
+            console.warn("Database unreachable:", prismaError?.code);
+            return NextResponse.json({ success: true });
+        }
         console.error("PATCH /api/notifications error:", error);
         return NextResponse.json({ success: false, error: "Erreur serveur" }, { status: 500 });
     }

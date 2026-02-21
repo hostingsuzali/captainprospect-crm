@@ -22,6 +22,7 @@ import {
   History,
   HelpCircle,
   LucideIcon,
+  Database,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
 
@@ -66,9 +67,9 @@ export const MANAGER_NAV: NavSection[] = [
     title: "Prospection",
     items: [
       {
-        href: "/manager/listing",
-        icon: Search,
-        label: "Listing",
+        href: "/manager/lists",
+        icon: Database,
+        label: "Listes & Prospection",
         permission: "pages.prospects",
       },
       {

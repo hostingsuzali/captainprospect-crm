@@ -578,220 +578,243 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-start justify-between">
-                <div className="flex items-center gap-4">
+            {/* Premium Header */}
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                <div className="flex items-start gap-5">
                     <Link href={isManager ? "/manager/lists" : "/sdr/lists"}>
-                        <Button variant="ghost" size="sm">
-                            <ArrowLeft className="w-4 h-4" />
-                        </Button>
+                        <button className="flex items-center justify-center w-10 h-10 rounded-full border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all shadow-sm">
+                            <ArrowLeft className="w-5 h-5" />
+                        </button>
                     </Link>
-                    <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
-                        <List className="w-6 h-6 text-indigo-600" />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-3xl font-extrabold text-slate-900">{list.name}</h1>
-                            <Badge variant="outline">{list.type}</Badge>
+                    <div className="flex items-start gap-4">
+                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center border border-indigo-100/50 shadow-sm">
+                            <List className="w-7 h-7 text-indigo-600" />
                         </div>
-                        <p className="text-slate-500 mt-1">
-                            {list.mission.client.name} · {list.mission.name}
-                            {list.source && ` · ${list.source}`}
-                        </p>
+                        <div className="pt-1">
+                            <div className="flex items-center gap-3 mb-1.5">
+                                <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{list.name}</h1>
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                                    {list.type}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+                                <Building2 className="w-4 h-4 text-slate-400" />
+                                <span>{list.mission.client.name}</span>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-indigo-600">{list.mission.name}</span>
+                                {list.source && (
+                                    <>
+                                        <span className="text-slate-300">•</span>
+                                        <span>Source: {list.source}</span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" onClick={fetchList} title="Rafraîchir">
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={fetchList}
+                        title="Rafraîchir"
+                        className="flex items-center justify-center w-10 h-10 rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:bg-slate-50 transition-colors shadow-sm"
+                    >
                         <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-                    </Button>
+                    </button>
                     {isManager && (
                         <>
-                            <Button variant="secondary" size="sm" onClick={handleExport} className="gap-2">
-                                <Download className="w-4 h-4" />
+                            <button
+                                onClick={handleExport}
+                                className="flex items-center gap-2 h-10 px-4 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+                            >
+                                <Download className="w-4 h-4 text-slate-400" />
                                 Exporter
-                            </Button>
-                            <Link href={`/manager/lists/${list.id}/edit`}>
-                                <Button variant="secondary" size="sm" className="gap-2">
-                                    <Edit className="w-4 h-4" />
-                                    Modifier
-                                </Button>
+                            </button>
+                            <Link
+                                href={`/manager/lists/${list.id}/edit`}
+                                className="flex items-center gap-2 h-10 px-4 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+                            >
+                                <Edit className="w-4 h-4 text-slate-400" />
+                                Modifier
                             </Link>
-                            <Button
-                                variant="ghost"
-                                size="sm"
+                            <button
                                 onClick={() => setShowDeleteModal(true)}
-                                className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                                className="flex items-center justify-center w-10 h-10 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:border-red-300 transition-colors shadow-sm"
+                                title="Supprimer la liste"
                             >
                                 <Trash2 className="w-4 h-4" />
-                            </Button>
+                            </button>
                         </>
                     )}
                 </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-4 gap-4">
-                <Card className="shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                            <Building2 className="w-5 h-5 text-indigo-500" />
+            {/* Premium Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                <div className="mgr-stat-card">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center">
+                            <Building2 className="w-6 h-6 text-indigo-600" />
                         </div>
                         <div>
                             <p className="text-2xl font-bold text-slate-900">{companies.length}</p>
-                            <p className="text-sm text-slate-500">Sociétés</p>
+                            <p className="text-sm font-medium text-slate-500">Sociétés</p>
                         </div>
                     </div>
-                </Card>
-                <Card className="shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-                            <Users className="w-5 h-5 text-emerald-500" />
+                </div>
+                <div className="mgr-stat-card">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-sky-100 flex items-center justify-center">
+                            <Users className="w-6 h-6 text-sky-600" />
                         </div>
                         <div>
                             <p className="text-2xl font-bold text-slate-900">{totalContacts}</p>
-                            <p className="text-sm text-slate-500">Contacts</p>
+                            <p className="text-sm font-medium text-slate-500">Contacts totaux</p>
                         </div>
                     </div>
-                </Card>
-                <Card className="shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-                            <CheckCircle className="w-5 h-5 text-amber-500" />
+                </div>
+                <div className="mgr-stat-card">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
+                            <CheckCircle className="w-6 h-6 text-emerald-600" />
                         </div>
                         <div>
                             <p className="text-2xl font-bold text-slate-900">{actionableCount}</p>
-                            <p className="text-sm text-slate-500">Actionnables</p>
+                            <p className="text-sm font-medium text-slate-500">Qualifiés / Actionnables</p>
                         </div>
                     </div>
-                </Card>
-                <Card className="shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center">
-                            <Mail className="w-5 h-5 text-cyan-500" />
+                </div>
+                <div className="mgr-stat-card">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center">
+                            <Mail className="w-6 h-6 text-violet-600" />
                         </div>
                         <div>
                             <p className="text-2xl font-bold text-slate-900">
                                 {companies.reduce((acc, c) => acc + c.contacts.filter((ct) => ct.email).length, 0)}
                             </p>
-                            <p className="text-sm text-slate-500">Avec email</p>
+                            <p className="text-sm font-medium text-slate-500">Avec adresses e-mail</p>
                         </div>
                     </div>
-                </Card>
+                </div>
             </div>
 
             {/* Data Table */}
-            <Card>
-                <div className="flex items-center justify-between mb-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[500px]">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                     <h2 className="text-xl font-bold text-slate-900">
-                        {view === "companies" ? "Sociétés" : "Contacts"}
+                        {view === "companies" ? "Répertoire des Sociétés" : "Annuaire des Contacts"}
                     </h2>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
                         {isManager && (
                             <>
                                 {view === "companies" ? (
-                                    <Button
-                                        variant="primary"
-                                        size="sm"
+                                    <button
                                         onClick={() => {
                                             setIsCreatingCompany(true);
                                             setSelectedCompany(null);
                                             setShowCompanyDrawer(true);
                                         }}
-                                        className="gap-2"
+                                        className="mgr-btn-primary flex items-center gap-2 h-10 px-4 text-sm font-medium"
                                     >
                                         <Plus className="w-4 h-4" />
                                         Ajouter une société
-                                    </Button>
+                                    </button>
                                 ) : (
-                                    <Button
-                                        variant="primary"
-                                        size="sm"
+                                    <button
                                         onClick={() => {
                                             setIsCreatingContact(true);
                                             setSelectedContact(null);
                                             setShowContactDrawer(true);
                                         }}
-                                        className="gap-2"
                                         disabled={companies.length === 0}
+                                        className="mgr-btn-primary flex items-center gap-2 h-10 px-4 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Plus className="w-4 h-4" />
                                         Ajouter un contact
-                                    </Button>
+                                    </button>
                                 )}
                             </>
                         )}
-                        <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
-                        <button
-                            onClick={() => setView("companies")}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === "companies"
-                                ? "bg-white text-slate-900 shadow-sm"
-                                : "text-slate-500 hover:text-slate-700"
-                                }`}
-                        >
-                            <Building2 className="w-4 h-4" />
-                            Sociétés ({companies.length})
-                        </button>
-                        <button
-                            onClick={() => setView("contacts")}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === "contacts"
-                                ? "bg-white text-slate-900 shadow-sm"
-                                : "text-slate-500 hover:text-slate-700"
-                                }`}
-                        >
-                            <Users className="w-4 h-4" />
-                            Contacts ({totalContacts})
-                        </button>
+                        <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/60 shadow-inner">
+                            <button
+                                onClick={() => setView("companies")}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${view === "companies"
+                                    ? "bg-white text-indigo-700 shadow border-b border-indigo-100"
+                                    : "text-slate-500 hover:text-slate-700"
+                                    }`}
+                            >
+                                <Building2 className={`w-4 h-4 ${view === "companies" ? "text-indigo-500" : "text-slate-400"}`} />
+                                Sociétés ({companies.length})
+                            </button>
+                            <button
+                                onClick={() => setView("contacts")}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${view === "contacts"
+                                    ? "bg-white text-indigo-700 shadow border-b border-indigo-100"
+                                    : "text-slate-500 hover:text-slate-700"
+                                    }`}
+                            >
+                                <Users className={`w-4 h-4 ${view === "contacts" ? "text-indigo-500" : "text-slate-400"}`} />
+                                Contacts ({totalContacts})
+                            </button>
                         </div>
                     </div>
                 </div>
 
                 {view === "companies" ? (
                     companies.length === 0 ? (
-                        <div className="text-center py-12">
-                            <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium text-slate-700">Aucune société</h3>
-                            <p className="text-slate-500 mt-1">
-                                Cette liste est vide. Importez des données pour commencer.
+                        <div className="text-center py-20 flex flex-col items-center justify-center flex-1">
+                            <div className="w-16 h-16 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center mb-6">
+                                <Building2 className="w-8 h-8 text-slate-300" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800">Aucune société</h3>
+                            <p className="text-slate-500 mt-2 max-w-sm">
+                                Cette liste est actuellement vide. Importez des données ou ajoutez une société manuellement pour commencer.
                             </p>
                         </div>
                     ) : (
-                        <DataTable
-                            data={companies}
-                            columns={[...companyColumns, ...customCompanyColumns]}
-                            keyField="id"
-                            searchable
-                            searchPlaceholder="Rechercher une société..."
-                            searchFields={["name", "industry", "country"]}
-                            pagination
-                            pageSize={15}
-                            onRowClick={handleCompanyClick}
-                        />
+                        <div className="flex-1 min-h-0">
+                            <DataTable
+                                data={companies}
+                                columns={[...companyColumns, ...customCompanyColumns]}
+                                keyField="id"
+                                searchable
+                                searchPlaceholder="Rechercher une société (nom, industrie, pays)..."
+                                searchFields={["name", "industry", "country"]}
+                                pagination
+                                pageSize={15}
+                                onRowClick={handleCompanyClick}
+                            />
+                        </div>
                     )
                 ) : (
                     allContacts.length === 0 ? (
-                        <div className="text-center py-12">
-                            <Users className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium text-slate-700">Aucun contact</h3>
-                            <p className="text-slate-500 mt-1">
-                                Aucun contact dans cette liste.
+                        <div className="text-center py-20 flex flex-col items-center justify-center flex-1">
+                            <div className="w-16 h-16 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center mb-6">
+                                <Users className="w-8 h-8 text-slate-300" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800">Aucun contact</h3>
+                            <p className="text-slate-500 mt-2 max-w-sm">
+                                Aucun contact répertorié. Vous pouvez en ajouter depuis la vue détaillée d&apos;une société ou via un nouvel import.
                             </p>
                         </div>
                     ) : (
-                        <DataTable
-                            data={allContacts}
-                            columns={contactColumns}
-                            keyField="id"
-                            searchable
-                            searchPlaceholder="Rechercher un contact..."
-                            searchFields={["firstName", "lastName", "email", "companyName"]}
-                            pagination
-                            pageSize={15}
-                            onRowClick={handleContactClick}
-                        />
+                        <div className="flex-1 min-h-0">
+                            <DataTable
+                                data={allContacts}
+                                columns={contactColumns}
+                                keyField="id"
+                                searchable
+                                searchPlaceholder="Rechercher un contact..."
+                                searchFields={["firstName", "lastName", "email", "companyName"]}
+                                pagination
+                                pageSize={15}
+                                onRowClick={handleContactClick}
+                            />
+                        </div>
                     )
                 )}
-            </Card>
+            </div>
 
             {/* Company Drawer */}
             <CompanyDrawer

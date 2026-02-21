@@ -16,8 +16,10 @@ import {
     Loader2,
     X,
     Filter,
+    Activity,
 } from "lucide-react";
 import Link from "next/link";
+import { MissionQuickViewDrawer } from "./_components/MissionQuickViewDrawer";
 
 // ============================================
 // TYPES
@@ -35,6 +37,12 @@ interface Mission {
         id: string;
         name: string;
     };
+    sdrAssignments?: Array<{
+        sdr: {
+            id: string;
+            name: string;
+        }
+    }>;
     _count: {
         sdrAssignments: number;
         campaigns: number;
@@ -74,6 +82,7 @@ export default function MissionsPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [channelFilter, setChannelFilter] = useState<string>("all");
+    const [selectedMissionForDrawer, setSelectedMissionForDrawer] = useState<Mission | null>(null);
     const { error: showError } = useToast();
 
     // ============================================
@@ -278,14 +287,17 @@ export default function MissionsPage() {
                         const ChannelIcon = channel.icon;
 
                         return (
-                            <Link
+                            <div
                                 key={mission.id}
-                                href={`/manager/missions/${mission.id}`}
-                                className="mgr-mission-card group flex items-start gap-4 block"
+                                onClick={() => setSelectedMissionForDrawer(mission)}
+                                className="mgr-mission-card group flex items-center gap-6 cursor-pointer hover:border-indigo-200 transition-all hover:shadow-lg hover:shadow-indigo-500/5 hover:-translate-y-0.5 bg-white relative overflow-hidden"
                                 style={{ animationDelay: `${index * 50}ms` }}
                             >
+                                {/* Activity Sparkline Background Effect */}
+                                <div className="absolute right-0 bottom-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 pointer-events-none w-64 h-24 bg-gradient-to-t from-indigo-500 to-transparent blur-2xl rounded-tl-full" />
+
                                 {/* Client Logo */}
-                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-lg font-bold text-indigo-600 group-hover:scale-110 transition-transform duration-300 flex-shrink-0">
+                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-50 to-slate-50 border border-slate-100 flex items-center justify-center text-xl font-bold text-indigo-600 group-hover:scale-110 transition-transform duration-500 flex-shrink-0 shadow-sm group-hover:shadow-indigo-500/20 group-hover:bg-gradient-to-br group-hover:from-indigo-500 group-hover:to-indigo-600 group-hover:text-white group-hover:border-indigo-400">
                                     {mission.client?.name?.[0] || "M"}
                                 </div>
 
@@ -309,35 +321,74 @@ export default function MissionsPage() {
                                     </p>
 
                                     {/* Stats */}
-                                    <div className="flex items-center gap-6 mt-3">
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <Users className="w-4 h-4 text-slate-400" />
-                                            <span className="text-slate-600">
-                                                {mission._count.sdrAssignments} SDR{mission._count.sdrAssignments > 1 ? "s" : ""}
-                                            </span>
+                                    <div className="flex items-center justify-between mt-4">
+                                        <div className="flex items-center gap-6">
+                                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                <Target className="w-4 h-4 text-slate-400" />
+                                                <span>{mission._count.campaigns} campagne{mission._count.campaigns > 1 ? "s" : ""}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                <Calendar className="w-4 h-4 text-slate-400" />
+                                                <span>{mission._count.lists} liste{mission._count.lists > 1 ? "s" : ""}</span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <Target className="w-4 h-4 text-slate-400" />
-                                            <span className="text-slate-600">
-                                                {mission._count.campaigns} campagne{mission._count.campaigns > 1 ? "s" : ""}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <Calendar className="w-4 h-4 text-slate-400" />
-                                            <span className="text-slate-600">
-                                                {mission._count.lists} liste{mission._count.lists > 1 ? "s" : ""}
-                                            </span>
+
+                                        <div className="flex items-center">
+                                            {mission.sdrAssignments && mission.sdrAssignments.length > 0 ? (
+                                                <div className="flex items-center group-hover:bg-slate-50 rounded-full pr-2 transition-colors pb-0.5">
+                                                    <div className="flex -space-x-2 mr-2">
+                                                        {mission.sdrAssignments.slice(0, 3).map((a, i) => (
+                                                            <div
+                                                                key={a.sdr.id}
+                                                                className="w-7 h-7 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-indigo-700 shadow-sm transition-transform group-hover:scale-110"
+                                                                style={{ zIndex: 10 - i }}
+                                                                title={a.sdr.name}
+                                                            >
+                                                                {a.sdr.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}
+                                                            </div>
+                                                        ))}
+                                                        {mission.sdrAssignments.length > 3 && (
+                                                            <div className="w-7 h-7 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm z-0">
+                                                                +{mission.sdrAssignments.length - 3}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-xs font-medium text-slate-500 whitespace-nowrap">
+                                                        {mission.sdrAssignments.length} membre{mission.sdrAssignments.length > 1 ? "s" : ""}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1.5 text-xs text-slate-400 italic">
+                                                    <Users className="w-3.5 h-3.5 text-slate-300" />
+                                                    Aucun membre
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
 
+                                {/* Sparkline visual only for elegance */}
+                                <div className="hidden lg:flex w-24 h-8 items-end gap-[2px] opacity-40 group-hover:opacity-100 transition-opacity">
+                                    {[30, 45, 20, 60, 80, 50, 90, 100].map((h, i) => (
+                                        <div key={i} className="flex-1 bg-indigo-500 rounded-t-sm" style={{ height: `${h}%` }} />
+                                    ))}
+                                </div>
+
                                 {/* Arrow */}
-                                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all flex-shrink-0" />
-                            </Link>
+                                <div className="w-10 h-10 rounded-full flex items-center justify-center group-hover:bg-indigo-50 transition-colors flex-shrink-0 ml-2">
+                                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
+                                </div>
+                            </div>
                         );
                     })}
                 </div>
             )}
+
+            <MissionQuickViewDrawer
+                isOpen={!!selectedMissionForDrawer}
+                onClose={() => setSelectedMissionForDrawer(null)}
+                mission={selectedMissionForDrawer}
+            />
         </div>
     );
 }
