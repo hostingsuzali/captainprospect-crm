@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Zap, Shield, BarChart3, Users } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Zap, Shield } from "lucide-react";
 import Image from "next/image";
 
 /* ─── tiny util ─── */
@@ -95,32 +95,7 @@ function AnimatedBackground() {
     return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />;
 }
 
-/* ─────────────────────────────────────────────────────────────
-   Feature pill shown on the left panel
-───────────────────────────────────────────────────────────── */
-const FEATURES = [
-    { icon: Zap, label: "Actions en temps réel", sub: "Flux live pour vos équipes SDR" },
-    { icon: BarChart3, label: "Analytics avancées", sub: "Pilotage par la donnée" },
-    { icon: Users, label: "Multi-rôles", sub: "SDR · Manager · Client · BD" },
-    { icon: Shield, label: "Sécurisé & fiable", sub: "Auth chiffrée, données protégées" },
-];
 
-function FeatureItem({ icon: Icon, label, sub, delay }: { icon: typeof Zap; label: string; sub: string; delay: number }) {
-    return (
-        <div
-            className="flex items-start gap-3.5 opacity-0 animate-[featureFadeIn_0.6s_ease_forwards]"
-            style={{ animationDelay: `${delay}ms` }}
-        >
-            <div className="mt-0.5 flex-shrink-0 w-8 h-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center">
-                <Icon className="w-4 h-4 text-violet-200" />
-            </div>
-            <div>
-                <p className="text-sm font-semibold text-white/90 leading-tight">{label}</p>
-                <p className="text-xs text-white/45 mt-0.5">{sub}</p>
-            </div>
-        </div>
-    );
-}
 
 /* ─────────────────────────────────────────────────────────────
    Custom Input
@@ -292,9 +267,9 @@ export default function LoginForm() {
             <div className="min-h-screen flex overflow-hidden">
 
                 {/* ════════════════════════════════════════
-                    LEFT PANEL — brand / features
+                    LEFT PANEL — brand / elegant minimal content
                 ════════════════════════════════════════ */}
-                <div className="hidden lg:flex lg:w-[52%] xl:w-[56%] relative flex-col justify-between p-12 overflow-hidden"
+                <div className="hidden lg:flex lg:w-[52%] xl:w-[56%] relative flex-col p-12 overflow-hidden"
                     style={{
                         background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 30%, #4c1d95 60%, #1e1b4b 100%)",
                         backgroundSize: "300% 300%",
@@ -312,8 +287,8 @@ export default function LoginForm() {
                     <div className="absolute top-1/2 right-0 w-[260px] h-[260px] rounded-full opacity-10"
                         style={{ background: "radial-gradient(circle, #06b6d4, transparent 70%)" }} />
 
-                    {/* Content */}
-                    <div className="relative z-10">
+                    {/* Content Top */}
+                    <div className="relative z-10 flex-none">
                         {/* Logo */}
                         <div className="opacity-0 animate-[logoReveal_0.7s_ease_0.1s_forwards]">
                             <Image
@@ -327,42 +302,24 @@ export default function LoginForm() {
                         </div>
                     </div>
 
-                    <div className="relative z-10 space-y-5">
+                    {/* Content Center */}
+                    <div className="relative z-10 flex-1 flex flex-col justify-center">
                         <div className="opacity-0 animate-[featureFadeIn_0.6s_ease_0.3s_forwards]">
-                            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/15 mb-5">
+                            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/15 mb-6">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                <span className="text-xs font-medium text-white/70 tracking-wide">Plateforme CRM B2B</span>
+                                <span className="text-xs font-medium text-white/70 tracking-wide">Espace Sécurisé</span>
                             </div>
-                            <h1 className="text-3xl xl:text-4xl font-bold text-white leading-tight tracking-tight">
-                                Pilotez votre<br />
-                                <span className="text-transparent bg-clip-text"
+                            <h1 className="text-4xl xl:text-5xl font-light text-white leading-tight tracking-tight">
+                                L'excellence de la <br />
+                                <span className="text-transparent bg-clip-text font-bold"
                                     style={{ backgroundImage: "linear-gradient(90deg, #a5b4fc, #67e8f9)" }}>
                                     prospection
                                 </span>{" "}
-                                commerciale
+                                B2B.
                             </h1>
-                            <p className="mt-3 text-sm text-white/50 max-w-xs leading-relaxed">
-                                Centralisez vos missions, suivez vos SDR et analysez vos performances en temps réel.
+                            <p className="mt-5 text-base text-white/50 max-w-sm font-light leading-relaxed">
+                                Connectez-vous pour accéder à votre espace de travail.
                             </p>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-3 pt-2">
-                            {FEATURES.map((f, i) => (
-                                <FeatureItem key={f.label} {...f} delay={500 + i * 110} />
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Bottom quote */}
-                    <div className="relative z-10 opacity-0 animate-[featureFadeIn_0.6s_ease_1s_forwards]">
-                        <div className="flex items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-indigo-500 flex-shrink-0" />
-                            <div>
-                                <p className="text-xs text-white/70 italic leading-relaxed">
-                                    &ldquo;Captain Prospect a transformé notre façon de gérer la prospection B2B.&rdquo;
-                                </p>
-                                <p className="text-[10px] text-white/35 mt-1">— Directeur Commercial, SaaS Scale-up</p>
-                            </div>
                         </div>
                     </div>
                 </div>
