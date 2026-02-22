@@ -22,15 +22,17 @@ import {
     ChevronRight,
     Sparkles,
     Briefcase,
-    UserMinus,
     FileText,
     Plus,
     X,
     Eye,
     ExternalLink,
-    ListChecks,
     Activity,
     TrendingUp,
+    Save,
+    Wand2,
+    Copy,
+    CheckCircle2,
     BarChart3,
 } from "lucide-react";
 import Link from "next/link";
@@ -82,6 +84,11 @@ interface Mission {
         campaigns: number;
         lists: number;
     };
+    stats?: {
+        totalActions: number;
+        meetingsBooked: number;
+        opportunities: number;
+    };
 }
 
 interface AssignableUser {
@@ -109,6 +116,31 @@ interface MissionTemplate {
     order: number;
     template: EmailTemplate;
 }
+
+interface CampaignData {
+    id: string;
+    name: string;
+    icp: string;
+    pitch: string;
+    script?: string | null;
+    isActive: boolean;
+}
+
+interface ScriptSections {
+    intro: string;
+    discovery: string;
+    objection: string;
+    closing: string;
+}
+
+type ScriptSectionKey = keyof ScriptSections;
+
+const SCRIPT_TABS = [
+    { id: "intro", label: "Introduction" },
+    { id: "discovery", label: "Découverte" },
+    { id: "objection", label: "Objections" },
+    { id: "closing", label: "Closing" },
+];
 
 // ============================================
 // CHANNEL CONFIG
@@ -166,6 +198,21 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [isSavingTeamLead, setIsSavingTeamLead] = useState(false);
     const [activeTab, setActiveTab] = useState("general");
     const [showStatusWorkflowDrawer, setShowStatusWorkflowDrawer] = useState(false);
+
+    // Inline Strategy (Campaign) state
+    const [campaignData, setCampaignData] = useState<CampaignData | null>(null);
+    const [isStrategyEditing, setIsStrategyEditing] = useState(false);
+    const [isSavingStrategy, setIsSavingStrategy] = useState(false);
+    const [strategyForm, setStrategyForm] = useState({ icp: "", pitch: "" });
+    const [scriptSections, setScriptSections] = useState<ScriptSections>({ intro: "", discovery: "", objection: "", closing: "" });
+    const [activeScriptTab, setActiveScriptTab] = useState("intro");
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generatingSection, setGeneratingSection] = useState<string | null>(null);
+    const [aiModalOpen, setAiModalOpen] = useState(false);
+    const [aiRequestedSection, setAiRequestedSection] = useState<"all" | ScriptSectionKey>("all");
+    const [aiActiveTab, setAiActiveTab] = useState<ScriptSectionKey>("intro");
+    const [aiSuggestions, setAiSuggestions] = useState<Partial<Record<ScriptSectionKey, string[]>>>({});
+    const [aiSelectedIndex, setAiSelectedIndex] = useState<Record<ScriptSectionKey, number>>({ intro: 0, discovery: 0, objection: 0, closing: 0 });
 
     // Plan de mission (schedule plan)
     const [missionPlan, setMissionPlan] = useState<{
@@ -246,6 +293,151 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     useEffect(() => {
         if (mission?.id) fetchMissionPlan();
     }, [mission?.id]);
+
+    // ============================================
+    // FETCH / SAVE STRATEGY (Campaign)
+    // ============================================
+
+    const fetchCampaignStrategy = async () => {
+        if (!mission?.id || mission.campaigns.length === 0) return;
+        try {
+            const res = await fetch(`/api/campaigns/${mission.campaigns[0].id}`);
+            const json = await res.json();
+            if (json.success) {
+                const c: CampaignData = json.data;
+                setCampaignData(c);
+                setStrategyForm({ icp: c.icp || "", pitch: c.pitch || "" });
+                if (c.script) {
+                    try {
+                        const parsed = JSON.parse(c.script);
+                        if (typeof parsed === "object") {
+                            setScriptSections({
+                                intro: parsed.intro || "",
+                                discovery: parsed.discovery || "",
+                                objection: parsed.objection || "",
+                                closing: parsed.closing || "",
+                            });
+                        } else {
+                            setScriptSections({ intro: c.script, discovery: "", objection: "", closing: "" });
+                        }
+                    } catch {
+                        setScriptSections({ intro: c.script, discovery: "", objection: "", closing: "" });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Failed to fetch campaign strategy:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (mission?.id) fetchCampaignStrategy();
+    }, [mission?.id]);
+
+    const handleSaveStrategy = async () => {
+        if (!campaignData) return;
+        setIsSavingStrategy(true);
+        try {
+            const res = await fetch(`/api/campaigns/${campaignData.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    icp: strategyForm.icp,
+                    pitch: strategyForm.pitch,
+                    script: { intro: scriptSections.intro, discovery: scriptSections.discovery, objection: scriptSections.objection, closing: scriptSections.closing },
+                }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success("Stratégie sauvegardée", "Le script et le message ont été mis à jour");
+                setIsStrategyEditing(false);
+                fetchCampaignStrategy();
+            } else {
+                showError("Erreur", json.error);
+            }
+        } catch {
+            showError("Erreur", "Impossible de sauvegarder");
+        } finally {
+            setIsSavingStrategy(false);
+        }
+    };
+
+    const generateWithMistral = async (section: "all" | ScriptSectionKey) => {
+        if (!mission) return;
+        if (!strategyForm.icp.trim() || !strategyForm.pitch.trim()) {
+            showError("Erreur", "Veuillez renseigner l'ICP et le pitch avant de générer");
+            return;
+        }
+        setIsGenerating(true);
+        setGeneratingSection(section);
+        try {
+            const res = await fetch("/api/ai/mistral/script", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    channel: mission.channel,
+                    clientName: mission.client?.name,
+                    missionName: mission.name,
+                    campaignName: campaignData?.name || mission.name,
+                    campaignDescription: mission.objective,
+                    icp: strategyForm.icp,
+                    pitch: strategyForm.pitch,
+                    section,
+                    suggestionsCount: 3,
+                }),
+            });
+            const json = await res.json();
+            if (json.success && (json.data?.suggestions || json.data?.script)) {
+                const suggestions = json.data?.suggestions || {};
+                const fallbackScript = json.data?.script || {};
+                const merged: Partial<Record<ScriptSectionKey, string[]>> = { ...suggestions };
+                (["intro", "discovery", "objection", "closing"] as ScriptSectionKey[]).forEach((k) => {
+                    if (!merged[k] || merged[k]?.length === 0) {
+                        const v = fallbackScript?.[k];
+                        if (typeof v === "string" && v.trim()) merged[k] = [v];
+                    }
+                });
+                setAiSuggestions(merged);
+                setAiRequestedSection(section);
+                setAiActiveTab(section === "all" ? "intro" : section);
+                setAiSelectedIndex({ intro: 0, discovery: 0, objection: 0, closing: 0 });
+                setAiModalOpen(true);
+            } else {
+                showError("Erreur", json.error || "Impossible de générer le script");
+            }
+        } catch {
+            showError("Erreur", "Erreur de connexion à Mistral AI");
+        } finally {
+            setIsGenerating(false);
+            setGeneratingSection(null);
+        }
+    };
+
+    const applySelectedSuggestions = (mode: "all" | ScriptSectionKey) => {
+        const applyOne = (key: ScriptSectionKey) => {
+            const list = aiSuggestions[key] || [];
+            const idx = aiSelectedIndex[key] ?? 0;
+            const value = list[idx] ?? "";
+            setScriptSections((prev) => ({ ...prev, [key]: value }));
+        };
+        if (mode === "all") {
+            (["intro", "discovery", "objection", "closing"] as ScriptSectionKey[]).forEach(applyOne);
+            success("Suggestions appliquées", "Les sections ont été appliquées");
+        } else {
+            applyOne(mode);
+            success("Suggestion appliquée", "La suggestion a été appliquée");
+        }
+        setAiModalOpen(false);
+    };
+
+    const copyScript = () => {
+        const full = Object.entries(scriptSections)
+            .filter(([, c]) => c)
+            .map(([k, c]) => `--- ${k.toUpperCase()} ---\n${c}`)
+            .join("\n\n");
+        navigator.clipboard.writeText(full);
+        success("Script copié", "Copié dans le presse-papier");
+    };
 
     // ============================================
     // FETCH AVAILABLE SDRS / BDS
@@ -668,19 +860,19 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
             <div className="mt-8">
                 {activeTab === "general" && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                        {/* KPI Dashboard */}
+                        {/* KPI Dashboard — Real Stats */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                             <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                                        <Phone className="w-5 h-5 text-indigo-600" />
+                                        <Activity className="w-5 h-5 text-indigo-600" />
                                     </div>
-                                    <span className="px-2 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-lg flex items-center gap-1">
-                                        <TrendingUp className="w-3 h-3" /> +12%
+                                    <span className="px-2 py-1 text-xs font-semibold text-slate-500 bg-slate-100 rounded-lg flex items-center gap-1">
+                                        total
                                     </span>
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-900">425</h3>
-                                <p className="text-sm text-slate-500 font-medium">Appels passés</p>
+                                <h3 className="text-2xl font-bold text-slate-900">{mission.stats?.totalActions ?? 0}</h3>
+                                <p className="text-sm text-slate-500 font-medium">Actions réalisées</p>
                             </div>
                             <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                                 <div className="flex justify-between items-start mb-4">
@@ -688,23 +880,23 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                         <Target className="w-5 h-5 text-emerald-600" />
                                     </div>
                                     <span className="px-2 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-lg flex items-center gap-1">
-                                        <TrendingUp className="w-3 h-3" /> +5%
+                                        <TrendingUp className="w-3 h-3" /> RDV
                                     </span>
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-900">18</h3>
-                                <p className="text-sm text-slate-500 font-medium">Rendez-vous qualifiés</p>
+                                <h3 className="text-2xl font-bold text-slate-900">{mission.stats?.meetingsBooked ?? 0}</h3>
+                                <p className="text-sm text-slate-500 font-medium">Rendez-vous bookés</p>
                             </div>
                             <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center">
-                                        <Activity className="w-5 h-5 text-violet-600" />
+                                        <BarChart3 className="w-5 h-5 text-violet-600" />
                                     </div>
-                                    <span className="px-2 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-lg flex items-center gap-1">
-                                        <TrendingUp className="w-3 h-3" /> +2%
+                                    <span className="px-2 py-1 text-xs font-semibold text-violet-700 bg-violet-50 rounded-lg flex items-center gap-1">
+                                        <TrendingUp className="w-3 h-3" /> Opps
                                     </span>
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-900">4.2%</h3>
-                                <p className="text-sm text-slate-500 font-medium">Taux de conversion</p>
+                                <h3 className="text-2xl font-bold text-slate-900">{mission.stats?.opportunities ?? 0}</h3>
+                                <p className="text-sm text-slate-500 font-medium">Opportunités créées</p>
                             </div>
                         </div>
 
@@ -744,45 +936,159 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
 
                 {activeTab === "strategy" && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                        {/* Stratégie & Script */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-                                        <Target className="w-5 h-5 text-emerald-600" />
+                        {/* Inline Strategy Editor */}
+                        {mission.campaigns.length === 0 ? (
+                            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm">
+                                <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                                    <Target className="w-8 h-8 text-emerald-400" />
+                                </div>
+                                <p className="text-slate-500 text-sm">Aucune stratégie configurée pour cette mission.</p>
+                            </div>
+                        ) : (
+                            <>
+                                {/* ICP & Pitch */}
+                                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                                                <Target className="w-5 h-5 text-emerald-600" />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-semibold text-slate-900">Cible & Message</h2>
+                                                <p className="text-sm text-slate-500">ICP et pitch de prospection</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {isStrategyEditing ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => setIsStrategyEditing(false)}
+                                                        className="h-9 px-4 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                                                    >
+                                                        Annuler
+                                                    </button>
+                                                    <button
+                                                        onClick={handleSaveStrategy}
+                                                        disabled={isSavingStrategy}
+                                                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg transition-colors"
+                                                    >
+                                                        {isSavingStrategy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                                        Enregistrer
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button
+                                                    onClick={() => setIsStrategyEditing(true)}
+                                                    className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+                                                >
+                                                    <Edit className="w-4 h-4" />
+                                                    Modifier
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h2 className="text-lg font-semibold text-slate-900">Stratégie & Script</h2>
-                                        <p className="text-sm text-slate-500">ICP, pitch et script de prospection</p>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">ICP (Profil Client Idéal)</label>
+                                            {isStrategyEditing ? (
+                                                <textarea
+                                                    value={strategyForm.icp}
+                                                    onChange={(e) => setStrategyForm(prev => ({ ...prev, icp: e.target.value }))}
+                                                    rows={3}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none text-sm"
+                                                    placeholder="Décrivez votre client idéal..."
+                                                />
+                                            ) : (
+                                                <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg min-h-[60px]">{campaignData?.icp || <span className="text-slate-400 italic">Non défini</span>}</p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">Pitch</label>
+                                            {isStrategyEditing ? (
+                                                <textarea
+                                                    value={strategyForm.pitch}
+                                                    onChange={(e) => setStrategyForm(prev => ({ ...prev, pitch: e.target.value }))}
+                                                    rows={3}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none text-sm"
+                                                    placeholder="Votre message clé..."
+                                                />
+                                            ) : (
+                                                <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg min-h-[60px]">{campaignData?.pitch || <span className="text-slate-400 italic">Non défini</span>}</p>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                                {mission.campaigns.length > 0 && (
-                                    <Link
-                                        href={`/manager/campaigns/${mission.campaigns[0].id}`}
-                                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
-                                    >
-                                        <Edit className="w-4 h-4" />
-                                        Modifier
-                                    </Link>
-                                )}
-                            </div>
-                            {mission.campaigns.length === 0 ? (
-                                <p className="text-sm text-slate-500">Aucune stratégie configurée</p>
-                            ) : (
-                                <Link
-                                    href={`/manager/campaigns/${mission.campaigns[0].id}`}
-                                    className="mgr-mission-card group flex items-center gap-4 p-4 block"
-                                >
-                                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <Target className="w-5 h-5 text-emerald-600" />
+
+                                {/* Script Editor */}
+                                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
+                                                <Sparkles className="w-5 h-5 text-indigo-600" />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-semibold text-slate-900">Script d'appel</h2>
+                                                <p className="text-sm text-slate-500">Introduction, découverte, objections, closing</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {isStrategyEditing && (
+                                                <button
+                                                    onClick={() => generateWithMistral("all")}
+                                                    disabled={isGenerating || !strategyForm.icp || !strategyForm.pitch}
+                                                    className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-700 bg-gradient-to-r from-purple-50 to-indigo-50 border border-indigo-200 hover:from-purple-100 hover:to-indigo-100 disabled:opacity-50 rounded-lg transition-colors"
+                                                >
+                                                    {isGenerating && generatingSection === "all" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                                                    Générer avec IA
+                                                </button>
+                                            )}
+                                            {!isStrategyEditing && (
+                                                <button onClick={copyScript} className="flex items-center gap-2 h-9 px-3 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                                                    <Copy className="w-4 h-4" />
+                                                    Copier
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex-1">
-                                        <p className="font-medium text-slate-900 group-hover:text-indigo-600 transition-colors">Voir le script & la stratégie</p>
-                                    </div>
-                                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
-                                </Link>
-                            )}
-                        </div>
+
+                                    <Tabs tabs={SCRIPT_TABS} activeTab={activeScriptTab} onTabChange={setActiveScriptTab} className="mb-4" />
+
+                                    {isStrategyEditing ? (
+                                        <div className="space-y-2">
+                                            <div className="flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => generateWithMistral(activeScriptTab as ScriptSectionKey)}
+                                                    disabled={isGenerating || !strategyForm.icp || !strategyForm.pitch}
+                                                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                                >
+                                                    {isGenerating && generatingSection === activeScriptTab ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                                                    Générer cette section
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                value={scriptSections[activeScriptTab as ScriptSectionKey]}
+                                                onChange={(e) => setScriptSections(prev => ({ ...prev, [activeScriptTab]: e.target.value }))}
+                                                rows={10}
+                                                placeholder={`Script de ${SCRIPT_TABS.find(t => t.id === activeScriptTab)?.label.toLowerCase()}...`}
+                                                className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none font-mono text-sm"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 min-h-[180px]">
+                                            {scriptSections[activeScriptTab as ScriptSectionKey] ? (
+                                                <p className="text-sm text-slate-700 whitespace-pre-wrap">{scriptSections[activeScriptTab as ScriptSectionKey]}</p>
+                                            ) : (
+                                                <div className="text-center py-8 text-sm text-slate-400">
+                                                    <Sparkles className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                                                    Aucun script pour cette section
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
 
                         {/* Email Templates */}
                         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm border-l-4 border-l-indigo-500">
@@ -1261,12 +1567,88 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                 </div>
             )}
 
+            {/* AI Suggestions Modal */}
+            <Modal
+                isOpen={aiModalOpen}
+                onClose={() => setAiModalOpen(false)}
+                title="Suggestions IA"
+                description="Choisissez une proposition avant de l'appliquer à votre script."
+                size="xl"
+            >
+                {aiRequestedSection === "all" && (
+                    <Tabs
+                        tabs={SCRIPT_TABS}
+                        activeTab={aiActiveTab}
+                        onTabChange={(t) => setAiActiveTab(t as ScriptSectionKey)}
+                        className="mb-4"
+                    />
+                )}
+
+                {(() => {
+                    const currentSection: ScriptSectionKey =
+                        aiRequestedSection === "all" ? aiActiveTab : aiRequestedSection;
+                    const items = aiSuggestions[currentSection] || [];
+
+                    return (
+                        <div className="space-y-3">
+                            {items.length === 0 ? (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                                    Aucune suggestion reçue pour cette section. Réessayez la génération.
+                                </div>
+                            ) : (
+                                items.map((text, idx) => {
+                                    const selected = (aiSelectedIndex[currentSection] ?? 0) === idx;
+                                    return (
+                                        <button
+                                            key={`${currentSection}-${idx}`}
+                                            type="button"
+                                            onClick={() =>
+                                                setAiSelectedIndex((prev) => ({ ...prev, [currentSection]: idx }))
+                                            }
+                                            className={`w-full text-left rounded-xl border p-4 transition-all ${selected
+                                                ? "border-indigo-300 bg-indigo-50"
+                                                : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                                        >
+                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                                <div className="text-xs font-bold tracking-wide uppercase text-slate-500">
+                                                    Suggestion {idx + 1}
+                                                </div>
+                                                <div className={`text-[11px] font-bold px-2 py-1 rounded-full ${selected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"}`}>
+                                                    {selected ? "Sélectionnée" : "Choisir"}
+                                                </div>
+                                            </div>
+                                            <div className="text-sm text-slate-800 whitespace-pre-wrap">{text}</div>
+                                        </button>
+                                    );
+                                })
+                            )}
+                        </div>
+                    );
+                })()}
+
+                <ModalFooter>
+                    <button
+                        onClick={() => setAiModalOpen(false)}
+                        className="h-9 px-4 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        onClick={() => applySelectedSuggestions(aiRequestedSection === "all" ? "all" : aiRequestedSection)}
+                        className="h-9 px-4 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+                    >
+                        {aiRequestedSection === "all" ? "Appliquer tout" : "Appliquer"}
+                    </button>
+                </ModalFooter>
+            </Modal>
+
             <EditMissionDialog
                 isOpen={showEditMissionDialog}
                 onClose={() => setShowEditMissionDialog(false)}
                 mission={mission}
                 onSaved={fetchMission}
             />
+
 
             {/* Delete Confirmation Modal */}
             <ConfirmModal

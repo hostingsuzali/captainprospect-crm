@@ -11,7 +11,7 @@ import {
     ModalFooter,
     Skeleton,
     useToast,
-    Input
+    Input,
 } from "@/components/ui";
 import {
     ArrowLeft,
@@ -31,7 +31,9 @@ import {
     CalendarCheck,
     User,
     Briefcase,
-    FileText
+    FileText,
+    Key,
+    ShieldCheck
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -156,6 +158,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [meetingsData, setMeetingsData] = useState<MeetingsData | null>(null);
     const [isLoadingMeetings, setIsLoadingMeetings] = useState(true);
 
+    const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+    const [isCreatingUser, setIsCreatingUser] = useState(false);
+    const [createdUserCredentials, setCreatedUserCredentials] = useState<{ email: string, password?: string } | null>(null);
+    const [userToDelete, setUserToDelete] = useState<{ id: string, name: string } | null>(null);
+    const [isDeletingUser, setIsDeletingUser] = useState(false);
+    const [userFormData, setUserFormData] = useState({
+        name: "",
+        email: "",
+        password: "",
+    });
+
     // ============================================
     // FETCH CLIENT
     // ============================================
@@ -271,6 +284,81 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         } finally {
             setIsDeleting(false);
             setShowDeleteModal(false);
+        }
+    };
+
+    // ============================================
+    // CREATE PORTAL USER
+    // ============================================
+
+    const handleCreateUser = async () => {
+        if (!client) return;
+        if (!userFormData.name || !userFormData.email) {
+            showError("Erreur", "Veuillez remplir le nom et l'email");
+            return;
+        }
+
+        setIsCreatingUser(true);
+        try {
+            const res = await fetch("/api/users", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: userFormData.name,
+                    email: userFormData.email,
+                    password: userFormData.password || undefined,
+                    role: "CLIENT",
+                    clientId: client.id
+                }),
+            });
+
+            const json = await res.json();
+
+            if (json.success) {
+                success("Accès créé", "Le compte portail client a été créé avec succès");
+                setCreatedUserCredentials({
+                    email: userFormData.email,
+                    password: json.generatedPassword || userFormData.password || "(non affiché)",
+                });
+                setUserFormData({ name: "", email: "", password: "" });
+                await fetchClient(); // Refresh the list
+            } else {
+                showError("Erreur", json.error || "Impossible de créer l'accès");
+            }
+        } catch (err) {
+            showError("Erreur", "Une erreur est survenue lors de la création");
+        } finally {
+            setIsCreatingUser(false);
+        }
+    };
+
+    const resetSuccessModal = () => {
+        setCreatedUserCredentials(null);
+        setShowCreateUserModal(false);
+    };
+
+    const handleDeleteUser = async () => {
+        if (!userToDelete) return;
+
+        setIsDeletingUser(true);
+        try {
+            const res = await fetch(`/api/users/${userToDelete.id}`, {
+                method: "DELETE",
+            });
+
+            const json = await res.json();
+
+            if (json.success) {
+                success("Accès révoqué", `L'accès pour ${userToDelete.name} a été supprimé`);
+                await fetchClient();
+            } else {
+                showError("Erreur", json.error || "Impossible de révoquer l'accès");
+            }
+        } catch (err) {
+            showError("Erreur", "Une erreur est survenue");
+        } finally {
+            setIsDeletingUser(false);
+            setUserToDelete(null);
         }
     };
 
@@ -636,8 +724,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
                     {/* Team Members */}
                     <Card className="overflow-hidden border-slate-200">
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                            <h2 className="font-semibold text-slate-900">Utilisateurs</h2>
+                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                            <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                                <ShieldCheck className="w-5 h-5 text-indigo-500" />
+                                Accès Portail
+                            </h2>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                className="h-8 gap-1.5"
+                                onClick={() => setShowCreateUserModal(true)}
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                Nouvel accès
+                            </Button>
                         </div>
                         {client.users && client.users.length > 0 ? (
                             <div className="divide-y divide-slate-100">
@@ -651,19 +751,48 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                 <div>
                                                     <p className="text-sm font-medium text-slate-900">{user.name}</p>
                                                     <p className="text-xs text-slate-500">{user.email}</p>
+                                                    <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-400">
+                                                        <Key className="w-3 h-3" />
+                                                        Accès Portail {user.role === 'CLIENT' ? 'Client' : 'Manager'}
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <Badge className="text-xs bg-slate-50 border-slate-200 text-slate-600">
-                                                {user.role}
-                                            </Badge>
+                                            <div className="flex items-center gap-3">
+                                                <Badge className="text-xs bg-slate-50 border-slate-200 text-slate-600 hidden sm:inline-flex">
+                                                    {user.role}
+                                                </Badge>
+                                                {user.role === 'CLIENT' && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => setUserToDelete({ id: user.id, name: user.name })}
+                                                        className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 p-0"
+                                                        title="Révoquer l'accès"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <div className="p-8 text-center text-slate-500">
-                                <Users className="w-10 h-10 mx-auto mb-3 text-slate-300" />
-                                <p className="text-sm">Aucun utilisateur associé</p>
+                            <div className="p-8 text-center bg-slate-50/30">
+                                <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-3">
+                                    <ShieldCheck className="w-6 h-6 text-indigo-400" />
+                                </div>
+                                <h3 className="text-sm font-medium text-slate-900 mb-1">Aucun accès portail</h3>
+                                <p className="text-xs text-slate-500 mb-4 max-w-[200px] mx-auto">
+                                    Ce client n'a pas encore accès à son espace.
+                                </p>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setShowCreateUserModal(true)}
+                                >
+                                    Créer un accès
+                                </Button>
                             </div>
                         )}
                     </Card>
@@ -820,7 +949,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 </ModalFooter>
             </Modal>
 
-            {/* Delete Confirmation Modal */}
+            {/* Delete Client Confirmation Modal */}
             <ConfirmModal
                 isOpen={showDeleteModal}
                 onClose={() => setShowDeleteModal(false)}
@@ -831,6 +960,138 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 variant="danger"
                 isLoading={isDeleting}
             />
+
+            {/* Revoke User Action Confirmation Modal */}
+            <ConfirmModal
+                isOpen={!!userToDelete}
+                onClose={() => !isDeletingUser && setUserToDelete(null)}
+                onConfirm={handleDeleteUser}
+                title="Révoquer l'accès"
+                message={`Êtes-vous sûr de vouloir révoquer l'accès portail de ${userToDelete?.name} ? Cet utilisateur ne pourra plus se connecter.`}
+                confirmText="Révoquer"
+                variant="danger"
+                isLoading={isDeletingUser}
+            />
+
+            {/* Create Portal User Modal */}
+            <Modal
+                isOpen={showCreateUserModal}
+                onClose={() => !isCreatingUser && setShowCreateUserModal(false)}
+                title="Générer un accès Portail Client"
+                description="Créez un compte utilisateur pour permettre à votre client de suivre ses missions."
+                size="md"
+            >
+                {!createdUserCredentials ? (
+                    <div className="space-y-5">
+                        <Input
+                            label="Nom et Prénom *"
+                            placeholder="ex: Jean Dupont"
+                            value={userFormData.name}
+                            onChange={(e) => setUserFormData(prev => ({ ...prev, name: e.target.value }))}
+                            icon={<User className="w-4 h-4 text-slate-400" />}
+                        />
+                        <Input
+                            label="Adresse Email *"
+                            type="email"
+                            placeholder="jean.dupont@client.com"
+                            value={userFormData.email}
+                            onChange={(e) => setUserFormData(prev => ({ ...prev, email: e.target.value }))}
+                            icon={<Mail className="w-4 h-4 text-slate-400" />}
+                        />
+                        <div>
+                            <Input
+                                label="Mot de passe (Optionnel)"
+                                type="password"
+                                placeholder="Laisser vide pour auto-générer"
+                                value={userFormData.password}
+                                onChange={(e) => setUserFormData(prev => ({ ...prev, password: e.target.value }))}
+                                icon={<Key className="w-4 h-4 text-slate-400" />}
+                            />
+                            <p className="text-xs text-slate-500 mt-1.5 ml-1">
+                                S'il est laissé vide, un mot de passe sécurisé sera généré automatiquement et vous sera affiché.
+                            </p>
+                        </div>
+                        <div className="flex justify-end gap-3 px-1 py-2 rounded-b-2xl">
+                            <Button variant="ghost" onClick={() => setShowCreateUserModal(false)} disabled={isCreatingUser}>
+                                Annuler
+                            </Button>
+                            <Button variant="primary" onClick={handleCreateUser} isLoading={isCreatingUser}>
+                                Créer l'accès
+                            </Button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                            <h3 className="text-emerald-800 font-medium mb-1 flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4" />
+                                Accès créé avec succès !
+                            </h3>
+                            <p className="text-sm text-emerald-600">
+                                Transmettez ces identifiants à votre client de manière sécurisée.
+                            </p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">URL de connexion</label>
+                                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <span className="text-sm font-medium text-slate-900 select-all">app.suzalink.com/client/login</span>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText("app.suzalink.com/client/login");
+                                            success("Copié", "Lien copié dans le presse-papier");
+                                        }}
+                                        className="text-slate-400 hover:text-indigo-600 transition-colors"
+                                    >
+                                        <Copy className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Email</label>
+                                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <span className="text-sm font-medium text-slate-900 select-all">{createdUserCredentials.email}</span>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(createdUserCredentials.email);
+                                            success("Copié", "Email copié dans le presse-papier");
+                                        }}
+                                        className="text-slate-400 hover:text-indigo-600 transition-colors"
+                                    >
+                                        <Copy className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Mot de passe provisoire</label>
+                                <div className="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                    <span className="text-sm font-mono font-medium text-orange-900 select-all">{createdUserCredentials.password}</span>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(createdUserCredentials.password || "");
+                                            success("Copié", "Mot de passe copié dans le presse-papier");
+                                        }}
+                                        className="text-orange-500 hover:text-orange-700 transition-colors"
+                                    >
+                                        <Copy className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <p className="text-xs text-orange-600 mt-2 flex items-center gap-1.5">
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                    Ce mot de passe ne sera plus jamais affiché. Veuillez le copier immédiatement.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                            <Button variant="primary" onClick={resetSuccessModal}>
+                                J'ai copié les identifiants
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
         </div>
     );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useToast } from "@/components/ui";
+import { useToast, Badge } from "@/components/ui";
 import {
     Search,
     Plus,
@@ -15,6 +15,8 @@ import {
     ArrowRight,
     X,
     FileText,
+    ShieldCheck,
+    ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { ClientOnboardingModal } from "@/components/manager/ClientOnboardingModal";
@@ -253,10 +255,22 @@ export default function ClientsPage() {
                         >
                             <div className="p-6">
                                 <div className="flex items-start justify-between mb-4">
-                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-xl font-bold text-indigo-600 group-hover:scale-110 transition-transform duration-300">
-                                        {client.name[0]}
+                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-xl font-bold text-indigo-600 shadow-sm group-hover:scale-110 transition-transform duration-300">
+                                        {client.name[0]?.toUpperCase() || "?"}
                                     </div>
-                                    <ArrowRight className="w-5 h-5 text-slate-300 -rotate-45 group-hover:rotate-0 group-hover:text-indigo-500 transition-all duration-300" />
+                                    <div className="flex gap-2">
+                                        {client._count.users > 0 ? (
+                                            <Badge variant="success" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 text-[10px] uppercase tracking-wider h-6 px-2 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <ShieldCheck className="w-3 h-3" />
+                                                Portail
+                                            </Badge>
+                                        ) : (
+                                            <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 gap-1 text-[10px] uppercase tracking-wider h-6 px-2 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <ShieldAlert className="w-3 h-3" />
+                                                Pas d'accès
+                                            </Badge>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="mb-4">

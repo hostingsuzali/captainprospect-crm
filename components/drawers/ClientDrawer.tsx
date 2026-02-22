@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Drawer, DrawerSection, DrawerField, Button, Input, useToast, ConfirmModal } from "@/components/ui";
+import { Drawer, DrawerSection, DrawerField, Button, Input, useToast, ConfirmModal, Badge } from "@/components/ui";
 import {
     Building2,
     Mail,
@@ -18,6 +18,9 @@ import {
     Link as LinkIcon,
     ExternalLink,
     Trash2,
+    ShieldCheck,
+    ShieldAlert,
+    ChevronRight,
 } from "lucide-react";
 
 // ============================================
@@ -216,39 +219,53 @@ export function ClientDrawer({
                                 {client.name[0].toUpperCase()}
                             </div>
                             <div className="flex-1">
-                                <p className="text-sm text-slate-500">Client depuis</p>
-                                <p className="font-medium text-slate-900">
-                                    {new Date(client.createdAt).toLocaleDateString("fr-FR", {
-                                        year: "numeric",
-                                        month: "long",
-                                        day: "numeric",
-                                    })}
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h2 className="text-xl font-bold text-slate-900 leading-none">{client.name}</h2>
+                                    {client._count.users > 0 ? (
+                                        <Badge variant="success" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 text-[10px] uppercase tracking-wider h-5 px-1.5 font-bold">
+                                            <ShieldCheck className="w-3 h-3" />
+                                            Portail Actif
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-200 gap-1 text-[10px] uppercase tracking-wider h-5 px-1.5 font-bold">
+                                            <ShieldAlert className="w-3 h-3 text-slate-400" />
+                                            Pas d'accès
+                                        </Badge>
+                                    )}
+                                </div>
+                                <p className="text-sm text-slate-500">Client depuis {new Date(client.createdAt).toLocaleDateString("fr-FR", {
+                                    year: "numeric",
+                                    month: "long",
+                                    day: "numeric",
+                                })}
                                 </p>
                             </div>
                         </div>
 
                         {/* Stats Cards */}
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 bg-gradient-to-br from-indigo-50 to-white rounded-xl border border-indigo-100">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
+                            <div className="p-4 bg-gradient-to-br from-indigo-50 to-white hover:from-indigo-100/80 transition-colors rounded-xl border border-indigo-100 group cursor-default">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
                                         <Target className="w-5 h-5 text-indigo-600" />
                                     </div>
-                                    <div>
-                                        <p className="text-2xl font-bold text-slate-900">{client._count.missions}</p>
-                                        <p className="text-xs text-slate-500">Missions</p>
-                                    </div>
+                                    <TrendingUp className="w-4 h-4 text-indigo-300 group-hover:text-indigo-500" />
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-slate-900 leading-none">{client._count.missions}</p>
+                                    <p className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wider">Missions</p>
                                 </div>
                             </div>
-                            <div className="p-4 bg-gradient-to-br from-emerald-50 to-white rounded-xl border border-emerald-100">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                            <div className="p-4 bg-gradient-to-br from-emerald-50 to-white hover:from-emerald-100/80 transition-colors rounded-xl border border-emerald-100 group cursor-default">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
                                         <Users className="w-5 h-5 text-emerald-600" />
                                     </div>
-                                    <div>
-                                        <p className="text-2xl font-bold text-slate-900">{client._count.users}</p>
-                                        <p className="text-xs text-slate-500">Utilisateurs</p>
-                                    </div>
+                                    <ShieldCheck className="w-4 h-4 text-emerald-300 group-hover:text-emerald-500" />
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-slate-900 leading-none">{client._count.users}</p>
+                                    <p className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wider">Utilisateurs</p>
                                 </div>
                             </div>
                         </div>
@@ -383,6 +400,33 @@ export function ClientDrawer({
                         </div>
                     )}
                 </DrawerSection>
+
+                {/* Portal Access Upsell in Drawer */}
+                {!isEditing && (
+                    <div className="rounded-xl border border-indigo-100 overflow-hidden bg-gradient-to-r from-indigo-50/50 to-white relative pb-7">
+                        <div className="p-4">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex flex-shrink-0 items-center justify-center">
+                                    <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                                </div>
+                                <h3 className="font-bold text-slate-900 text-sm">Portail Client</h3>
+                            </div>
+                            <p className="text-xs text-slate-500 pl-11 mb-2">
+                                {client._count.users > 0
+                                    ? `Ce client a actuellement ${client._count.users} accès actif(s). Gérez les paramètres sur la page de détail.`
+                                    : `Ce client n'a pas encore accès à son portail privé pour suivre les résultats en temps réel.`
+                                }
+                            </p>
+                        </div>
+                        <a
+                            href={`/manager/clients/${client.id}`}
+                            className="absolute bottom-0 left-0 right-0 py-2 px-4 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 transition-colors flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider"
+                        >
+                            {client._count.users > 0 ? "Gérer les accès" : "Créer le premier accès"}
+                            <ChevronRight className="w-3.5 h-3.5" />
+                        </a>
+                    </div>
+                )}
 
                 {/* View Details Link */}
                 {!isEditing && (
