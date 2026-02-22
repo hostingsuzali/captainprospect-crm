@@ -36,4 +36,14 @@ export const MISSION_STATUS_PRESETS = {
         { code: "DISQUALIFIED", label: "Disqualifié", color: "#D7CCC8", sortOrder: 7, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
         { code: "ENVOIE_MAIL", label: "Envoie mail", color: "#B39DDB", sortOrder: 8, requiresNote: true, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
     ] as PresetStatusItem[],
+    /** LinkedIn hub – manual workflow results */
+    LINKEDIN: [
+        { code: "CONNECTION_SENT", label: "Demande de connexion envoyée", color: "#0A66C2", sortOrder: 1, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+        { code: "MESSAGE_SENT", label: "Message envoyé", color: "#0A66C2", sortOrder: 2, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+        { code: "REPLIED", label: "A répondu", color: "#057642", sortOrder: 3, requiresNote: true, priorityLabel: "FOLLOW_UP" as const, priorityOrder: 2, triggersOpportunity: true, triggersCallback: false },
+        { code: "NOT_INTERESTED", label: "Pas intéressé", color: "#D7CCC8", sortOrder: 4, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    ] as PresetStatusItem[],
 };
+
+/** LinkedIn result codes for log-action UI */
+export const LINKEDIN_RESULT_CODES = ["CONNECTION_SENT", "MESSAGE_SENT", "REPLIED", "NOT_INTERESTED"] as const;

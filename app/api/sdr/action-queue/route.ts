@@ -22,6 +22,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const { searchParams } = new URL(request.url);
     const missionId = searchParams.get("missionId");
     const listId = searchParams.get("listId");
+    const channelParam = searchParams.get("channel")?.toUpperCase();
+    const VALID_CHANNELS = ["CALL", "EMAIL", "LINKEDIN"] as const;
+    const channelFilter = channelParam && VALID_CHANNELS.includes(channelParam as any)
+        ? `AND ('${channelParam}' = ANY(m.channels))`
+        : "";
     const search = searchParams.get("search")?.trim() ?? "";
     const hasSearch = search.length > 0;
     // No hard limit – return all queue items so the SDR can see the full listing
@@ -92,12 +97,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               AND m."isActive" = true
               AND camp."isActive" = true
               AND (
-                  (m.channel = 'CALL' AND (c.phone IS NOT NULL AND c.phone != '' OR co.phone IS NOT NULL AND co.phone != '')) OR
-                  (m.channel = 'EMAIL' AND c.email IS NOT NULL AND c.email != '') OR
-                  (m.channel = 'LINKEDIN' AND c.linkedin IS NOT NULL AND c.linkedin != '')
+                  ('CALL' = ANY(m.channels) AND (c.phone IS NOT NULL AND c.phone != '' OR co.phone IS NOT NULL AND co.phone != '')) OR
+                  ('EMAIL' = ANY(m.channels) AND c.email IS NOT NULL AND c.email != '') OR
+                  ('LINKEDIN' = ANY(m.channels) AND c.linkedin IS NOT NULL AND c.linkedin != '')
               )
               ${missionFilter}
               ${listFilter}
+              ${channelFilter}
         ),
         sdr_companies AS (
             SELECT DISTINCT
@@ -127,20 +133,21 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             WHERE sa."sdrId" = $1
               AND m."isActive" = true
               AND camp."isActive" = true
-              AND m.channel = 'CALL'
+              AND 'CALL' = ANY(m.channels)
               AND co.phone IS NOT NULL
               AND co.phone != ''
               AND NOT EXISTS (
                   SELECT 1 FROM "Contact" c2
                   WHERE c2."companyId" = co.id
                   AND (
-                      (m.channel = 'CALL' AND c2.phone IS NOT NULL AND c2.phone != '') OR
-                      (m.channel = 'EMAIL' AND c2.email IS NOT NULL AND c2.email != '') OR
-                      (m.channel = 'LINKEDIN' AND c2.linkedin IS NOT NULL AND c2.linkedin != '')
+                      ('CALL' = ANY(m.channels) AND c2.phone IS NOT NULL AND c2.phone != '') OR
+                      ('EMAIL' = ANY(m.channels) AND c2.email IS NOT NULL AND c2.email != '') OR
+                      ('LINKEDIN' = ANY(m.channels) AND c2.linkedin IS NOT NULL AND c2.linkedin != '')
                   )
               )
               ${missionFilter}
               ${listFilter}
+              ${channelFilter}
         ),
         all_targets AS (
             SELECT * FROM sdr_contacts

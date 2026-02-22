@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { ActionScopeType, ActionPriorityLabel } from "@prisma/client";
+import { MISSION_STATUS_PRESETS } from "@/lib/constants/actionStatusPresets";
 
 // ============================================
 // STATUS CONFIG SERVICE
@@ -51,6 +52,10 @@ const LEGACY_PRIORITY: Record<string, { order: number; label: ActionPriorityLabe
     BAD_CONTACT: { order: 999, label: "SKIP" },
     DISQUALIFIED: { order: 999, label: "SKIP" },
     ENVOIE_MAIL: { order: 999, label: "SKIP" },
+    CONNECTION_SENT: { order: 999, label: "SKIP" },
+    MESSAGE_SENT: { order: 999, label: "SKIP" },
+    REPLIED: { order: 2, label: "FOLLOW_UP" },
+    NOT_INTERESTED: { order: 999, label: "SKIP" },
 };
 
 export interface ScopeContext {
@@ -123,7 +128,7 @@ export async function getEffectiveStatusConfig(
         }
     }
 
-    const statuses: EffectiveStatusDefinition[] = Array.from(byCode.values())
+    let statuses: EffectiveStatusDefinition[] = Array.from(byCode.values())
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((r) => ({
             code: r.code,
@@ -136,6 +141,35 @@ export async function getEffectiveStatusConfig(
             triggersOpportunity: r.triggersOpportunity,
             triggersCallback: r.triggersCallback,
         }));
+
+    // Channel fallback: for LINKEDIN missions, ensure LinkedIn result codes are allowed
+    const linkedinPreset = MISSION_STATUS_PRESETS.LINKEDIN as Array<{ code: string; label: string; color: string | null; sortOrder: number; requiresNote: boolean; priorityLabel: ActionPriorityLabel; priorityOrder: number | null; triggersOpportunity: boolean; triggersCallback: boolean }>;
+    if (missionId && linkedinPreset?.length) {
+        const mission = await prisma.mission.findUnique({
+            where: { id: missionId },
+            select: { channel: true },
+        });
+        if (mission?.channel === "LINKEDIN") {
+            const existingCodes = new Set(statuses.map((s) => s.code));
+            for (const p of linkedinPreset) {
+                if (!existingCodes.has(p.code)) {
+                    existingCodes.add(p.code);
+                    statuses.push({
+                        code: p.code,
+                        label: p.label,
+                        color: p.color,
+                        sortOrder: p.sortOrder,
+                        requiresNote: p.requiresNote,
+                        priorityLabel: p.priorityLabel,
+                        priorityOrder: p.priorityOrder ?? DEFAULT_PRIORITY_ORDER[p.priorityLabel],
+                        triggersOpportunity: p.triggersOpportunity,
+                        triggersCallback: p.triggersCallback,
+                    });
+                }
+            }
+            statuses.sort((a, b) => a.sortOrder - b.sortOrder);
+        }
+    }
 
     // Next steps (same merge logic)
     const nextStepRows = await prisma.actionNextStep.findMany({

@@ -15,6 +15,7 @@ export interface CreateMissionInput {
     name: string;
     objective: string;
     channel: Channel;
+    channels?: Channel[];
     clientId: string;
     startDate: string;
     endDate: string;
@@ -68,11 +69,14 @@ export async function createMission(
 
         const result = await prisma.$transaction(async (tx) => {
             // 1. Create Mission
+            const channels = missionData.channels?.length ? missionData.channels : [missionData.channel];
+            const channel = channels[0];
             const mission = await tx.mission.create({
                 data: {
                     name: missionData.name,
                     objective: missionData.objective,
-                    channel: missionData.channel,
+                    channel,
+                    channels,
                     clientId: missionData.clientId,
                     startDate: new Date(missionData.startDate),
                     endDate: new Date(missionData.endDate),

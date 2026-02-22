@@ -19,7 +19,11 @@ export type ActionResult =
     | "MEETING_BOOKED"
     | "MEETING_CANCELLED"
     | "DISQUALIFIED"
-    | "ENVOIE_MAIL";
+    | "ENVOIE_MAIL"
+    | "CONNECTION_SENT"
+    | "MESSAGE_SENT"
+    | "REPLIED"
+    | "NOT_INTERESTED";
 
 // Opportunity urgency levels
 export type Urgency = "SHORT" | "MEDIUM" | "LONG";
@@ -34,6 +38,10 @@ export const ACTION_RESULT_LABELS: Record<string, string> = {
     MEETING_CANCELLED: "Meeting annulé",
     DISQUALIFIED: "Disqualifié",
     ENVOIE_MAIL: "Envoie mail",
+    CONNECTION_SENT: "Demande de connexion envoyée",
+    MESSAGE_SENT: "Message envoyé",
+    REPLIED: "A répondu",
+    NOT_INTERESTED: "Pas intéressé",
 };
 
 export const CHANNEL_LABELS: Record<Channel, string> = {

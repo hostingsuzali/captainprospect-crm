@@ -21,12 +21,17 @@ export const GET = withErrorHandler(async (
 
     const { searchParams } = new URL(request.url);
     const sdrId = searchParams.get('sdrId') || undefined;
+    const channelParam = searchParams.get('channel')?.toUpperCase();
+    const channel = (channelParam === 'CALL' || channelParam === 'EMAIL' || channelParam === 'LINKEDIN')
+        ? channelParam as 'CALL' | 'EMAIL' | 'LINKEDIN'
+        : undefined;
     const from = searchParams.get('from') ? new Date(searchParams.get('from')!) : undefined;
     const to = searchParams.get('to') ? new Date(searchParams.get('to')!) : undefined;
 
     const stats = await actionService.getActionStats({
         missionId: id,
         sdrId,
+        channel,
         from,
         to,
     });

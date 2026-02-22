@@ -19,6 +19,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const { searchParams } = new URL(request.url);
     const missionId = searchParams.get('missionId');
     const listId = searchParams.get('listId');
+    const channelParam = searchParams.get('channel')?.toUpperCase();
+    const VALID_CHANNELS = ['CALL', 'EMAIL', 'LINKEDIN'] as const;
+    const channelFilter = channelParam && VALID_CHANNELS.includes(channelParam as any)
+        ? `AND ('${channelParam}' = ANY(m.channels))`
+        : '';
 
     // Cooldown configuration (should move to env/config)
     const COOLDOWN_HOURS = 24;
@@ -27,10 +32,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
     // Build dynamic where clauses
     const missionFilter = missionId
-        ? `AND m.id = '${missionId}'`
+        ? `AND m.id = '${missionId.replace(/'/g, "''")}'`
         : '';
     const listFilter = listId
-        ? `AND l.id = '${listId}'`
+        ? `AND l.id = '${listId.replace(/'/g, "''")}'`
         : '';
 
     // ============================================
@@ -99,14 +104,15 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               AND m."isActive" = true
               AND camp."isActive" = true
               -- Include all contacts regardless of status (INCOMPLETE, PARTIAL, ACTIONABLE)
-              -- Only check that they have the required channel info for the mission
+              -- Only check that they have the required channel info for the mission (mission can be multi-channel)
               AND (
-                  (m.channel = 'CALL' AND (c.phone IS NOT NULL AND c.phone != '' OR co.phone IS NOT NULL AND co.phone != '')) OR
-                  (m.channel = 'EMAIL' AND c.email IS NOT NULL AND c.email != '') OR
-                  (m.channel = 'LINKEDIN' AND c.linkedin IS NOT NULL AND c.linkedin != '')
+                  ('CALL' = ANY(m.channels) AND (c.phone IS NOT NULL AND c.phone != '' OR co.phone IS NOT NULL AND co.phone != '')) OR
+                  ('EMAIL' = ANY(m.channels) AND c.email IS NOT NULL AND c.email != '') OR
+                  ('LINKEDIN' = ANY(m.channels) AND c.linkedin IS NOT NULL AND c.linkedin != '')
               )
               ${missionFilter}
               ${listFilter}
+              ${channelFilter}
         ),
         sdr_companies AS (
             -- Get companies that can be called directly (have phone but maybe no contacts, or we want to call company)
@@ -139,8 +145,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             WHERE sa."sdrId" = $1
               AND m."isActive" = true
               AND camp."isActive" = true
-              -- Only include companies with phone for CALL missions
-              AND m.channel = 'CALL'
+              -- Only include companies with phone for CALL missions (mission can be multi-channel)
+              AND 'CALL' = ANY(m.channels)
               AND co.phone IS NOT NULL
               AND co.phone != ''
               -- Exclude companies that already have actionable contacts (to avoid duplicates)
@@ -148,13 +154,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                   SELECT 1 FROM "Contact" c2 
                   WHERE c2."companyId" = co.id 
                   AND (
-                      (m.channel = 'CALL' AND c2.phone IS NOT NULL AND c2.phone != '') OR
-                      (m.channel = 'EMAIL' AND c2.email IS NOT NULL AND c2.email != '') OR
-                      (m.channel = 'LINKEDIN' AND c2.linkedin IS NOT NULL AND c2.linkedin != '')
+                      ('CALL' = ANY(m.channels) AND c2.phone IS NOT NULL AND c2.phone != '') OR
+                      ('EMAIL' = ANY(m.channels) AND c2.email IS NOT NULL AND c2.email != '') OR
+                      ('LINKEDIN' = ANY(m.channels) AND c2.linkedin IS NOT NULL AND c2.linkedin != '')
                   )
               )
               ${missionFilter}
               ${listFilter}
+              ${channelFilter}
         ),
         all_targets AS (
             -- Combine contacts and companies

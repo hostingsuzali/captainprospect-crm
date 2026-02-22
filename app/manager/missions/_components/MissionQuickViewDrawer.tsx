@@ -46,6 +46,7 @@ export function MissionQuickViewDrawer({
 }) {
     if (!mission) return <Drawer isOpen={isOpen} onClose={onClose} size="sm"><div /></Drawer>;
 
+    const channelsList = mission.channels?.length ? mission.channels : [mission.channel];
     const channel = CHANNEL_CONFIG[mission.channel as keyof typeof CHANNEL_CONFIG];
     const ChannelIcon = channel?.icon || Phone;
 
@@ -86,15 +87,36 @@ export function MissionQuickViewDrawer({
                                         <span className={`w-1.5 h-1.5 rounded-full ${mission.isActive ? "bg-emerald-400" : "bg-white/40"}`} />
                                         {mission.isActive ? "Actif" : "En pause"}
                                     </span>
-                                    <span className={cn(
-                                        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border",
-                                        channel?.softBg,
-                                        channel?.text,
-                                        "bg-white/10 text-white/80 border-white/20"
-                                    )}>
-                                        <ChannelIcon className="w-3 h-3" />
-                                        {channel?.label}
-                                    </span>
+                                    {channelsList.length === 1 ? (
+                                        <span className={cn(
+                                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border",
+                                            channel?.softBg,
+                                            channel?.text,
+                                            "bg-white/10 text-white/80 border-white/20"
+                                        )}>
+                                            <ChannelIcon className="w-3 h-3" />
+                                            {channel?.label}
+                                        </span>
+                                    ) : (
+                                        channelsList.map((ch: keyof typeof CHANNEL_CONFIG) => {
+                                            const cfg = CHANNEL_CONFIG[ch];
+                                            const Icon = cfg?.icon ?? ChannelIcon;
+                                            return (
+                                                <span
+                                                    key={ch}
+                                                    className={cn(
+                                                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border",
+                                                        cfg?.softBg ?? "bg-white/10",
+                                                        cfg?.text ?? "text-white/80",
+                                                        "border-white/20"
+                                                    )}
+                                                >
+                                                    <Icon className="w-2.5 h-2.5" />
+                                                    {cfg?.label ?? ch}
+                                                </span>
+                                            );
+                                        })
+                                    )}
                                 </div>
                             </div>
                         </div>

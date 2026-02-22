@@ -30,15 +30,15 @@ export default function NewMissionPage() {
     const { success, error: showError } = useToast();
 
     // Data State (unified mission + campaign)
-    const [missionData, setMissionData] = useState<CreateMissionInput>({
-        // Mission fields
+    const [missionData, setMissionData] = useState<CreateMissionInput & { channels?: Channel[] }>({
         name: "",
         objective: "",
         channel: "CALL" as Channel,
+        channels: ["CALL"],
+        // Campaign fields
         clientId: "",
         startDate: "",
         endDate: "",
-        // Campaign fields
         icp: "",
         pitch: "",
         scriptIntro: "",
@@ -88,7 +88,7 @@ export default function NewMissionPage() {
         const errs: Record<string, string> = {};
         if (!missionData.name.trim()) errs.name = "Le nom est requis";
         if (!missionData.clientId) errs.clientId = "Le client est requis";
-        if (!missionData.channel) errs.channel = "Le canal est requis";
+        if (!(missionData.channels?.length ?? 0) && !missionData.channel) errs.channel = "Sélectionnez au moins un canal";
         if (!missionData.icp.trim()) errs.icp = "L'ICP est requis";
         if (!missionData.pitch.trim()) errs.pitch = "Le pitch est requis";
 

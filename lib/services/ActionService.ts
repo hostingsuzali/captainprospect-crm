@@ -291,6 +291,7 @@ export class ActionService {
     async getActionStats(filters: {
         sdrId?: string;
         missionId?: string;
+        channel?: 'CALL' | 'EMAIL' | 'LINKEDIN';
         from?: Date;
         to?: Date;
     }) {
@@ -300,6 +301,7 @@ export class ActionService {
         if (filters.missionId) {
             whereClause.campaign = { missionId: filters.missionId };
         }
+        if (filters.channel) whereClause.channel = filters.channel;
         if (filters.from || filters.to) {
             whereClause.createdAt = {};
             if (filters.from) whereClause.createdAt.gte = filters.from;
@@ -319,28 +321,34 @@ export class ActionService {
             }),
         ]);
 
-        const resultBreakdown: Record<string, number> = {
-            NO_RESPONSE: 0,
-            BAD_CONTACT: 0,
-            INTERESTED: 0,
-            CALLBACK_REQUESTED: 0,
-            MEETING_BOOKED: 0,
-            DISQUALIFIED: 0,
-        };
-
+        const resultBreakdown: Record<string, number> = {};
         byResult.forEach(item => {
             resultBreakdown[item.result] = item._count;
         });
+
+        const conversionRate = total > 0
+            ? ((resultBreakdown.MEETING_BOOKED ?? 0) / total * 100).toFixed(2)
+            : '0.00';
+
+        const sent = (resultBreakdown.ENVOIE_MAIL ?? 0) + (resultBreakdown.CONNECTION_SENT ?? 0) + (resultBreakdown.MESSAGE_SENT ?? 0);
+        const replied = resultBreakdown.REPLIED ?? 0;
+        const repliedRate = total > 0 ? ((replied / total) * 100).toFixed(2) : '0.00';
 
         return {
             total,
             resultBreakdown,
             avgDuration: Math.round(avgDuration._avg.duration || 0),
-            conversionRate: total > 0
-                ? ((resultBreakdown.MEETING_BOOKED / total) * 100).toFixed(2)
-                : '0.00',
+            conversionRate,
+            sent,
+            replied,
+            repliedRate,
         };
     }
+}
+
+/** Get mission stats with optional channel filter. Reusable for Email + LinkedIn + Calls. */
+export async function getMissionStats(missionId: string, channel?: 'CALL' | 'EMAIL' | 'LINKEDIN') {
+    return actionService.getActionStats({ missionId, channel });
 }
 
 // Export singleton instance

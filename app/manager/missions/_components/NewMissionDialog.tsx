@@ -103,10 +103,11 @@ export function NewMissionDialog({ isOpen, onClose, onCreated }: Props) {
     const [generatingSection, setGeneratingSection] = useState<string | null>(null);
     const [direction, setDirection] = useState<"forward" | "back">("forward");
 
-    const [form, setForm] = useState<CreateMissionInput>({
+    const [form, setForm] = useState<CreateMissionInput & { channels?: Channel[] }>({
         name: "",
         objective: "",
         channel: "CALL" as Channel,
+        channels: ["CALL"],
         clientId: "",
         startDate: "",
         endDate: "",
@@ -122,7 +123,7 @@ export function NewMissionDialog({ isOpen, onClose, onCreated }: Props) {
         if (!isOpen) return;
         setStep(1);
         setForm({
-            name: "", objective: "", channel: "CALL" as Channel,
+            name: "", objective: "", channel: "CALL" as Channel, channels: ["CALL"],
             clientId: "", startDate: "", endDate: "",
             icp: "", pitch: "",
             scriptIntro: "", scriptDiscovery: "", scriptObjection: "", scriptClosing: "",
@@ -148,7 +149,7 @@ export function NewMissionDialog({ isOpen, onClose, onCreated }: Props) {
 
     // ─── Validation ───────────────────────────────────────────────────────────
 
-    const step1Valid = !!form.name.trim() && !!form.clientId && !!form.channel;
+    const step1Valid = !!form.name.trim() && !!form.clientId && (form.channels?.length ?? 0) > 0;
     const step2Valid = !!form.icp.trim() && !!form.pitch.trim();
     const step3Valid = !!form.scriptIntro.trim();
 
@@ -400,20 +401,32 @@ export function NewMissionDialog({ isOpen, onClose, onCreated }: Props) {
                                     />
                                 </div>
 
-                                {/* Channel */}
+                                {/* Channels (multi-select) */}
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-3">
-                                        Canal principal <span className="text-red-500">*</span>
+                                        Canaux <span className="text-red-500">*</span>
                                     </label>
+                                    <p className="text-xs text-slate-500 mb-2">Sélectionnez un ou plusieurs canaux pour cette mission (appels, email, LinkedIn peuvent être utilisés ensemble).</p>
                                     <div className="grid grid-cols-3 gap-3">
                                         {CHANNEL_OPTIONS.map(opt => {
                                             const Icon = opt.icon;
-                                            const isSelected = form.channel === opt.value;
+                                            const isSelected = form.channels?.includes(opt.value as Channel) ?? form.channel === opt.value;
                                             return (
                                                 <button
                                                     key={opt.value}
                                                     type="button"
-                                                    onClick={() => setForm(p => ({ ...p, channel: opt.value as Channel }))}
+                                                    onClick={() => {
+                                                        const current = form.channels ?? [form.channel];
+                                                        const next = isSelected
+                                                            ? current.filter(c => c !== opt.value)
+                                                            : [...current, opt.value as Channel];
+                                                        if (next.length === 0) return;
+                                                        setForm(p => ({
+                                                            ...p,
+                                                            channels: next,
+                                                            channel: next[0],
+                                                        }));
+                                                    }}
                                                     className={`group relative flex flex-col items-center gap-3 p-4 rounded-2xl border-2 transition-all duration-200 ${isSelected
                                                             ? opt.selected
                                                             : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"

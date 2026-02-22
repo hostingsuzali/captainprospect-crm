@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
     Phone, Mail, Linkedin, Building2, User, CheckCircle2,
     XCircle, Ban, Loader2, Clock, Calendar, Sparkles, Filter, RotateCcw,
@@ -12,6 +13,13 @@ import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
 import { ACTION_RESULT_LABELS } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+const CHANNEL_TABS = [
+    { value: "CALL" as const, label: "Appels", icon: Phone },
+    { value: "EMAIL" as const, label: "Email", icon: Mail },
+    { value: "LINKEDIN" as const, label: "LinkedIn", icon: Linkedin },
+] as const;
+type ChannelTabValue = typeof CHANNEL_TABS[number]["value"];
+
 // ============================================
 // TYPES
 // ============================================
@@ -20,6 +28,7 @@ interface MissionItem {
     id: string;
     name: string;
     channel: string;
+    channels?: string[];
     client: { id: string; name: string };
     _count?: { actions: number; campaigns: number };
 }
@@ -58,6 +67,10 @@ const RESULT_ICON_MAP: Record<string, React.ReactNode> = {
     MEETING_BOOKED: <CalendarPlus className="w-4 h-4" />,
     DISQUALIFIED: <XCircle className="w-4 h-4" />,
     ENVOIE_MAIL: <Mail className="w-4 h-4" />,
+    CONNECTION_SENT: <Linkedin className="w-4 h-4" />,
+    MESSAGE_SENT: <Linkedin className="w-4 h-4" />,
+    REPLIED: <CheckCircle2 className="w-4 h-4" />,
+    NOT_INTERESTED: <XCircle className="w-4 h-4" />,
 };
 
 const CHANNEL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -67,6 +80,15 @@ const CHANNEL_ICONS: Record<string, React.ComponentType<{ className?: string }>>
 };
 
 export default function ManagerProspectionPage() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const channelParam = (searchParams.get("channel") || "CALL").toUpperCase();
+    const channel: ChannelTabValue = CHANNEL_TABS.some(t => t.value === channelParam) ? channelParam as ChannelTabValue : "CALL";
+
+    const setChannel = useCallback((ch: ChannelTabValue) => {
+        router.replace(`/manager/prospection?channel=${ch}`, { scroll: false });
+    }, [router]);
+
     // Step 1: Picker States
     const [missions, setMissions] = useState<MissionItem[]>([]);
     const [missionsLoading, setMissionsLoading] = useState(true);
@@ -133,6 +155,10 @@ export default function ManagerProspectionPage() {
             fetchMissionData(selectedMission.id);
         }
     }, [selectedMission, fetchMissionData]);
+
+    const missionsFilteredByChannel = useMemo(() => {
+        return missions.filter(m => m.channels?.includes(channel) ?? m.channel === channel);
+    }, [missions, channel]);
 
     const filteredActions = useMemo(() => {
         return actions.filter(a => {
@@ -237,16 +263,41 @@ export default function ManagerProspectionPage() {
     ];
 
     if (!selectedMission) {
+        const ChannelIconActive = CHANNEL_TABS.find(t => t.value === channel)?.icon ?? Phone;
+        const channelTitle = channel === "CALL" ? "Appels" : channel === "EMAIL" ? "Email" : "LinkedIn";
         return (
             <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
-                <div className="flex items-center gap-3 mb-8">
+                <div className="flex items-center gap-3 mb-4">
                     <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
-                        <Phone className="w-6 h-6 text-indigo-600" />
+                        <ChannelIconActive className="w-6 h-6 text-indigo-600" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Historique des Appels</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">Sélectionnez une mission pour afficher tous les appels et statistiques</p>
+                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Prospection — {channelTitle}</h1>
+                        <p className="text-sm text-slate-500 mt-0.5">Sélectionnez une mission pour afficher l&apos;historique et les statistiques</p>
                     </div>
+                </div>
+
+                {/* Channel tabs */}
+                <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+                    {CHANNEL_TABS.map((tab) => {
+                        const Icon = tab.icon;
+                        const isActive = channel === tab.value;
+                        return (
+                            <button
+                                key={tab.value}
+                                onClick={() => setChannel(tab.value)}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all",
+                                    isActive
+                                        ? "bg-white text-slate-900 shadow-sm"
+                                        : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                                )}
+                            >
+                                <Icon className="w-4 h-4" />
+                                {tab.label}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {missionsLoading ? (
@@ -254,15 +305,15 @@ export default function ManagerProspectionPage() {
                         <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
                         <p className="text-slate-500 font-medium">Chargement des missions...</p>
                     </div>
-                ) : missions.length === 0 ? (
+                ) : missionsFilteredByChannel.length === 0 ? (
                     <Card className="text-center py-20 border-dashed border-2 shadow-sm rounded-3xl">
                         <Target className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-bold text-slate-700">Aucune mission trouvée</h3>
-                        <p className="text-slate-500 mt-1">Créez des missions pour pouvoir suivre leurs appels.</p>
+                        <h3 className="text-lg font-bold text-slate-700">Aucune mission {channel === "CALL" ? "d'appels" : channel === "EMAIL" ? "email" : "LinkedIn"} trouvée</h3>
+                        <p className="text-slate-500 mt-1">Créez une mission avec le canal {channelTitle} pour voir son historique ici.</p>
                     </Card>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {missions.map((mission, index) => {
+                        {missionsFilteredByChannel.map((mission, index) => {
                             const ChannelIcon = CHANNEL_ICONS[mission.channel] ?? Phone;
                             return (
                                 <Card
@@ -306,26 +357,47 @@ export default function ManagerProspectionPage() {
     return (
         <div className="space-y-6 max-w-7xl mx-auto pb-10 animate-fade-in">
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedMission(null)} className="h-10 w-10 p-0 rounded-xl hover:bg-slate-100">
-                        <ArrowLeft className="w-5 h-5 text-slate-600" />
-                    </Button>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                            {selectedMission.name}
-                        </h1>
-                        <p className="text-sm font-medium text-slate-500 flex items-center gap-1.5 mt-0.5">
-                            <Building2 className="w-4 h-4" />
-                            {selectedMission.client.name} — Historique complet
-                        </p>
+            <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <Button variant="ghost" size="sm" onClick={() => setSelectedMission(null)} className="h-10 w-10 p-0 rounded-xl hover:bg-slate-100">
+                            <ArrowLeft className="w-5 h-5 text-slate-600" />
+                        </Button>
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                                {selectedMission.name}
+                            </h1>
+                            <p className="text-sm font-medium text-slate-500 flex items-center gap-1.5 mt-0.5">
+                                <Building2 className="w-4 h-4" />
+                                {selectedMission.client.name} — Historique complet
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => fetchMissionData(selectedMission.id)} className="gap-2 bg-white">
+                            <RefreshCw className={cn("w-4 h-4", loadingData && "animate-spin")} />
+                            Actualiser
+                        </Button>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => fetchMissionData(selectedMission.id)} className="gap-2 bg-white">
-                        <RefreshCw className={cn("w-4 h-4", loadingData && "animate-spin")} />
-                        Actualiser
-                    </Button>
+                <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+                    {CHANNEL_TABS.map((tab) => {
+                        const Icon = tab.icon;
+                        const isActive = channel === tab.value;
+                        return (
+                            <button
+                                key={tab.value}
+                                onClick={() => { setChannel(tab.value); setSelectedMission(null); }}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all",
+                                    isActive ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                                )}
+                            >
+                                <Icon className="w-4 h-4" />
+                                {tab.label}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 

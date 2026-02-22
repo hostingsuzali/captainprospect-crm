@@ -15,17 +15,38 @@ import { z } from 'zod';
 // SCHEMAS
 // ============================================
 
+const channelEnum = z.enum(['CALL', 'EMAIL', 'LINKEDIN']);
 const createMissionSchema = z.object({
     clientId: z.string().min(1, 'Client requis'),
     name: z.string().min(1, 'Nom requis'),
     objective: z.string().min(1, 'Objectif requis'),
-    channel: z.enum(['CALL', 'EMAIL', 'LINKEDIN']),
+    channel: channelEnum.optional(),
+    channels: z.array(channelEnum).min(1, 'Sélectionnez au moins un canal').optional(),
     startDate: z.string().transform((s) => new Date(s)),
     endDate: z.string().transform((s) => new Date(s)),
     isActive: z.boolean().optional().default(true),
+}).transform((data) => {
+    const channels = data.channels ?? (data.channel ? [data.channel] : ['CALL']);
+    const channel = channels[0];
+    return { ...data, channel, channels };
 });
 
-const updateMissionSchema = createMissionSchema.partial();
+const updateMissionSchema = z.object({
+    clientId: z.string().min(1).optional(),
+    name: z.string().min(1).optional(),
+    objective: z.string().min(1).optional(),
+    channel: channelEnum.optional(),
+    channels: z.array(channelEnum).min(1).optional(),
+    startDate: z.string().transform((s) => new Date(s)).optional(),
+    endDate: z.string().transform((s) => new Date(s)).optional(),
+    isActive: z.boolean().optional(),
+}).partial().transform((data) => {
+    if (data.channels !== undefined) {
+        const channel = data.channels[0];
+        return { ...data, channel };
+    }
+    return data;
+});
 
 // ============================================
 // GET /api/missions - List all missions

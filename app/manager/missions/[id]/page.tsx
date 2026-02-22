@@ -48,6 +48,7 @@ interface Mission {
     name: string;
     objective?: string;
     channel: "CALL" | "EMAIL" | "LINKEDIN";
+    channels?: ("CALL" | "EMAIL" | "LINKEDIN")[];
     isActive: boolean;
     startDate?: string;
     endDate?: string;
@@ -776,6 +777,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
         return null;
     }
 
+    const channelsList = mission.channels?.length ? mission.channels : [mission.channel];
     const channel = CHANNEL_CONFIG[mission.channel];
     const ChannelIcon = channel.icon;
 
@@ -804,10 +806,23 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                 <span className={mission.isActive ? "mgr-badge-active" : "mgr-badge-paused"}>
                                     {mission.isActive ? "Actif" : "Pause"}
                                 </span>
-                                <span className={`mgr-channel-badge ${channel.className}`}>
-                                    <ChannelIcon className="w-3 h-3" />
-                                    {channel.label}
-                                </span>
+                                {channelsList.length === 1 ? (
+                                    <span className={`mgr-channel-badge ${channel.className}`}>
+                                        <ChannelIcon className="w-3 h-3" />
+                                        {channel.label}
+                                    </span>
+                                ) : (
+                                    channelsList.map((ch) => {
+                                        const cfg = CHANNEL_CONFIG[ch];
+                                        const Icon = cfg?.icon ?? ChannelIcon;
+                                        return (
+                                            <span key={ch} className={`mgr-channel-badge ${cfg?.className ?? channel.className}`}>
+                                                <Icon className="w-3 h-3" />
+                                                {cfg?.label ?? ch}
+                                            </span>
+                                        );
+                                    })
+                                )}
                             </div>
                             <p className="text-sm text-slate-400">
                                 {assignedSDRs.length} SDR{assignedSDRs.length !== 1 ? "s" : ""} · {assignedBDs.length} BD{assignedBDs.length !== 1 ? "s" : ""} · {mission._count.lists} liste{mission._count.lists !== 1 ? "s" : ""} · {dateRangeStr}

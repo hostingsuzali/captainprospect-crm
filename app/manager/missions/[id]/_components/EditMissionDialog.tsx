@@ -14,6 +14,7 @@ interface MissionData {
     name: string;
     objective?: string;
     channel: "CALL" | "EMAIL" | "LINKEDIN";
+    channels?: ("CALL" | "EMAIL" | "LINKEDIN")[];
     isActive: boolean;
     startDate?: string;
     endDate?: string;
@@ -24,6 +25,7 @@ interface FormData {
     name: string;
     objective: string;
     channel: string;
+    channels: string[];
     clientId: string;
     startDate: string;
     endDate: string;
@@ -46,6 +48,7 @@ export function EditMissionDialog({ isOpen, onClose, mission, onSaved }: EditMis
         name: "",
         objective: "",
         channel: "CALL",
+        channels: ["CALL"],
         clientId: "",
         startDate: "",
         endDate: "",
@@ -55,10 +58,12 @@ export function EditMissionDialog({ isOpen, onClose, mission, onSaved }: EditMis
 
     useEffect(() => {
         if (isOpen && mission) {
+            const channels = mission.channels?.length ? mission.channels : [mission.channel || "CALL"];
             setFormData({
                 name: mission.name || "",
                 objective: mission.objective || "",
-                channel: mission.channel || "CALL",
+                channel: channels[0] || "CALL",
+                channels: [...channels],
                 clientId: mission.client?.id || "",
                 startDate: mission.startDate ? mission.startDate.toString().split("T")[0] : "",
                 endDate: mission.endDate ? mission.endDate.toString().split("T")[0] : "",
@@ -84,6 +89,7 @@ export function EditMissionDialog({ isOpen, onClose, mission, onSaved }: EditMis
         const newErrors: Record<string, string> = {};
         if (!formData.name.trim()) newErrors.name = "Le nom est requis";
         if (!formData.clientId) newErrors.clientId = "Le client est requis";
+        if (!formData.channels?.length) newErrors.channels = "Sélectionnez au moins un canal";
         if (formData.startDate && formData.endDate && new Date(formData.endDate) < new Date(formData.startDate)) {
             newErrors.endDate = "La date de fin doit être après la date de début";
         }
@@ -102,7 +108,8 @@ export function EditMissionDialog({ isOpen, onClose, mission, onSaved }: EditMis
                 body: JSON.stringify({
                     name: formData.name,
                     objective: formData.objective || null,
-                    channel: formData.channel,
+                    channel: formData.channels[0] ?? formData.channel,
+                    channels: formData.channels,
                     clientId: formData.clientId,
                     startDate: formData.startDate || null,
                     endDate: formData.endDate || null,
@@ -163,16 +170,46 @@ export function EditMissionDialog({ isOpen, onClose, mission, onSaved }: EditMis
                     />
                 </div>
 
-                <Select
-                    label="Canal principal *"
-                    options={[
-                        { value: "CALL", label: "Appel téléphonique" },
-                        { value: "EMAIL", label: "Email" },
-                        { value: "LINKEDIN", label: "LinkedIn" },
-                    ]}
-                    value={formData.channel}
-                    onChange={(value) => setFormData((prev) => ({ ...prev, channel: value }))}
-                />
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Canaux *</label>
+                    <p className="text-xs text-slate-500 mb-2">Sélectionnez un ou plusieurs canaux pour cette mission.</p>
+                    <div className="flex flex-wrap gap-3">
+                        {[
+                            { value: "CALL", label: "Appel téléphonique" },
+                            { value: "EMAIL", label: "Email" },
+                            { value: "LINKEDIN", label: "LinkedIn" },
+                        ].map((opt) => {
+                            const isSelected = formData.channels.includes(opt.value);
+                            return (
+                                <label
+                                    key={opt.value}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 cursor-pointer transition-all ${
+                                        isSelected ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-white hover:border-slate-300"
+                                    }`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => {
+                                            const next = isSelected
+                                                ? formData.channels.filter((c) => c !== opt.value)
+                                                : [...formData.channels, opt.value];
+                                            if (next.length === 0) return;
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                channels: next,
+                                                channel: next[0],
+                                            }));
+                                        }}
+                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <span className="text-sm font-medium text-slate-700">{opt.label}</span>
+                                    </label>
+                            );
+                        })}
+                    </div>
+                    {errors.channels && <p className="text-sm text-red-500 mt-1">{errors.channels}</p>}
+                </div>
 
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Statut</label>

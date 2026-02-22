@@ -50,6 +50,11 @@ enum ActionResult {
   MEETING_CANCELLED
   DISQUALIFIED
   ENVOIE_MAIL
+  // LinkedIn hub
+  CONNECTION_SENT
+  MESSAGE_SENT
+  REPLIED
+  NOT_INTERESTED
 }
 
 // Config-driven action status and workflow
@@ -467,7 +472,8 @@ model Mission {
   client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   name          String
   objective     String
-  channel       Channel
+  channel       Channel   // Primary (first channel); kept for backward compatibility
+  channels      Channel[] @default([CALL]) // Multi-channel: mission can run on CALL + EMAIL + LINKEDIN
   startDate     DateTime
   endDate       DateTime
   isActive      Boolean   @default(true)

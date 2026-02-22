@@ -64,18 +64,51 @@ export function MissionDetails({ data, onChange, clients, errors }: MissionDetai
                         />
                     </div>
 
-                    {/* Channel */}
-                    <Select
-                        label="Canal principal *"
-                        options={[
-                            { value: "CALL", label: "📞 Appel téléphonique" },
-                            { value: "EMAIL", label: "📧 Email" },
-                            { value: "LINKEDIN", label: "💼 LinkedIn" },
-                        ]}
-                        value={data.channel}
-                        onChange={(val) => handleChange("channel", val as any)}
-                        error={errors.channel}
-                    />
+                    {/* Channels (multi-select) */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Canaux *
+                        </label>
+                        <p className="text-xs text-slate-500 mb-2">Sélectionnez un ou plusieurs canaux (appels, email, LinkedIn peuvent être utilisés ensemble).</p>
+                        <div className="flex flex-wrap gap-3">
+                            {[
+                                { value: "CALL" as const, label: "📞 Appel téléphonique" },
+                                { value: "EMAIL" as const, label: "📧 Email" },
+                                { value: "LINKEDIN" as const, label: "💼 LinkedIn" },
+                            ].map((opt) => {
+                                const channels = (data as CreateMissionInput & { channels?: string[] }).channels ?? [data.channel];
+                                const isSelected = channels.includes(opt.value);
+                                return (
+                                    <label
+                                        key={opt.value}
+                                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 cursor-pointer transition-all ${
+                                            isSelected ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-white hover:border-slate-300"
+                                        }`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => {
+                                                const current = (data as CreateMissionInput & { channels?: string[] }).channels ?? [data.channel];
+                                                const next = isSelected
+                                                    ? current.filter((c: string) => c !== opt.value)
+                                                    : [...current, opt.value];
+                                                if (next.length === 0) return;
+                                                onChange({
+                                                    ...data,
+                                                    channels: next,
+                                                    channel: next[0] as CreateMissionInput["channel"],
+                                                });
+                                            }}
+                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <span className="text-sm font-medium text-slate-700">{opt.label}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        {errors.channel && <p className="text-xs text-red-500 mt-1 font-medium">{errors.channel}</p>}
+                    </div>
 
                     {/* Dates */}
                     <div className="grid grid-cols-2 gap-4">

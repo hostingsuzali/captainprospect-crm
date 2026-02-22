@@ -14,15 +14,22 @@ import { z } from 'zod';
 // SCHEMAS
 // ============================================
 
+const channelEnum = z.enum(['CALL', 'EMAIL', 'LINKEDIN']);
 const updateMissionSchema = z.object({
     clientId: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     objective: z.string().min(1).optional(),
-    channel: z.enum(['CALL', 'EMAIL', 'LINKEDIN']).optional(),
+    channel: channelEnum.optional(),
+    channels: z.array(channelEnum).min(1).optional(),
     startDate: z.string().transform((s) => new Date(s)).optional(),
     endDate: z.string().transform((s) => new Date(s)).optional(),
     isActive: z.boolean().optional(),
     teamLeadSdrId: z.string().nullable().optional(),
+}).partial().transform((data) => {
+    if (data.channels !== undefined) {
+        return { ...data, channel: data.channels[0] };
+    }
+    return data;
 });
 
 const assignSdrSchema = z.object({
@@ -146,9 +153,20 @@ export const PUT = withErrorHandler(async (
         }
     }
 
+    // Build Prisma update data: relations (client, teamLeadSdr) and array (channels) use special syntax
+    const { clientId, teamLeadSdrId, channels, ...scalars } = data;
+    const updateData: Parameters<typeof prisma.mission.update>[0]['data'] = {
+        ...scalars,
+        ...(channels !== undefined && { channels: { set: channels } }),
+        ...(clientId !== undefined && { client: { connect: { id: clientId } } }),
+        ...(teamLeadSdrId !== undefined && {
+            teamLeadSdr: teamLeadSdrId ? { connect: { id: teamLeadSdrId } } : { disconnect: true },
+        }),
+    };
+
     const mission = await prisma.mission.update({
         where: { id },
-        data,
+        data: updateData,
         include: {
             client: { select: { id: true, name: true } },
             teamLeadSdr: { select: { id: true, name: true, email: true } },
