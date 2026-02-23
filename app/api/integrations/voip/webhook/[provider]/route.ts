@@ -48,14 +48,18 @@ export async function POST(
     },
   });
 
-  // Allo: initiate creates action with voipCallId ''; webhook has real id. Link by SDR + contact.
+  // Allo: initiate creates action with voipCallId "pending:uuid"; webhook has real id. Link by SDR + contact.
   if (!existing && provider === "allo" && normalizedCall.providerCallId && sdrId && (contact?.id || company?.id)) {
     existing = await prisma.action.findFirst({
       where: {
         voipProvider: "allo",
         sdrId,
         actionStatus: "IN_PROGRESS",
-        OR: [{ voipCallId: "" }, { voipCallId: null }],
+        OR: [
+          { voipCallId: "" },
+          { voipCallId: null },
+          { voipCallId: { startsWith: "pending:" } },
+        ],
         ...(contact?.id ? { contactId: contact.id } : { companyId: company!.id }),
       },
       orderBy: { createdAt: "desc" },

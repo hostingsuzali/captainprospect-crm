@@ -5,6 +5,7 @@
 // Register via POST /v1/api/webhooks or Allo app: Settings > Integrations > Webhooks.
 // Payload includes: oneSentenceSummary, transcriptions, recordingUrl, fromNumber, fromName.
 
+import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import type {
   VoipAdapter,
@@ -67,6 +68,8 @@ export class AlloAdapter implements VoipAdapter {
     if (!campaignId) {
       throw new Error("campaignId requis pour initier un appel Allo");
     }
+    // Unique placeholder per initiate so (voipProvider, voipCallId) never duplicates; webhook replaces with real id
+    const pendingCallId = `pending:${randomUUID()}`;
     const action = await prisma.action.create({
       data: {
         sdrId: userId,
@@ -77,7 +80,7 @@ export class AlloAdapter implements VoipAdapter {
         result: "NO_RESPONSE",
         actionStatus: "IN_PROGRESS",
         voipProvider: "allo",
-        voipCallId: "", // filled when webhook arrives
+        voipCallId: pendingCallId,
       },
     });
     return {
