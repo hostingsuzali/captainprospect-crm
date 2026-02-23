@@ -23,6 +23,7 @@ import {
   HelpCircle,
   LucideIcon,
   Database,
+  FileDown,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
 
@@ -239,6 +240,17 @@ export const SDR_NAV: NavSection[] = [
       },
     ],
   },
+  {
+    title: "Paramètres",
+    items: [
+      {
+        href: "/sdr/settings/voip",
+        icon: Phone,
+        label: "Configuration VOIP",
+        permission: "pages.action",
+      },
+    ],
+  },
 ];
 
 // ============================================
@@ -412,6 +424,12 @@ export const CLIENT_NAV: NavSection[] = [
   {
     title: "Outils",
     items: [
+      {
+        href: "/client/portal/reporting",
+        icon: FileDown,
+        label: "Rapport PDF",
+        permission: "pages.dashboard",
+      },
       {
         href: "/client/portal/email",
         icon: Mail,

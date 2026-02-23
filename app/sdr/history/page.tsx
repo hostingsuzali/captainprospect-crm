@@ -48,6 +48,7 @@ interface HistoryAction {
     result: string;
     resultLabel: string;
     channel: string;
+    voipProvider?: string;
     campaignName?: string;
     missionId?: string;
     missionName?: string;
@@ -127,6 +128,7 @@ export default function SDRHistoryPage() {
     const [selectedMissionId, setSelectedMissionId] = useState<string>("");
     const [selectedResult, setSelectedResult] = useState<string>("");
     const [selectedChannel, setSelectedChannel] = useState<string>("");
+    const [selectedVoipProvider, setSelectedVoipProvider] = useState<string>("");
 
     const [unifiedDrawerOpen, setUnifiedDrawerOpen] = useState(false);
     const [unifiedDrawerContactId, setUnifiedDrawerContactId] = useState<string | null>(null);
@@ -159,6 +161,7 @@ export default function SDRHistoryPage() {
             if (selectedMissionId) params.set("missionId", selectedMissionId);
             if (selectedResult) params.set("result", selectedResult);
             if (selectedChannel) params.set("channel", selectedChannel);
+            if (selectedVoipProvider) params.set("voipProvider", selectedVoipProvider);
             const res = await fetch(`/api/sdr/actions?${params.toString()}`, { signal });
             const json = await res.json();
             if (signal.aborted) return;
@@ -177,7 +180,7 @@ export default function SDRHistoryPage() {
             if (!signal.aborted) setIsLoading(false);
             if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
         }
-    }, [dateRange, selectedMissionId, selectedResult, selectedChannel, showError]);
+    }, [dateRange, selectedMissionId, selectedResult, selectedChannel, selectedVoipProvider, showError]);
 
     useEffect(() => {
         fetch("/api/sdr/missions")
@@ -469,6 +472,19 @@ export default function SDRHistoryPage() {
                                         {label}
                                     </option>
                                 ))}
+                            </select>
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">VOIP</label>
+                            <select
+                                value={selectedVoipProvider}
+                                onChange={(e) => setSelectedVoipProvider(e.target.value)}
+                                className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 cursor-pointer"
+                            >
+                                <option value="">Tous</option>
+                                <option value="allo">Allo</option>
+                                <option value="aircall">Aircall</option>
+                                <option value="ringover">Ringover</option>
                             </select>
                         </div>
                     </div>

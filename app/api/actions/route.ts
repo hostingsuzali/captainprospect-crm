@@ -48,8 +48,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const to = searchParams.get('to');
     const contactId = searchParams.get('contactId');
     const companyId = searchParams.get('companyId');
+    const voipProvider = searchParams.get('voipProvider');
 
     if (missionId) filters.missionId = missionId;
+    if (voipProvider && ['allo', 'aircall', 'ringover'].includes(voipProvider)) filters.voipProvider = voipProvider;
 
     // When viewing actions for a specific contact or company (drawer history),
     // show ALL actions from all team members so every role can see notes & history.

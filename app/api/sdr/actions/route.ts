@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
         const missionId = searchParams.get("missionId");
         const result = searchParams.get("result");
         const channel = searchParams.get("channel");
+        const voipProvider = searchParams.get("voipProvider");
 
         const sdrId = session.user.id;
 
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
             campaign?: { missionId?: string };
             result?: string;
             channel?: string;
+            voipProvider?: string;
         };
         const where: Where = { sdrId };
         if (period === "today") {
@@ -75,6 +77,9 @@ export async function GET(request: NextRequest) {
         }
         if (channel) {
             where.channel = channel;
+        }
+        if (voipProvider && ["allo", "aircall", "ringover"].includes(voipProvider)) {
+            where.voipProvider = voipProvider;
         }
 
         const actions = await prisma.action.findMany({
@@ -119,6 +124,7 @@ export async function GET(request: NextRequest) {
                 result: a.result,
                 resultLabel: label,
                 channel: a.channel as Channel,
+                voipProvider: a.voipProvider ?? undefined,
                 campaignName: a.campaign?.name,
                 missionId: a.campaign?.mission?.id,
                 missionName: a.campaign?.mission?.name,

@@ -240,6 +240,7 @@ export class ActionService {
         to?: Date;
         contactId?: string;
         companyId?: string;
+        voipProvider?: string;
         page?: number;
         limit?: number;
     }) {
@@ -252,6 +253,7 @@ export class ActionService {
         if (where.result) whereClause.result = where.result;
         if (where.contactId) whereClause.contactId = where.contactId;
         if (where.companyId) whereClause.companyId = where.companyId;
+        if (where.voipProvider) whereClause.voipProvider = where.voipProvider;
         if (where.missionId) {
             whereClause.campaign = { missionId: where.missionId };
         }

@@ -73,6 +73,12 @@ enum ActionPriorityLabel {
   SKIP
 }
 
+// VoIP call workflow: in-progress until SDR validates
+enum ActionStatus {
+  IN_PROGRESS
+  PENDING_VALIDATION
+}
+
 enum SyncDirection {
   CRM_TO_DRIVE
   DRIVE_TO_CRM
@@ -366,6 +372,9 @@ model User {
   createdProspectRules ProspectRule[] @relation("ProspectRuleCreator")
   updatedProspectRules ProspectRule[] @relation("ProspectRuleUpdater")
   
+  // VoIP (unified layer: one provider per SDR)
+  userVoipConfig      UserVoipConfig?
+  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   
@@ -620,10 +629,56 @@ model Action {
   duration      Int?         // Duration in seconds
   cancellationReason String? // When result = MEETING_CANCELLED: by_mistake, wrong_contact, client_cancelled, double_booking, other
   createdAt     DateTime     @default(now())
+
+  // Call workflow: IN_PROGRESS when call started, PENDING_VALIDATION when webhook received
+  actionStatus  ActionStatus?
+
+  // VOIP Unified Layer (provider-agnostic)
+  voipProvider      String?   // 'allo' | 'aircall' | 'ringover'
+  voipCallId        String?   // Provider call id (unique per provider)
+  voipRecordingUrl  String?
+  voipSummary       String?   @db.Text
+  voipTranscript    Json?     // TranscriptSegment[] normalized
+  voipSentiment     String?   // 'positive' | 'neutral' | 'negative'
+  voipTopics        Json?     // String[]
+  voipActionItems   Json?     // String[]
+  voipEnrichedAt    DateTime?
   
   @@index([companyId])
   @@index([contactId])
   @@index([callbackDate])
+  @@unique([voipProvider, voipCallId])
+}
+
+// VoIP: one provider per SDR; provider-specific ids/numbers stored here
+model UserVoipConfig {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          String   // 'allo' | 'aircall' | 'ringover'
+  alloNumber        String?  // Allo: E.164 for SDR
+  aircallUserId     Int?     // Aircall user id
+  aircallNumberId   Int?     // Aircall preferred number
+  ringoverUserId    String?
+  ringoverNumber    String?  // E.164 for callback
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// VoIP: workspace-level API keys and webhook tokens (per provider)
+model VoipWorkspaceConfig {
+  id                   String   @id @default(cuid())
+  provider             String   @unique // 'allo' | 'aircall' | 'ringover'
+  aircallApiId         String?
+  aircallApiToken      String?
+  aircallWebhookId     Int?
+  aircallWebhookToken  String?
+  ringoverApiKey       String?
+  ringoverWebhookSecret String?
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 // Config-driven action status definitions (per scope: GLOBAL, CLIENT, MISSION, CAMPAIGN)

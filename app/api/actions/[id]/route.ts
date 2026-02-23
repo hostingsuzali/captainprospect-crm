@@ -23,7 +23,7 @@ const meetingResults = ['MEETING_BOOKED', 'MEETING_CANCELLED'] as const;
 const updateCallbackSchema = z.object({
     callbackDate: z.union([z.string(), z.date()]).optional().transform((s) => (s ? (typeof s === 'string' ? new Date(s) : s) : undefined)),
     note: z.string().max(2000).optional(),
-    result: z.enum(meetingResults).optional(),
+    result: z.string().optional(),
     cancellationReason: z
         .string()
         .refine((v) => MEETING_CANCELLATION_REASON_CODES.includes(v as MeetingCancellationReasonCode))
@@ -51,9 +51,33 @@ export const PATCH = withErrorHandler(async (
 
     const isMeetingAction = action.result === 'MEETING_BOOKED' || action.result === 'MEETING_CANCELLED';
     const isCallbackAction = action.result === 'CALLBACK_REQUESTED';
+    const isVoipPendingValidation = (action as { actionStatus?: string }).actionStatus === 'PENDING_VALIDATION';
 
-    if (!isMeetingAction && !isCallbackAction) {
+    if (!isMeetingAction && !isCallbackAction && !isVoipPendingValidation) {
         return errorResponse('Seules les actions type rappel ou rendez-vous peuvent être modifiées', 400);
+    }
+
+    // VoIP: validate call result + note
+    if (isVoipPendingValidation && data.result !== undefined) {
+        const { statusConfigService } = await import('@/lib/services/StatusConfigService');
+        const allowedCodes = await statusConfigService.getAllowedResultCodes({ campaignId: action.campaignId });
+        if (!allowedCodes.includes(data.result)) {
+            return errorResponse('Résultat non autorisé pour cette campagne', 400);
+        }
+        const updated = await prisma.action.update({
+            where: { id },
+            data: {
+                result: data.result as any,
+                note: data.note ?? action.note,
+                actionStatus: null,
+            },
+            include: {
+                contact: { select: { id: true, firstName: true, lastName: true, company: { select: { name: true } } } },
+                company: { select: { id: true, name: true } },
+                campaign: { select: { id: true, name: true, mission: { select: { id: true, name: true } } } },
+            },
+        });
+        return successResponse(updated);
     }
 
     // Meeting: result + note + cancellationReason (when cancelling) + callbackDate (reschedule); Callback: callbackDate + note

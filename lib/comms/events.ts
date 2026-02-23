@@ -13,7 +13,9 @@ export type CommsRealtimeEventType =
     | "typing_start"
     | "typing_stop"
     | "presence_online"
-    | "presence_offline";
+    | "presence_offline"
+    | "voip:call-completed"
+    | "voip:enrichment-ready";
 
 export interface CommsRealtimePayload {
     type: CommsRealtimeEventType;

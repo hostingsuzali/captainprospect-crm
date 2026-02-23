@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useSession } from "next-auth/react";
 import { Drawer, Button, Badge, Select, useToast, TextSkeleton, ListSkeleton } from "@/components/ui";
+import { useVoipCall } from "@/hooks/useVoipCall";
+import { useVoipListener } from "@/hooks/useVoipListener";
+import { VoipCallValidationModal } from "@/components/voip/VoipCallValidationModal";
+import type { VoipCallCompletedEvent } from "@/hooks/useVoipListener";
 import { ACTION_RESULT_LABELS, type ActionResult } from "@/lib/types";
 import {
     Building2,
@@ -170,6 +175,37 @@ export function UnifiedActionDrawer({
     const [savingContact, setSavingContact] = useState(false);
     const [savingCompany, setSavingCompany] = useState(false);
     const [retryKey, setRetryKey] = useState(0);
+
+    const [voipModalOpen, setVoipModalOpen] = useState(false);
+    const [voipModalData, setVoipModalData] = useState<VoipCallCompletedEvent | null>(null);
+    const [voipModalActionId, setVoipModalActionId] = useState<string>("");
+    const [voipEnrichmentSummary, setVoipEnrichmentSummary] = useState<string | null>(null);
+
+    const { data: session } = useSession();
+    const userId = session?.user?.id ?? null;
+    const { state: voipState, initiateCall: voipInitiate } = useVoipCall({
+        onError: (msg) => showError("Appel", msg),
+        onSuccess: (msg) => success("Appel", msg),
+        onFallbackToTel: (phone) => {
+            window.open(`tel:${phone}`, "_self");
+            success("Appel", "Ouvrez votre téléphone pour appeler (VOIP non configuré)");
+        },
+    });
+    useVoipListener({
+        userId,
+        enabled: isOpen && !!userId,
+        onCallCompleted: (data) => {
+            setVoipModalActionId(data.actionId);
+            setVoipModalData(data);
+            setVoipEnrichmentSummary(null);
+            setVoipModalOpen(true);
+        },
+        onEnrichmentReady: (data) => {
+            if (data.actionId === voipModalActionId && data.summary) {
+                setVoipEnrichmentSummary(data.summary);
+            }
+        },
+    });
 
     const toggleNoteExpand = (actionId: string) => {
         setExpandedNotes((prev) => {
@@ -551,16 +587,39 @@ export function UnifiedActionDrawer({
                     {/* Quick Actions Bar */}
                     <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both">
                         {primaryPhone && (
-                            <a
-                                href={`tel:${primaryPhone.number}`}
-                                className="flex-1 min-w-[140px] flex items-center justify-center gap-2 px-4 py-3 bg-white border border-emerald-200 hover:border-emerald-300 hover:bg-emerald-50 text-emerald-700 rounded-xl font-medium text-sm shadow-sm transition-all duration-200 hover:shadow-md"
+                            <button
+                                type="button"
+                                disabled={voipState === "initiating"}
+                                onClick={async () => {
+                                    const campaignId = campaigns[0]?.id;
+                                    if (campaignId && userId) {
+                                        try {
+                                            await voipInitiate({
+                                                contactId: contactId ?? undefined,
+                                                companyId: contactId ? undefined : companyId,
+                                                phone: primaryPhone.number,
+                                                campaignId,
+                                                missionId: missionId ?? undefined,
+                                            });
+                                        } catch {
+                                            window.open(`tel:${primaryPhone.number}`, "_self");
+                                        }
+                                    } else {
+                                        window.open(`tel:${primaryPhone.number}`, "_self");
+                                    }
+                                }}
+                                className="flex-1 min-w-[140px] flex items-center justify-center gap-2 px-4 py-3 bg-white border border-emerald-200 hover:border-emerald-300 hover:bg-emerald-50 text-emerald-700 rounded-xl font-medium text-sm shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-70"
                             >
-                                <PhoneCall className="w-4 h-4 text-emerald-600" />
+                                {voipState === "initiating" ? (
+                                    <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                                ) : (
+                                    <PhoneCall className="w-4 h-4 text-emerald-600" />
+                                )}
                                 <span>Appeler</span>
                                 {primaryPhone.label === "Société" && (
                                     <span className="text-xs opacity-70">({primaryPhone.label})</span>
                                 )}
-                            </a>
+                            </button>
                         )}
                         {primaryEmail && (
                             <a
@@ -1613,6 +1672,35 @@ export function UnifiedActionDrawer({
                             })
                             .catch(() => {
                                 showError("Impossible de rafraîchir l'historique");
+                            })
+                            .finally(() => setActionsLoading(false));
+                    }}
+                />
+            )}
+
+            {userId && voipModalData && (
+                <VoipCallValidationModal
+                    isOpen={voipModalOpen}
+                    onClose={() => {
+                        setVoipModalOpen(false);
+                        setVoipModalData(null);
+                        setVoipModalActionId("");
+                        setVoipEnrichmentSummary(null);
+                        onActionRecorded?.();
+                    }}
+                    actionId={voipModalActionId}
+                    callData={voipModalData}
+                    enrichmentSummary={voipEnrichmentSummary}
+                    statusOptions={statusConfig?.statuses?.map((s) => ({ value: s.code, label: s.label }))}
+                    onValidated={() => {
+                        setActionsLoading(true);
+                        const q = contactId ? `contactId=${contactId}` : `companyId=${companyId}`;
+                        fetch(`/api/actions?${q}&limit=10`)
+                            .then((res) => res.json())
+                            .then((json) => {
+                                if (json.success && Array.isArray(json.data)) {
+                                    setActions(json.data);
+                                }
                             })
                             .finally(() => setActionsLoading(false));
                     }}
