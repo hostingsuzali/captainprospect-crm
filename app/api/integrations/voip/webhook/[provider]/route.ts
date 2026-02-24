@@ -50,10 +50,6 @@ export async function POST(
         matchContactByPhone(normalizedCall.toNumber),
       ]);
   if (!sdrId) return NextResponse.json({ ok: true });
-  const [sdrId, { contact, company }] = await Promise.all([
-    adapter.matchSdr(normalizedCall),
-    matchContactByPhone(normalizedCall.toNumber),
-  ]);
 
   // Only integrate into history when we match a contact or company (so it appears on their record)
   if (!contact?.id && !company?.id) return NextResponse.json({ ok: true });
