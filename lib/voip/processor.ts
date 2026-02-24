@@ -97,6 +97,46 @@ async function getDefaultCampaignForCompany(
   return company?.list?.mission?.campaigns?.[0]?.id ?? null;
 }
 
+/** Resolve SDR by VoIP number (e.g. for inbound: toNumber = SDR's Allo number) */
+export async function getSdrIdByVoipNumber(
+  provider: string,
+  phone: string
+): Promise<string | null> {
+  const normalized = normalizePhone(phone);
+  if (provider === "allo") {
+    const config = await prisma.userVoipConfig.findFirst({
+      where: {
+        provider: "allo",
+        alloNumber: normalized,
+        active: true,
+      },
+    });
+    return config?.userId ?? null;
+  }
+  return null;
+}
+
+/** Fallback: first campaign from first mission the SDR is assigned to */
+async function getDefaultCampaignForSdr(
+  sdrId: string
+): Promise<string | null> {
+  const assignment = await prisma.sDRAssignment.findFirst({
+    where: { sdrId },
+    select: {
+      mission: {
+        select: {
+          campaigns: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          },
+        },
+      },
+    },
+  });
+  return assignment?.mission?.campaigns?.[0]?.id ?? null;
+}
+
 export interface ProcessNormalizedCallParams {
   normalizedCall: NormalizedCall;
   existing: Action | null;
@@ -146,6 +186,7 @@ export async function processNormalizedCall({
     if (contact?.id) campaignId = await getDefaultCampaignForContact(contact.id);
     if (!campaignId && company?.id)
       campaignId = await getDefaultCampaignForCompany(company.id);
+    if (!campaignId) campaignId = await getDefaultCampaignForSdr(sdrId);
     if (!campaignId) return;
 
     action = await prisma.action.create({

@@ -20,7 +20,6 @@ const createClientSchema = z.object({
     phone: z.string().optional().nullable(),
     industry: z.string().optional().nullable(),
     logo: z.string().url('URL logo invalide').optional().nullable(),
-    // Onboarding data
     onboardingData: z.object({
         icp: z.string().optional(),
         targetIndustries: z.array(z.string()).optional(),
@@ -40,11 +39,28 @@ const createClientSchema = z.object({
         closing: z.string().optional(),
     }).optional(),
     notes: z.string().optional().nullable(),
-    // Mission creation
     createMission: z.boolean().optional(),
     missionName: z.string().optional().nullable(),
     missionObjective: z.string().optional().nullable(),
     missionChannel: z.enum(['CALL', 'EMAIL', 'LINKEDIN']).optional(),
+    missionDurationMonths: z.number().optional().nullable(),
+    missionWorkingDays: z.number().optional().nullable(),
+    missionRdvTarget: z.number().optional().nullable(),
+    salesPlaybook: z.record(z.string(), z.unknown()).optional().nullable(),
+    // Email templates from playbook sequence
+    emailTemplates: z.array(z.object({
+        subject: z.string(),
+        body: z.string(),
+    })).optional().nullable(),
+    // Leexi import audit trail
+    leexiImport: z.object({
+        leexiCallId: z.string().optional(),
+        source: z.enum(['api', 'paste', 'webhook']),
+        rawRecap: z.string(),
+        callTitle: z.string().optional(),
+        callDate: z.string().optional(),
+        callDuration: z.number().optional(),
+    }).optional().nullable(),
 });
 
 // ============================================
@@ -102,7 +118,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await requireRole(['MANAGER'], request);
     const data = await validateRequest(request, createClientSchema);
 
-    // Extract onboarding fields
     const {
         name,
         email,
@@ -117,9 +132,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         missionName,
         missionObjective,
         missionChannel,
+        missionDurationMonths,
+        missionWorkingDays,
+        missionRdvTarget,
+        salesPlaybook,
+        emailTemplates,
+        leexiImport,
     } = data;
 
-    // Create client
     const client = await prisma.client.create({
         data: {
             name,
@@ -127,10 +147,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             phone: phone || undefined,
             industry: industry || undefined,
             logo: logo || undefined,
+            salesPlaybook: salesPlaybook || undefined,
         },
     });
 
-    // Create onboarding record if onboarding data is provided
     const hasOnboardingData = onboardingData || scripts || notes || targetLaunchDate;
 
     if (hasOnboardingData) {
@@ -147,21 +167,29 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         });
     }
 
-    // Create mission if requested (active by default when created with client)
+    let missionId: string | undefined;
+
     if (createMission && missionName) {
+        const durationMonths = missionDurationMonths || 3;
+        const startDate = targetLaunchDate ? new Date(targetLaunchDate) : new Date();
+        const endDate = new Date(startDate.getTime() + durationMonths * 30 * 24 * 60 * 60 * 1000);
+
         const mission = await prisma.mission.create({
             data: {
                 clientId: client.id,
                 name: missionName,
                 objective: missionObjective || `Mission pour ${name}`,
                 channel: missionChannel || 'CALL',
-                startDate: targetLaunchDate ? new Date(targetLaunchDate) : new Date(),
-                endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+                startDate,
+                endDate,
                 isActive: true,
+                totalContractDays: missionWorkingDays ? missionWorkingDays * durationMonths : undefined,
+                playbook: salesPlaybook || undefined,
             },
         });
 
-        // Create initial campaign if we have scripts/ICP (active by default)
+        missionId = mission.id;
+
         if (scripts?.intro || onboardingData?.icp) {
             await prisma.campaign.create({
                 data: {
@@ -174,13 +202,53 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                 },
             });
         }
+
+        if (emailTemplates && emailTemplates.length > 0) {
+            for (let i = 0; i < emailTemplates.length; i++) {
+                const tpl = emailTemplates[i];
+                const template = await prisma.emailTemplate.create({
+                    data: {
+                        createdById: session.user.id,
+                        name: `Email ${i + 1} — ${name}`,
+                        subject: tpl.subject,
+                        bodyHtml: tpl.body,
+                        category: 'sales',
+                        isShared: true,
+                    },
+                });
+                await prisma.missionEmailTemplate.create({
+                    data: {
+                        missionId: mission.id,
+                        templateId: template.id,
+                        order: i + 1,
+                    },
+                });
+            }
+        }
     }
 
-    // Return client with onboarding info
+    if (leexiImport) {
+        await prisma.leexiCallImport.create({
+            data: {
+                leexiCallId: leexiImport.leexiCallId || `paste-${Date.now()}`,
+                clientId: client.id,
+                missionId: missionId || undefined,
+                importedById: session.user.id,
+                source: leexiImport.source,
+                rawRecap: leexiImport.rawRecap,
+                extractedData: salesPlaybook || undefined,
+                callTitle: leexiImport.callTitle || undefined,
+                callDate: leexiImport.callDate ? new Date(leexiImport.callDate) : undefined,
+                callDuration: leexiImport.callDuration || undefined,
+            },
+        });
+    }
+
     const clientWithOnboarding = await prisma.client.findUnique({
         where: { id: client.id },
         include: {
             onboarding: true,
+            missions: { select: { id: true, name: true }, take: 5 },
             _count: {
                 select: {
                     missions: true,

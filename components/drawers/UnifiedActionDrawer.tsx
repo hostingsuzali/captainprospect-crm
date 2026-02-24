@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { Drawer, Button, Badge, Select, useToast, TextSkeleton, ListSkeleton } from "@/components/ui";
 import { useVoipCall } from "@/hooks/useVoipCall";
@@ -144,8 +144,20 @@ export function UnifiedActionDrawer({
     const [loading, setLoading] = useState(false);
 
     // Actions state
-    const [actions, setActions] = useState<Array<{ id: string; result: string; note: string | null; createdAt: string; campaign?: { name: string }; sdr?: { id: string; name: string } }>>([]);
+    const [actions, setActions] = useState<Array<{
+        id: string;
+        result: string;
+        note: string | null;
+        createdAt: string;
+        channel?: string;
+        campaign?: { name: string };
+        sdr?: { id: string; name: string };
+        voipProvider?: string | null;
+        voipSummary?: string | null;
+        voipRecordingUrl?: string | null;
+    }>>([]);
     const [actionsLoading, setActionsLoading] = useState(false);
+    const syncedAlloActionIdsRef = useRef<Set<string>>(new Set());
 
     // Campaign state for recording actions
     const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; mission?: { channel: string } }>>([]);
@@ -304,6 +316,47 @@ export function UnifiedActionDrawer({
             });
         return () => controller.abort();
     }, [isOpen, contactId, companyId, showError]);
+
+    const refetchActions = useCallback(() => {
+        if (!contactId && !companyId) return;
+        setActionsLoading(true);
+        const queryParam = contactId ? `contactId=${contactId}` : `companyId=${companyId}`;
+        fetch(`/api/actions?${queryParam}&limit=10`)
+            .then((res) => res.json())
+            .then((json) => {
+                if (json.success && Array.isArray(json.data)) {
+                    setActions(json.data);
+                }
+            })
+            .catch(() => showError("Impossible de rafraîchir l'historique des actions"))
+            .finally(() => setActionsLoading(false));
+    }, [contactId, companyId, showError]);
+
+    // When drawer shows "En attente des infos Allo", try to fetch call from Allo API and refetch
+    useEffect(() => {
+        if (!isOpen || !actions.length) return;
+        const waiting = actions.filter(
+            (a) =>
+                a.channel === "CALL" &&
+                a.voipProvider === "allo" &&
+                !a.voipSummary &&
+                !a.note
+        );
+        const toSync = waiting
+            .map((a) => a.id)
+            .filter((id) => !syncedAlloActionIdsRef.current.has(id));
+        toSync.forEach((id) => syncedAlloActionIdsRef.current.add(id));
+        if (toSync.length === 0) return;
+        Promise.allSettled(
+            toSync.map((actionId) =>
+                fetch("/api/voip/allo/sync-call", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ actionId }),
+                })
+            )
+        ).then(() => refetchActions());
+    }, [isOpen, actions, refetchActions]);
 
     // Fetch campaigns for action recording
     useEffect(() => {
@@ -1504,7 +1557,7 @@ export function UnifiedActionDrawer({
                                     {actions.map((a, index) => {
                                         const colors = ACTION_RESULT_COLORS[a.result] || ACTION_RESULT_COLORS.NO_RESPONSE;
                                         const isExpanded = expandedNotes.has(a.id);
-                                        const hasLongNote = a.note && a.note.length > 80;
+                                        const hasLongNote = (a.note && a.note.length > 80) || (a.voipSummary && a.voipSummary.length > 80);
                                         const isLast = index === actions.length - 1;
 
                                         return (
@@ -1558,8 +1611,8 @@ export function UnifiedActionDrawer({
                                                             </span>
                                                         </div>
 
-                                                        {/* Note indicator */}
-                                                        {a.note && (
+                                                        {/* Note / VoIP summary indicator (or waiting for VoIP info) */}
+                                                        {(a.note || a.voipSummary || (a.voipProvider && a.channel === "CALL")) && (
                                                             <button
                                                                 onClick={() => toggleNoteExpand(a.id)}
                                                                 className={cn(
@@ -1575,20 +1628,53 @@ export function UnifiedActionDrawer({
                                                         )}
                                                     </div>
 
-                                                    {/* Note content */}
-                                                    {a.note && (
+                                                    {/* Note content: waiting for VoIP, or SDR note and/or Allo AI summary + recording */}
+                                                    {(a.note || a.voipSummary || (a.voipProvider && a.channel === "CALL")) && (
                                                         <div className={cn(
                                                             "px-3.5 pb-3 pt-0 border-t border-slate-50 mt-0 bg-slate-50/50 rounded-b-2xl"
                                                         )}>
                                                             <div className="flex items-start gap-2.5 pt-3">
                                                                 <div className="w-0.5 h-full min-h-[1.5rem] bg-slate-200 rounded-full shrink-0" />
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className={cn(
-                                                                        "text-xs text-slate-600 whitespace-pre-wrap leading-relaxed",
-                                                                        !isExpanded && hasLongNote && "line-clamp-2"
-                                                                    )}>
-                                                                        {a.note}
-                                                                    </p>
+                                                                <div className="flex-1 min-w-0 space-y-2">
+                                                                    {a.voipProvider && !a.voipSummary && !a.note && (
+                                                                        <div className="flex items-center gap-2 py-1 text-amber-600">
+                                                                            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                                                                            <span className="text-xs font-medium">
+                                                                                En attente des infos {a.voipProvider === "allo" ? "Allo" : a.voipProvider === "aircall" ? "Aircall" : "Ringover"} (résumé et note)…
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                    {a.voipSummary && (
+                                                                        <div>
+                                                                            <span className="text-[10px] font-medium text-emerald-600 uppercase tracking-wider">
+                                                                                {a.voipProvider === "allo" ? "Résumé Allo" : a.voipProvider === "aircall" ? "Résumé Aircall" : a.voipProvider === "ringover" ? "Résumé Ringover" : "Résumé appel"}
+                                                                            </span>
+                                                                            <p className={cn(
+                                                                                "text-xs text-slate-600 whitespace-pre-wrap leading-relaxed mt-0.5",
+                                                                                !isExpanded && hasLongNote && "line-clamp-2"
+                                                                            )}>
+                                                                                {a.voipSummary}
+                                                                            </p>
+                                                                        </div>
+                                                                    )}
+                                                                    {a.note && (!a.voipSummary || a.note !== a.voipSummary) && (
+                                                                        <p className={cn(
+                                                                            "text-xs text-slate-600 whitespace-pre-wrap leading-relaxed",
+                                                                            !isExpanded && hasLongNote && "line-clamp-2"
+                                                                        )}>
+                                                                            {a.note}
+                                                                        </p>
+                                                                    )}
+                                                                    {a.voipRecordingUrl && (
+                                                                        <a
+                                                                            href={a.voipRecordingUrl}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:underline"
+                                                                        >
+                                                                            Écouter l&apos;enregistrement
+                                                                        </a>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                             {hasLongNote && (

@@ -1,12 +1,24 @@
 // ============================================
 // ALLO ADAPTER — tel: link only; AI in webhook payload
 // ============================================
-// Webhooks API: use topic CALL_RECEIVED (fires after every call ends).
-// Register via POST /v1/api/webhooks or Allo app: Settings > Integrations > Webhooks.
+// Allo API key: set ALLO_API_KEY in .env or store in VoipWorkspaceConfig (provider='allo', alloApiKey).
+// Used for webhook verification or Allo API calls (e.g. POST /v1/api/webhooks).
+// Webhooks API: topic CALL_RECEIVED (fires after every call ends).
 // Payload includes: oneSentenceSummary, transcriptions, recordingUrl, fromNumber, fromName.
 
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
+
+/** Resolve Allo API key from workspace config or env (for webhook verification / Allo API calls). */
+export async function getAlloApiKey(): Promise<string | null> {
+  const config = await prisma.voipWorkspaceConfig.findUnique({
+    where: { provider: "allo", active: true },
+    select: { alloApiKey: true },
+  });
+  if (config?.alloApiKey) return config.alloApiKey;
+  const envKey = process.env.ALLO_API_KEY;
+  return envKey && envKey.trim() ? envKey.trim() : null;
+}
 import type {
   VoipAdapter,
   InitiateCallParams,

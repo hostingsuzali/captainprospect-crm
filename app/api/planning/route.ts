@@ -8,6 +8,7 @@ import {
     validateRequest,
 } from '@/lib/api-utils';
 import { createScheduleAssignmentNotification } from '@/lib/notifications';
+import { recomputeConflicts } from '@/lib/planning/conflictEngine';
 import { z } from 'zod';
 
 // ============================================
@@ -189,6 +190,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             notes: data.notes,
             suggestionStatus: 'CONFIRMED',
             missionPlanId: null,
+            allocationId: (data as Record<string, unknown>).allocationId as string | undefined ?? null,
             createdById: session.user.id,
         },
         include: {
@@ -219,6 +221,26 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             },
         },
     });
+
+    // Sync scheduledDays counter on the allocation if linked
+    if (block.allocationId) {
+        await prisma.sdrDayAllocation.update({
+            where: { id: block.allocationId },
+            data: { scheduledDays: { increment: 1 } },
+        });
+        // Recompute conflicts for this SDR+month
+        const alloc = await prisma.sdrDayAllocation.findUnique({
+            where: { id: block.allocationId },
+            include: { missionMonthPlan: true },
+        });
+        if (alloc) {
+            await recomputeConflicts({
+                sdrId: block.sdrId,
+                missionId: alloc.missionMonthPlan.missionId,
+                month: alloc.missionMonthPlan.month,
+            });
+        }
+    }
 
     // Send notification to the assigned user
     await createScheduleAssignmentNotification({

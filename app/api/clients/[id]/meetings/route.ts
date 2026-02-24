@@ -123,6 +123,7 @@ export const GET = withErrorHandler(async (
                     email: true,
                 },
             },
+            meetingFeedback: true,
         },
         orderBy: { createdAt: 'desc' },
     });

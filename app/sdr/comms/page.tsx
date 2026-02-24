@@ -17,11 +17,6 @@ import {
     Users,
     MessageCircle,
     Megaphone,
-    Inbox,
-    Clock,
-    TrendingUp,
-    ArrowUpRight,
-    ArrowDownRight,
     Mail,
     PanelLeftClose,
     PanelLeft,
@@ -66,72 +61,6 @@ function buildMessageFromPayload(payload: CommsRealtimePayload, threadId: string
         mentions: [], attachments: [], readBy: [], reactions: [], isEdited: false, isDeleted: false,
         isOwnMessage: authorId === currentUserId, createdAt: payload.createdAt,
     };
-}
-
-// ============================================
-// STAT CARD COMPONENT
-// ============================================
-
-function StatCard({
-    icon: Icon,
-    label,
-    value,
-    subValue,
-    trend,
-    color,
-}: {
-    icon: React.ElementType;
-    label: string;
-    value: string | number;
-    subValue?: string;
-    trend?: { value: number; isPositive: boolean };
-    color: "indigo" | "emerald" | "amber" | "rose" | "blue" | "purple";
-}) {
-    const colors = {
-        indigo: "from-indigo-500 to-indigo-600",
-        emerald: "from-emerald-500 to-emerald-600",
-        amber: "from-amber-500 to-amber-600",
-        rose: "from-rose-500 to-rose-600",
-        blue: "from-blue-500 to-blue-600",
-        purple: "from-purple-500 to-purple-600",
-    };
-
-    return (
-        <div className="relative overflow-hidden bg-white rounded-2xl border border-slate-200 p-5 group hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300">
-            <div className="flex items-start justify-between">
-                <div>
-                    <p className="text-sm font-medium text-slate-500 mb-1">{label}</p>
-                    <p className="text-3xl font-bold text-slate-900">{value}</p>
-                    {subValue && (
-                        <p className="text-sm text-slate-400 mt-1">{subValue}</p>
-                    )}
-                    {trend && (
-                        <div className={cn(
-                            "flex items-center gap-1 mt-2 text-sm font-medium",
-                            trend.isPositive ? "text-emerald-600" : "text-rose-600"
-                        )}>
-                            {trend.isPositive ? (
-                                <ArrowUpRight className="w-4 h-4" />
-                            ) : (
-                                <ArrowDownRight className="w-4 h-4" />
-                            )}
-                            <span>{trend.value}%</span>
-                        </div>
-                    )}
-                </div>
-                <div className={cn(
-                    "w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-lg",
-                    colors[color]
-                )}>
-                    <Icon className="w-6 h-6 text-white" />
-                </div>
-            </div>
-            <div className={cn(
-                "absolute -right-4 -bottom-4 w-24 h-24 rounded-full opacity-10 bg-gradient-to-br",
-                colors[color]
-            )} />
-        </div>
-    );
 }
 
 // ============================================
@@ -516,7 +445,6 @@ export default function SDRCommsPage() {
 
     // Calculate stats from data
     const totalUnread = stats?.totalUnread || 0;
-    const openThreads = useMemo(() => threads.filter(t => t.status === "OPEN").length, [threads]);
 
     // Format typing indicator text
     const getTypingText = (threadId: string) => {
@@ -567,38 +495,6 @@ export default function SDRCommsPage() {
                     </>
                 }
             />
-            </div>
-
-            {/* Stats Cards */}
-            <div className="shrink-0 grid grid-cols-4 gap-5 mt-4">
-                <StatCard
-                    icon={Inbox}
-                    label="Non lus"
-                    value={totalUnread}
-                    subValue="messages"
-                    color="indigo"
-                />
-                <StatCard
-                    icon={MessageSquare}
-                    label="Discussions ouvertes"
-                    value={openThreads}
-                    subValue="en cours"
-                    color="emerald"
-                />
-                <StatCard
-                    icon={MessageCircle}
-                    label="Directs"
-                    value={stats?.unreadByType?.DIRECT || 0}
-                    subValue="non lus"
-                    color="blue"
-                />
-                <StatCard
-                    icon={Target}
-                    label="Missions"
-                    value={stats?.unreadByType?.MISSION || 0}
-                    subValue="non lus"
-                    color="amber"
-                />
             </div>
             </>
             )}

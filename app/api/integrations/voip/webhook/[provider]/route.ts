@@ -6,7 +6,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getVoipAdapter } from "@/lib/voip/factory";
-import { processNormalizedCall, matchContactByPhone } from "@/lib/voip/processor";
+import {
+  processNormalizedCall,
+  matchContactByPhone,
+  getSdrIdByVoipNumber,
+} from "@/lib/voip/processor";
 import { prisma } from "@/lib/prisma";
 import type { VoipProvider } from "@/lib/voip/types";
 
@@ -34,12 +38,25 @@ export async function POST(
   const normalizedCall = adapter.parseWebhook(body);
   if (!normalizedCall) return NextResponse.json({ ok: true });
 
-  if (normalizedCall.direction === "inbound") return NextResponse.json({ ok: true });
-
+  const isInbound = normalizedCall.direction === "inbound";
+  // Outbound: SDR = fromNumber, prospect = toNumber. Inbound: SDR = toNumber (our line), prospect = fromNumber (caller).
+  const [sdrId, { contact, company }] = isInbound
+    ? await Promise.all([
+        getSdrIdByVoipNumber(provider, normalizedCall.toNumber),
+        matchContactByPhone(normalizedCall.fromNumber),
+      ])
+    : await Promise.all([
+        adapter.matchSdr(normalizedCall),
+        matchContactByPhone(normalizedCall.toNumber),
+      ]);
+  if (!sdrId) return NextResponse.json({ ok: true });
   const [sdrId, { contact, company }] = await Promise.all([
     adapter.matchSdr(normalizedCall),
     matchContactByPhone(normalizedCall.toNumber),
   ]);
+
+  // Only integrate into history when we match a contact or company (so it appears on their record)
+  if (!contact?.id && !company?.id) return NextResponse.json({ ok: true });
 
   let existing = await prisma.action.findFirst({
     where: {

@@ -1,260 +1,297 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, Button, Select, useToast } from "@/components/ui";
-import { FileDown, Loader2, BarChart3, Calendar } from "lucide-react";
-import { ReportLayout } from "@/components/reporting/ReportLayout";
-import type { ReportData } from "@/lib/reporting/types";
-import { toISO } from "@/components/dashboard/DateRangeFilter";
+import { Button, useToast } from "@/components/ui";
+import { FileDown, Share2, Check, Loader2, Calendar, TrendingUp, BarChart3 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { ProgressBar } from "@/components/ui/ProgressBar";
+import { ReportingSkeleton } from "@/components/client/skeletons";
 
-interface Mission {
-    id: string;
-    name: string;
-    isActive: boolean;
+interface MonthlySummary {
+    month: number;
+    year: number;
+    meetingsBooked: number;
+    callsMade: number;
+    contactsReached: number;
+    objective: number;
 }
 
-export default function ClientPortalReportingPage() {
-    const { success, error: showError } = useToast();
-    const [missions, setMissions] = useState<Mission[]>([]);
-    const [loadingMissions, setLoadingMissions] = useState(true);
-    const [reportData, setReportData] = useState<ReportData | null>(null);
-    const [loadingReport, setLoadingReport] = useState(false);
-    const [generatingPdf, setGeneratingPdf] = useState(false);
+const MONTH_NAMES = [
+    "", "Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Aout", "Septembre", "Octobre", "Novembre", "Decembre",
+];
 
-    const [dateFrom, setDateFrom] = useState(() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - 1);
-        d.setDate(1);
-        return toISO(d);
-    });
-    const [dateTo, setDateTo] = useState(() => toISO(new Date()));
-    const [missionId, setMissionId] = useState<string>("");
-    const [comparePrevious, setComparePrevious] = useState(true);
+export default function ClientPortalReportingPage() {
+    const toast = useToast();
+    const [data, setData] = useState<MonthlySummary[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [sharingMonth, setSharingMonth] = useState<string | null>(null);
+    const [generatingPdf, setGeneratingPdf] = useState<string | null>(null);
 
     useEffect(() => {
-        let cancelled = false;
         (async () => {
             try {
-                const res = await fetch("/api/missions?isActive=true&limit=100");
+                const res = await fetch("/api/client/reporting/monthly-summary");
                 const json = await res.json();
-                if (cancelled) return;
-                if (json.success && Array.isArray(json.data)) setMissions(json.data);
+                if (json.success) setData(json.data ?? []);
+            } catch (e) {
+                console.error("Failed to load reporting data:", e);
             } finally {
-                if (!cancelled) setLoadingMissions(false);
+                setIsLoading(false);
             }
         })();
-        return () => {
-            cancelled = true;
-        };
     }, []);
 
-    const handleGenerate = useCallback(async () => {
-        if (!dateFrom || !dateTo) {
-            showError("Période requise", "Veuillez sélectionner une date de début et de fin.");
-            return;
-        }
-        if (new Date(dateFrom) > new Date(dateTo)) {
-            showError("Dates invalides", "La date de début doit être avant la date de fin.");
-            return;
-        }
-        setLoadingReport(true);
-        setReportData(null);
-        try {
-            const params = new URLSearchParams({
-                dateFrom,
-                dateTo,
-                comparePrevious: String(comparePrevious),
-            });
-            if (missionId) params.set("missionId", missionId);
-            const res = await fetch(`/api/client/reporting/data?${params.toString()}`);
-            const json = await res.json();
-            if (!res.ok) throw new Error(json?.error || "Échec du chargement des données");
-            if (json.success && json.data) setReportData(json.data);
-            else throw new Error("Données invalides");
-        } catch (e) {
-            showError(
-                "Erreur",
-                e instanceof Error ? e.message : "Impossible de charger le rapport."
-            );
-        } finally {
-            setLoadingReport(false);
-        }
-    }, [dateFrom, dateTo, missionId, comparePrevious, showError]);
+    const totalMeetings = data.reduce((sum, d) => sum + d.meetingsBooked, 0);
+    const maxMeetings = Math.max(...data.map((d) => d.meetingsBooked), 1);
+    const now = new Date();
 
-    const handleExportPdf = useCallback(async () => {
-        if (!dateFrom || !dateTo) {
-            showError("Période requise", "Veuillez sélectionner une date de début et de fin.");
-            return;
-        }
-        if (new Date(dateFrom) > new Date(dateTo)) {
-            showError("Dates invalides", "La date de début doit être avant la date de fin.");
-            return;
-        }
-        setGeneratingPdf(true);
+    const handleShare = useCallback(async (entry: MonthlySummary) => {
+        const key = `${entry.year}-${entry.month}`;
+        setSharingMonth(key);
         try {
-            const params = new URLSearchParams({
-                dateFrom,
-                dateTo,
-                comparePrevious: String(comparePrevious),
+            const dateFrom = new Date(entry.year, entry.month - 1, 1).toISOString();
+            const dateTo = new Date(entry.year, entry.month, 0, 23, 59, 59, 999).toISOString();
+            const res = await fetch("/api/client/reporting/share", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ dateFrom, dateTo }),
             });
-            if (missionId) params.set("missionId", missionId);
-            const res = await fetch(`/api/client/reporting/pdf?${params.toString()}`);
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err?.error || "Échec de la génération du rapport");
+            const json = await res.json();
+            if (json.success && json.data?.url) {
+                await navigator.clipboard.writeText(json.data.url);
+                toast.success("Lien copie !", "Valable 30 jours. Collez-le dans un email.");
+            } else {
+                throw new Error(json.error || "Erreur");
             }
+        } catch {
+            toast.error("Erreur", "Impossible de generer le lien de partage");
+        } finally {
+            setSharingMonth(null);
+        }
+    }, [toast]);
+
+    const handlePdf = useCallback(async (entry: MonthlySummary) => {
+        const key = `${entry.year}-${entry.month}`;
+        setGeneratingPdf(key);
+        try {
+            const dateFrom = new Date(entry.year, entry.month - 1, 1).toISOString().split("T")[0];
+            const dateTo = new Date(entry.year, entry.month, 0).toISOString().split("T")[0];
+            const params = new URLSearchParams({ dateFrom, dateTo, comparePrevious: "false" });
+            const res = await fetch(`/api/client/reporting/pdf?${params}`);
+            if (!res.ok) throw new Error("PDF generation failed");
             const blob = await res.blob();
-            const disposition = res.headers.get("Content-Disposition");
-            const filename =
-                disposition?.match(/filename="?(.+)"?/)?.[1]?.trim() ||
-                `rapport-${dateFrom}-${dateTo}.pdf`;
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = filename;
+            a.download = `rapport-${MONTH_NAMES[entry.month]}-${entry.year}.pdf`;
             a.click();
             URL.revokeObjectURL(url);
-            success("Rapport généré", "Le PDF a été téléchargé.");
-        } catch (e) {
-            showError(
-                "Erreur",
-                e instanceof Error ? e.message : "Impossible de générer le rapport."
-            );
+            toast.success("Rapport telecharge");
+        } catch {
+            toast.error("Erreur", "Impossible de generer le rapport PDF");
         } finally {
-            setGeneratingPdf(false);
+            setGeneratingPdf(null);
         }
-    }, [dateFrom, dateTo, missionId, comparePrevious, success, showError]);
+    }, [toast]);
 
-    const missionOptions = [
-        { value: "", label: "Toutes les missions" },
-        ...missions.map((m) => ({ value: m.id, label: m.name })),
-    ];
+    if (isLoading) return <ReportingSkeleton />;
 
     return (
-        <div className="min-h-full bg-[#F4F6F9] p-6 space-y-8">
-            {/* Page header */}
-            <div>
-                <h1 className="text-[22px] font-bold text-[#12122A] tracking-tight">
-                    Rapport d'activité
-                </h1>
-                <p className="text-[13px] text-[#8B8BA7] mt-0.5">
-                    Configurez la période et la mission, prévisualisez le rapport puis exportez en PDF.
-                </p>
+        <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-8">
+            {/* Header */}
+            <div className="animate-fade-up">
+                <h1 className="text-2xl font-bold text-[#12122A] tracking-tight">Rapports</h1>
+                <p className="text-sm text-[#6B7194] mt-1">Suivez l&apos;evolution de vos missions</p>
             </div>
 
-            {/* Config card */}
-            <Card className="border-[#E8EBF0] bg-white rounded-xl shadow-sm overflow-hidden">
-                <div className="p-6">
-                    <h2 className="text-sm font-semibold text-[#12122A] mb-4 flex items-center gap-2">
-                        <BarChart3 className="w-4 h-4 text-[#7C5CFC]" />
-                        Paramètres du rapport
-                    </h2>
-                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
-                        <div>
-                            <label className="mb-2 block text-xs font-medium text-[#8B8BA7]">
-                                Date de début
-                            </label>
-                            <input
-                                type="date"
-                                value={dateFrom}
-                                onChange={(e) => setDateFrom(e.target.value)}
-                                className="w-full rounded-lg border border-[#E8EBF0] px-3 py-2 text-sm text-[#12122A] focus:border-[#7C5CFC] focus:outline-none focus:ring-1 focus:ring-[#7C5CFC]"
-                            />
+            {/* Cumulative Timeline */}
+            {data.length > 0 && (
+                <div className="premium-card overflow-hidden animate-fade-up" style={{ animationDelay: "80ms" }}>
+                    {/* Gradient header */}
+                    <div
+                        className="px-6 py-5 flex items-center justify-between"
+                        style={{ background: "linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%)" }}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center">
+                                <TrendingUp className="w-4.5 h-4.5 text-white" />
+                            </div>
+                            <div>
+                                <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                                    Depuis le lancement
+                                </h2>
+                                <p className="text-xs text-indigo-200/70 mt-0.5">{data.length} mois d&apos;activite</p>
+                            </div>
                         </div>
-                        <div>
-                            <label className="mb-2 block text-xs font-medium text-[#8B8BA7]">
-                                Date de fin
-                            </label>
-                            <input
-                                type="date"
-                                value={dateTo}
-                                onChange={(e) => setDateTo(e.target.value)}
-                                className="w-full rounded-lg border border-[#E8EBF0] px-3 py-2 text-sm text-[#12122A] focus:border-[#7C5CFC] focus:outline-none focus:ring-1 focus:ring-[#7C5CFC]"
-                            />
-                        </div>
-                        <div>
-                            <label className="mb-2 block text-xs font-medium text-[#8B8BA7]">
-                                Mission
-                            </label>
-                            <Select
-                                options={missionOptions}
-                                value={missionId}
-                                onChange={setMissionId}
-                                disabled={loadingMissions}
-                                placeholder="Toutes les missions"
-                                className="w-full"
-                            />
-                        </div>
-                        <div className="flex flex-col justify-end">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={comparePrevious}
-                                    onChange={(e) => setComparePrevious(e.target.checked)}
-                                    className="rounded border-[#E8EBF0] text-[#7C5CFC] focus:ring-[#7C5CFC]"
-                                />
-                                <span className="text-sm text-[#12122A]">
-                                    Comparer à la période précédente
-                                </span>
-                            </label>
-                        </div>
-                        <div className="flex flex-wrap items-end gap-3 sm:col-span-2 lg:col-span-1">
-                            <Button
-                                onClick={handleGenerate}
-                                disabled={loadingReport || loadingMissions}
-                                className="inline-flex items-center gap-2"
-                            >
-                                {loadingReport ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Calendar className="h-4 w-4" />
-                                )}
-                                {loadingReport ? "Chargement…" : "Générer le rapport"}
-                            </Button>
+                        <div className="text-right">
+                            <span className="text-3xl font-black text-white tabular-nums">
+                                <AnimatedNumber value={totalMeetings} />
+                            </span>
+                            <p className="text-xs text-indigo-200/70">RDV total</p>
                         </div>
                     </div>
-                </div>
-            </Card>
 
-            {/* Preview + Export */}
-            {loadingReport && (
-                <div className="flex flex-col items-center justify-center py-20 rounded-xl border border-[#E8EBF0] bg-white">
-                    <Loader2 className="w-8 h-8 text-[#7C5CFC] animate-spin" />
-                    <p className="text-[13px] text-[#8B8BA7] font-medium mt-4">
-                        Chargement des données du rapport…
-                    </p>
+                    <div className="p-6 space-y-3">
+                        {data.map((entry) => {
+                            const isCurrent = entry.month === now.getMonth() + 1 && entry.year === now.getFullYear();
+                            return (
+                                <div
+                                    key={`${entry.year}-${entry.month}`}
+                                    className={cn(
+                                        "flex items-center gap-4 p-3 rounded-xl transition-all duration-300",
+                                        isCurrent
+                                            ? "bg-gradient-to-r from-indigo-50 to-violet-50/50 border border-indigo-200/50 shadow-sm"
+                                            : "hover:bg-[#F8F7FF] border border-transparent"
+                                    )}
+                                >
+                                    <span className={cn(
+                                        "text-sm font-semibold w-24 flex-shrink-0",
+                                        isCurrent ? "text-[#6C3AFF]" : "text-[#12122A]"
+                                    )}>
+                                        {MONTH_NAMES[entry.month]} {entry.year}
+                                    </span>
+                                    <div className="flex-1">
+                                        <ProgressBar value={entry.meetingsBooked} max={maxMeetings} height="sm" />
+                                    </div>
+                                    <span className="text-sm font-bold text-[#12122A] tabular-nums w-16 text-right">
+                                        <AnimatedNumber value={entry.meetingsBooked} /> RDV
+                                    </span>
+                                    {isCurrent && (
+                                        <span className="text-[10px] font-bold text-white bg-gradient-to-r from-[#6C3AFF] to-[#7C5CFC] px-2.5 py-1 rounded-full shadow-sm shadow-[#7C5CFC]/20">
+                                            en cours
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 
-            {!loadingReport && reportData && (
-                <div className="space-y-6">
-                    <div className="flex flex-wrap items-center justify-between gap-4">
-                        <h2 className="text-lg font-semibold text-[#12122A]">Aperçu du rapport</h2>
-                        <Button
-                            variant="outline"
-                            onClick={handleExportPdf}
-                            disabled={generatingPdf}
-                            className="gap-2"
-                        >
-                            {generatingPdf ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <FileDown className="h-4 w-4" />
-                            )}
-                            {generatingPdf ? "Génération du PDF…" : "Télécharger le PDF"}
-                        </Button>
+            {/* Monthly Report Cards */}
+            {data.length > 0 && (
+                <div>
+                    <div className="flex items-center gap-2.5 mb-5">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#7C5CFC] to-[#A78BFA] flex items-center justify-center shadow-sm shadow-[#7C5CFC]/20">
+                            <BarChart3 className="w-4 h-4 text-white" />
+                        </div>
+                        <h2 className="text-sm font-bold text-[#12122A] uppercase tracking-wider">
+                            Rapports mensuels
+                        </h2>
                     </div>
-                    <ReportLayout data={reportData} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
+                        {[...data].reverse().map((entry) => {
+                            const key = `${entry.year}-${entry.month}`;
+                            const isCurrent = entry.month === now.getMonth() + 1 && entry.year === now.getFullYear();
+                            const metObjective = entry.meetingsBooked >= entry.objective;
+                            const contactRate = entry.callsMade > 0
+                                ? Math.round((entry.contactsReached / entry.callsMade) * 100)
+                                : 0;
+                            const pct = entry.objective > 0 ? Math.round((entry.meetingsBooked / entry.objective) * 100) : 0;
+
+                            return (
+                                <div key={key} className="premium-card overflow-hidden">
+                                    {/* Card accent top bar */}
+                                    <div className={cn(
+                                        "h-1",
+                                        metObjective
+                                            ? "bg-gradient-to-r from-emerald-400 to-teal-400"
+                                            : isCurrent
+                                            ? "bg-gradient-to-r from-amber-400 to-orange-400"
+                                            : "bg-gradient-to-r from-[#6C3AFF] to-[#A78BFA]"
+                                    )} />
+
+                                    <div className="p-6">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-bold text-[#12122A]">
+                                                {MONTH_NAMES[entry.month]} {entry.year}
+                                            </h3>
+                                            {isCurrent ? (
+                                                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/60">
+                                                    En cours
+                                                </span>
+                                            ) : metObjective ? (
+                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60 flex items-center gap-1">
+                                                    <Check className="w-3 h-3" /> Atteint
+                                                </span>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="space-y-3 mb-5">
+                                            <div className="flex items-end gap-2">
+                                                <span className="text-4xl font-black gradient-text tabular-nums">
+                                                    {entry.meetingsBooked}
+                                                </span>
+                                                <span className="text-sm text-[#6B7194] mb-1.5 font-medium">
+                                                    RDV {!isCurrent && entry.objective > 0 && `(${pct}%)`}
+                                                </span>
+                                            </div>
+                                            {entry.objective > 0 && (
+                                                <ProgressBar value={entry.meetingsBooked} max={entry.objective} height="sm" />
+                                            )}
+                                            <div className="flex items-center gap-3 text-sm text-[#6B7194]">
+                                                <span className="flex items-center gap-1">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />
+                                                    {entry.callsMade} appels
+                                                </span>
+                                                <span className="flex items-center gap-1">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                                                    {contactRate}% contact
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 pt-4 border-t border-[#E8EBF0]">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-1.5 rounded-xl text-xs flex-1 hover:border-[#7C5CFC]/30 hover:text-[#7C5CFC] transition-all"
+                                                onClick={() => handlePdf(entry)}
+                                                disabled={generatingPdf === key}
+                                            >
+                                                {generatingPdf === key ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                ) : (
+                                                    <FileDown className="w-3.5 h-3.5" />
+                                                )}
+                                                PDF
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-1.5 rounded-xl text-xs flex-1 hover:border-[#7C5CFC]/30 hover:text-[#7C5CFC] transition-all"
+                                                onClick={() => handleShare(entry)}
+                                                disabled={sharingMonth === key}
+                                            >
+                                                {sharingMonth === key ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                ) : (
+                                                    <Share2 className="w-3.5 h-3.5" />
+                                                )}
+                                                Partager
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 
-            {!loadingReport && !reportData && (
-                <Card className="border-[#E8EBF0] bg-white rounded-xl border-dashed p-12 text-center">
-                    <BarChart3 className="w-12 h-12 text-[#C5C8D4] mx-auto mb-4" />
-                    <p className="text-sm font-medium text-[#8B8BA7]">
-                        Sélectionnez une période et cliquez sur « Générer le rapport » pour voir l'aperçu.
+            {/* Empty state */}
+            {data.length === 0 && !isLoading && (
+                <div className="text-center py-16 bg-white rounded-2xl border border-[#E8EBF0] shadow-sm">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#F4F6F9] to-[#E8EBF0] flex items-center justify-center mx-auto mb-4">
+                        <Calendar className="w-7 h-7 text-[#A0A3BD]" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-[#12122A] mb-1">Aucun rapport disponible</h3>
+                    <p className="text-sm text-[#6B7194] max-w-sm mx-auto">
+                        Les rapports mensuels apparaitront ici une fois votre mission lancee.
                     </p>
-                </Card>
+                </div>
             )}
         </div>
     );

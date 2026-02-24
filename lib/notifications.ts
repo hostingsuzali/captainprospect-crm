@@ -232,3 +232,85 @@ export async function createClientPortalNotification(
         return false;
     }
 }
+
+// ============================================
+// CLIENT PORTAL: ENRICHED NOTIFICATIONS
+// ============================================
+
+interface MeetingBookedNotificationData {
+    contactFirstName?: string | null;
+    contactLastName?: string | null;
+    contactTitle?: string | null;
+    companyName: string;
+    sdrNote?: string | null;
+}
+
+/**
+ * Notify client when SDR books a meeting.
+ * Includes one sentence of SDR context inline.
+ */
+export async function createMeetingBookedNotification(
+    clientId: string,
+    data: MeetingBookedNotificationData
+) {
+    const name = [data.contactFirstName, data.contactLastName].filter(Boolean).join(" ") || "Contact";
+    const context = data.contactTitle ? `${data.contactTitle}, ${data.companyName}` : data.companyName;
+    const noteExcerpt = data.sdrNote ? ` — ${data.sdrNote.slice(0, 100)}` : "";
+
+    return createClientPortalNotification(clientId, {
+        title: "Nouveau RDV planifie",
+        message: `RDV avec ${name} (${context})${noteExcerpt}`,
+        type: "success",
+        link: "/client/portal/meetings",
+    });
+}
+
+/**
+ * Notify client when monthly report is ready.
+ */
+export async function createReportPublishedNotification(
+    clientId: string,
+    monthName: string,
+    year: number
+) {
+    return createClientPortalNotification(clientId, {
+        title: "Rapport mensuel disponible",
+        message: `Votre rapport ${monthName} ${year} est pret. Consultez vos resultats et partagez-le.`,
+        type: "info",
+        link: "/client/portal/reporting",
+    });
+}
+
+/**
+ * Notify client before an upcoming meeting.
+ */
+export async function createMeetingReminderNotification(
+    clientId: string,
+    data: MeetingBookedNotificationData,
+    timeLabel: string
+) {
+    const name = [data.contactFirstName, data.contactLastName].filter(Boolean).join(" ") || "Contact";
+    const noteExcerpt = data.sdrNote ? ` — ${data.sdrNote.slice(0, 80)}` : "";
+
+    return createClientPortalNotification(clientId, {
+        title: `Rappel : RDV ${timeLabel}`,
+        message: `RDV avec ${name} (${data.companyName})${noteExcerpt}. Preparez votre reunion !`,
+        type: "info",
+        link: "/client/portal/meetings",
+    });
+}
+
+/**
+ * Notify client when a milestone is reached.
+ */
+export async function createMilestoneNotification(
+    clientId: string,
+    milestoneMessage: string
+) {
+    return createClientPortalNotification(clientId, {
+        title: "Felicitations !",
+        message: milestoneMessage,
+        type: "success",
+        link: "/client/portal/reporting",
+    });
+}

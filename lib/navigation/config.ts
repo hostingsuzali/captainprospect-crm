@@ -408,15 +408,15 @@ export const CLIENT_NAV: NavSection[] = [
         permission: "pages.dashboard",
       },
       {
-        href: "/client/contact",
-        icon: Inbox,
-        label: "Messages",
+        href: "/client/portal/reporting",
+        icon: FileDown,
+        label: "Rapports",
         permission: "pages.dashboard",
       },
       {
         href: "/client/contact",
         icon: MessageSquare,
-        label: "Contacter",
+        label: "Messages",
         permission: "pages.dashboard",
       },
     ],
@@ -425,21 +425,9 @@ export const CLIENT_NAV: NavSection[] = [
     title: "Outils",
     items: [
       {
-        href: "/client/portal/reporting",
-        icon: FileDown,
-        label: "Rapport PDF",
-        permission: "pages.dashboard",
-      },
-      {
-        href: "/client/portal/email",
-        icon: Mail,
-        label: "Mon Email",
-        permission: "pages.dashboard",
-      },
-      {
         href: "/client/portal/files",
         icon: FileText,
-        label: "Mes Fichiers",
+        label: "Fichiers",
         permission: "pages.dashboard",
       },
       {
@@ -456,7 +444,7 @@ export const CLIENT_NAV: NavSection[] = [
       {
         href: "/client/portal/settings",
         icon: Settings,
-        label: "Paramètres",
+        label: "Parametres",
         permission: "pages.dashboard",
       },
     ],

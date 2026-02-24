@@ -7,6 +7,7 @@ interface Tab {
     id: string;
     label: string;
     icon?: ReactNode;
+    badge?: string | number;
 }
 
 interface TabsProps {
@@ -15,6 +16,22 @@ interface TabsProps {
     onTabChange: (tabId: string) => void;
     className?: string;
     variant?: "underline" | "pills";
+}
+
+function TabBadge({ badge, active }: { badge?: string | number; active: boolean }) {
+    if (badge === undefined || badge === null) return null;
+    return (
+        <span
+            className={cn(
+                "ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold rounded-full min-w-[18px] text-center leading-tight",
+                active
+                    ? "bg-indigo-100 text-indigo-700"
+                    : "bg-slate-200 text-slate-600"
+            )}
+        >
+            {badge}
+        </span>
+    );
 }
 
 export function Tabs({
@@ -43,6 +60,7 @@ export function Tabs({
                     >
                         {tab.icon}
                         {tab.label}
+                        <TabBadge badge={tab.badge} active={activeTab === tab.id} />
                     </button>
                 ))}
             </div>
@@ -64,6 +82,7 @@ export function Tabs({
                 >
                     {tab.icon}
                     {tab.label}
+                    <TabBadge badge={tab.badge} active={activeTab === tab.id} />
                 </button>
             ))}
         </div>

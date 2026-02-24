@@ -49,6 +49,9 @@ interface HistoryAction {
     resultLabel: string;
     channel: string;
     voipProvider?: string;
+    voipSummary?: string;
+    voipRecordingUrl?: string;
+    voipTranscript?: Array<{ speaker: string; text: string; startSeconds?: number }>;
     campaignName?: string;
     missionId?: string;
     missionName?: string;
@@ -137,6 +140,7 @@ export default function SDRHistoryPage() {
     const [unifiedDrawerMissionName, setUnifiedDrawerMissionName] = useState<string | undefined>();
 
     const fetchAbortRef = useRef<AbortController | null>(null);
+    const syncedAlloActionIdsRef = useRef<Set<string>>(new Set());
 
     const fetchHistory = useCallback(async () => {
         fetchAbortRef.current?.abort();
@@ -195,6 +199,32 @@ export default function SDRHistoryPage() {
         fetchHistory();
         return () => fetchAbortRef.current?.abort();
     }, [fetchHistory]);
+
+    // When we show "En attente du résumé Allo", try to fetch call from Allo API and refetch
+    useEffect(() => {
+        if (!actions.length) return;
+        const waiting = actions.filter(
+            (a) =>
+                a.channel === "CALL" &&
+                a.voipProvider === "allo" &&
+                !a.voipSummary &&
+                !a.note
+        );
+        const toSync = waiting
+            .map((a) => a.id)
+            .filter((id) => !syncedAlloActionIdsRef.current.has(id));
+        toSync.forEach((id) => syncedAlloActionIdsRef.current.add(id));
+        if (toSync.length === 0) return;
+        Promise.allSettled(
+            toSync.map((actionId) =>
+                fetch("/api/voip/allo/sync-call", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ actionId }),
+                })
+            )
+        ).then(() => fetchHistory());
+    }, [actions, fetchHistory]);
 
     const openDrawer = (row: HistoryAction) => {
         if (!row.companyId) return;
@@ -287,15 +317,52 @@ export default function SDRHistoryPage() {
         },
         {
             key: "note",
-            header: "Note",
-            render: (_, row) =>
-                row.note ? (
-                    <p className="text-xs text-slate-500 truncate max-w-[180px] italic" title={row.note}>
-                        &quot;{row.note}&quot;
-                    </p>
-                ) : (
-                    <span className="text-xs text-slate-300">—</span>
-                ),
+            header: "Note / Résumé appel",
+            render: (_, row) => {
+                const isVoipCall = row.channel === "CALL" && row.voipProvider;
+                const waitingForVoipInfo = isVoipCall && !row.voipSummary && !row.note;
+                const displayNote = row.voipSummary ?? row.note;
+                const isFromVoip = !!row.voipSummary;
+
+                if (waitingForVoipInfo) {
+                    const providerName = row.voipProvider === "allo" ? "Allo" : row.voipProvider === "aircall" ? "Aircall" : "Ringover";
+                    return (
+                        <div className="flex items-center gap-2 max-w-[200px] text-amber-600">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                            <span className="text-xs font-medium">
+                                En attente du résumé {providerName}…
+                            </span>
+                        </div>
+                    );
+                }
+                if (!displayNote && !row.voipRecordingUrl) {
+                    return <span className="text-xs text-slate-300">—</span>;
+                }
+                return (
+                    <div className="max-w-[200px] space-y-0.5">
+                        {isFromVoip && row.voipProvider && (
+                            <span className="text-[10px] font-medium text-emerald-600 uppercase tracking-wider">
+                                {row.voipProvider === "allo" ? "Allo" : row.voipProvider === "aircall" ? "Aircall" : "Ringover"} •
+                            </span>
+                        )}
+                        {displayNote && (
+                            <p className="text-xs text-slate-500 truncate italic" title={displayNote}>
+                                &quot;{displayNote}&quot;
+                            </p>
+                        )}
+                        {row.voipRecordingUrl && (
+                            <a
+                                href={row.voipRecordingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-indigo-600 hover:underline"
+                            >
+                                Écouter l&apos;enregistrement
+                            </a>
+                        )}
+                    </div>
+                );
+            },
         },
         {
             key: "callbackDate",

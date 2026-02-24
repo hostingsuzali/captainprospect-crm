@@ -75,6 +75,9 @@ export default function ClientPortalSettingsPage() {
         meetingAlerts: true,
         emailNotifs: true,
         pushNotifs: true,
+        reportPublished: true,
+        meetingReminder: true,
+        milestones: true,
     });
 
     const loadProfile = useCallback(async () => {
@@ -91,6 +94,9 @@ export default function ClientPortalSettingsPage() {
                     meetingAlerts: d.preferences?.notifications?.meetingAlerts ?? true,
                     emailNotifs: d.preferences?.notifications?.emailNotifs ?? true,
                     pushNotifs: d.preferences?.notifications?.pushNotifs ?? true,
+                    reportPublished: d.preferences?.notifications?.reportPublished ?? true,
+                    meetingReminder: d.preferences?.notifications?.meetingReminder ?? true,
+                    milestones: d.preferences?.notifications?.milestones ?? true,
                 });
             }
         } catch (e) {
@@ -134,6 +140,9 @@ export default function ClientPortalSettingsPage() {
                             meetingAlerts: notifications.meetingAlerts,
                             emailNotifs: notifications.emailNotifs,
                             pushNotifs: notifications.pushNotifs,
+                            reportPublished: notifications.reportPublished,
+                            meetingReminder: notifications.meetingReminder,
+                            milestones: notifications.milestones,
                         },
                     },
                 }),
@@ -209,13 +218,13 @@ export default function ClientPortalSettingsPage() {
     }
 
     return (
-        <div className="min-h-full bg-[#F4F6F9] p-6 space-y-6">
-            <div>
-                <h1 className="text-[22px] font-bold text-[#12122A] tracking-tight">
-                    Paramètres
+        <div className="min-h-full bg-gradient-to-b from-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-6">
+            <div className="animate-fade-up">
+                <h1 className="text-2xl font-bold text-[#12122A] tracking-tight">
+                    Parametres
                 </h1>
-                <p className="text-[13px] text-[#8B8BA7] mt-0.5">
-                    Gérez vos informations et préférences
+                <p className="text-sm text-[#6B7194] mt-0.5">
+                    Gerez vos informations et preferences
                 </p>
             </div>
 
@@ -341,10 +350,10 @@ export default function ClientPortalSettingsPage() {
                                 <div className="flex items-center justify-between p-4 rounded-xl border border-[#E8EBF0]">
                                     <div>
                                         <p className="text-sm font-medium text-[#12122A]">
-                                            Alertes RDV
+                                            Nouveau RDV planifie
                                         </p>
                                         <p className="text-xs text-[#8B8BA7] mt-0.5">
-                                            Notifications lorsqu&apos;un nouveau rendez-vous est réservé
+                                            Notification lorsqu&apos;un nouveau rendez-vous est reserve
                                         </p>
                                     </div>
                                     <Toggle
@@ -357,10 +366,58 @@ export default function ClientPortalSettingsPage() {
                                 <div className="flex items-center justify-between p-4 rounded-xl border border-[#E8EBF0]">
                                     <div>
                                         <p className="text-sm font-medium text-[#12122A]">
+                                            Rapport mensuel disponible
+                                        </p>
+                                        <p className="text-xs text-[#8B8BA7] mt-0.5">
+                                            Alerte quand votre rapport du mois est pret
+                                        </p>
+                                    </div>
+                                    <Toggle
+                                        checked={notifications.reportPublished}
+                                        onChange={(v) =>
+                                            setNotifications((n) => ({ ...n, reportPublished: v }))
+                                        }
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between p-4 rounded-xl border border-[#E8EBF0]">
+                                    <div>
+                                        <p className="text-sm font-medium text-[#12122A]">
+                                            Rappel avant un RDV
+                                        </p>
+                                        <p className="text-xs text-[#8B8BA7] mt-0.5">
+                                            Rappel 24h et 1h avant chaque rendez-vous
+                                        </p>
+                                    </div>
+                                    <Toggle
+                                        checked={notifications.meetingReminder}
+                                        onChange={(v) =>
+                                            setNotifications((n) => ({ ...n, meetingReminder: v }))
+                                        }
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between p-4 rounded-xl border border-[#E8EBF0]">
+                                    <div>
+                                        <p className="text-sm font-medium text-[#12122A]">
+                                            Jalons et felicitations
+                                        </p>
+                                        <p className="text-xs text-[#8B8BA7] mt-0.5">
+                                            Alertes pour les records et anniversaires de mission
+                                        </p>
+                                    </div>
+                                    <Toggle
+                                        checked={notifications.milestones}
+                                        onChange={(v) =>
+                                            setNotifications((n) => ({ ...n, milestones: v }))
+                                        }
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between p-4 rounded-xl border border-[#E8EBF0]">
+                                    <div>
+                                        <p className="text-sm font-medium text-[#12122A]">
                                             Notifications par email
                                         </p>
                                         <p className="text-xs text-[#8B8BA7] mt-0.5">
-                                            Recevoir un résumé par email
+                                            Recevoir un resume par email
                                         </p>
                                     </div>
                                     <Toggle
@@ -376,7 +433,7 @@ export default function ClientPortalSettingsPage() {
                                             Notifications dans le portail
                                         </p>
                                         <p className="text-xs text-[#8B8BA7] mt-0.5">
-                                            Alertes (opportunités, fichiers, messages) dans l&apos;app
+                                            Alertes en temps reel dans l&apos;app
                                         </p>
                                     </div>
                                     <Toggle

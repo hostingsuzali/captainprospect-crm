@@ -17,6 +17,10 @@ import {
     FileText,
     ShieldCheck,
     ShieldAlert,
+    Mic,
+    ChevronDown,
+    ChevronUp,
+    Clock,
 } from "lucide-react";
 import Link from "next/link";
 import { ClientOnboardingModal } from "@/components/manager/ClientOnboardingModal";
@@ -39,6 +43,28 @@ interface Client {
     };
 }
 
+interface LeexiRecapItem {
+    id: string;
+    title: string;
+    date: string;
+    duration: number;
+    recapText: string;
+    companyName: string;
+}
+
+interface LeexiMatchedGroup {
+    clientId: string;
+    clientName: string;
+    recaps: LeexiRecapItem[];
+}
+
+interface LeexiRecapsData {
+    matched: LeexiMatchedGroup[];
+    unmatched: LeexiRecapItem[];
+    totalRecaps: number;
+    totalMatched: number;
+}
+
 // ============================================
 // CLIENTS PAGE
 // ============================================
@@ -51,10 +77,18 @@ export default function ClientsPage() {
 
     // Onboarding modal
     const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+    const [initialRecapText, setInitialRecapText] = useState<string | undefined>(undefined);
 
     // Drawer state
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [showDrawer, setShowDrawer] = useState(false);
+
+    // Leexi recaps
+    const [leexiData, setLeexiData] = useState<LeexiRecapsData | null>(null);
+    const [isLoadingLeexi, setIsLoadingLeexi] = useState(false);
+    const [leexiError, setLeexiError] = useState<string | null>(null);
+    const [showLeexiSection, setShowLeexiSection] = useState(true);
+    const [expandedRecapId, setExpandedRecapId] = useState<string | null>(null);
 
     // ============================================
     // FETCH CLIENTS
@@ -79,8 +113,29 @@ export default function ClientsPage() {
         }
     };
 
+    const fetchLeexiRecaps = async () => {
+        setIsLoadingLeexi(true);
+        setLeexiError(null);
+        try {
+            const res = await fetch("/api/leexi/recaps");
+            const json = await res.json();
+            if (json.success) {
+                setLeexiData(json.data);
+            } else {
+                if (res.status !== 503) {
+                    setLeexiError(json.error || "Erreur Leexi");
+                }
+            }
+        } catch {
+            // Leexi unavailable -- non-blocking
+        } finally {
+            setIsLoadingLeexi(false);
+        }
+    };
+
     useEffect(() => {
         fetchClients();
+        fetchLeexiRecaps();
     }, []);
 
     // ============================================
@@ -100,12 +155,24 @@ export default function ClientsPage() {
     const totalMissions = clients.reduce((acc, c) => acc + c._count.missions, 0);
     const totalUsers = clients.reduce((acc, c) => acc + c._count.users, 0);
 
+    const getClientRecapCount = (clientId: string) => {
+        if (!leexiData) return 0;
+        const group = leexiData.matched.find((m) => m.clientId === clientId);
+        return group?.recaps.length || 0;
+    };
+
     // ============================================
     // HANDLE ONBOARDING SUCCESS
     // ============================================
 
     const handleOnboardingSuccess = (clientId: string) => {
         fetchClients();
+        fetchLeexiRecaps();
+    };
+
+    const handleCreateFromRecap = (recapTextContent: string) => {
+        setInitialRecapText(recapTextContent);
+        setShowOnboardingModal(true);
     };
 
     const handleClientClick = (client: Client) => {
@@ -220,6 +287,166 @@ export default function ClientsPage() {
                 )}
             </div>
 
+            {/* Leexi Recaps Section */}
+            {leexiData && leexiData.totalRecaps > 0 && (
+                <div className="bg-white border border-violet-200 rounded-2xl overflow-hidden">
+                    <button
+                        onClick={() => setShowLeexiSection(!showLeexiSection)}
+                        className="w-full flex items-center justify-between px-6 py-4 hover:bg-violet-50/50 transition-colors"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center">
+                                <Mic className="w-5 h-5 text-violet-600" />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="text-sm font-semibold text-slate-900">
+                                    Récapitulatifs Leexi
+                                </h3>
+                                <p className="text-xs text-slate-500">
+                                    {leexiData.totalMatched} associé{leexiData.totalMatched > 1 ? "s" : ""} · {leexiData.unmatched.length} non associé{leexiData.unmatched.length > 1 ? "s" : ""}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 text-xs">
+                                {leexiData.totalRecaps} recap{leexiData.totalRecaps > 1 ? "s" : ""}
+                            </Badge>
+                            {showLeexiSection ? (
+                                <ChevronUp className="w-4 h-4 text-slate-400" />
+                            ) : (
+                                <ChevronDown className="w-4 h-4 text-slate-400" />
+                            )}
+                        </div>
+                    </button>
+
+                    {showLeexiSection && (
+                        <div className="border-t border-violet-100 px-6 py-4 space-y-3 max-h-80 overflow-y-auto">
+                            {leexiData.matched.map((group) => (
+                                <div key={group.clientId} className="space-y-2">
+                                    {group.recaps.map((recap) => (
+                                        <div
+                                            key={recap.id}
+                                            className="p-3 bg-violet-50/50 border border-violet-100 rounded-xl"
+                                        >
+                                            <div
+                                                className="flex items-center justify-between cursor-pointer"
+                                                onClick={() => setExpandedRecapId(expandedRecapId === recap.id ? null : recap.id)}
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <Mic className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                                                    <span className="text-sm font-medium text-slate-900 truncate">
+                                                        {recap.title}
+                                                    </span>
+                                                    <Badge variant="outline" className="text-[10px] bg-white border-violet-200 text-violet-600 flex-shrink-0">
+                                                        {group.clientName}
+                                                    </Badge>
+                                                </div>
+                                                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                                    <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                                                        <Clock className="w-3 h-3" />
+                                                        {new Date(recap.date).toLocaleDateString("fr-FR")}
+                                                    </span>
+                                                    {expandedRecapId === recap.id ? (
+                                                        <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                                                    ) : (
+                                                        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {expandedRecapId === recap.id && (
+                                                <p className="mt-2 text-xs text-slate-600 whitespace-pre-line border-t border-violet-100 pt-2">
+                                                    {recap.recapText.slice(0, 800)}
+                                                    {recap.recapText.length > 800 && "..."}
+                                                </p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+
+                            {leexiData.unmatched.length > 0 && (
+                                <div className="pt-2 border-t border-violet-100">
+                                    <p className="text-xs font-medium text-slate-500 mb-2">
+                                        Non associés ({leexiData.unmatched.length})
+                                    </p>
+                                    {leexiData.unmatched.slice(0, 5).map((recap) => (
+                                        <div
+                                            key={recap.id}
+                                            className="p-3 bg-slate-50 border border-slate-100 rounded-xl mb-2"
+                                        >
+                                            <div
+                                                className="flex items-center justify-between cursor-pointer"
+                                                onClick={() => setExpandedRecapId(expandedRecapId === recap.id ? null : recap.id)}
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <Mic className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                                                    <span className="text-sm font-medium text-slate-700 truncate">
+                                                        {recap.title}
+                                                    </span>
+                                                    {recap.companyName && (
+                                                        <span className="text-[10px] text-slate-400">
+                                                            ({recap.companyName})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleCreateFromRecap(recap.recapText);
+                                                        }}
+                                                        className="text-[10px] font-medium px-2 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-md hover:bg-indigo-100 transition-colors"
+                                                    >
+                                                        Créer client
+                                                    </button>
+                                                    <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                                                        <Clock className="w-3 h-3" />
+                                                        {new Date(recap.date).toLocaleDateString("fr-FR")}
+                                                    </span>
+                                                    {expandedRecapId === recap.id ? (
+                                                        <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                                                    ) : (
+                                                        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {expandedRecapId === recap.id && (
+                                                <div className="mt-2 border-t border-slate-100 pt-2 space-y-2">
+                                                    <p className="text-xs text-slate-600 whitespace-pre-line">
+                                                        {recap.recapText.slice(0, 800)}
+                                                        {recap.recapText.length > 800 && "..."}
+                                                    </p>
+                                                    <button
+                                                        onClick={() => handleCreateFromRecap(recap.recapText)}
+                                                        className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+                                                    >
+                                                        <Plus className="w-3.5 h-3.5" />
+                                                        Créer le client depuis cet appel
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {isLoadingLeexi && !leexiData && (
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Chargement des récapitulatifs Leexi...
+                </div>
+            )}
+
+            {leexiError && (
+                <div className="text-xs text-red-500 flex items-center gap-1">
+                    Leexi: {leexiError}
+                </div>
+            )}
+
             {/* Clients Grid */}
             {filteredClients.length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-2xl border border-slate-200">
@@ -259,6 +486,12 @@ export default function ClientsPage() {
                                         {client.name[0]?.toUpperCase() || "?"}
                                     </div>
                                     <div className="flex gap-2">
+                                        {getClientRecapCount(client.id) > 0 && (
+                                            <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 gap-1 text-[10px] uppercase tracking-wider h-6 px-2 font-bold">
+                                                <Mic className="w-3 h-3" />
+                                                {getClientRecapCount(client.id)} recap{getClientRecapCount(client.id) > 1 ? "s" : ""}
+                                            </Badge>
+                                        )}
                                         {client._count.users > 0 ? (
                                             <Badge variant="success" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 text-[10px] uppercase tracking-wider h-6 px-2 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <ShieldCheck className="w-3 h-3" />
@@ -334,8 +567,12 @@ export default function ClientsPage() {
             {/* Client Onboarding Modal */}
             <ClientOnboardingModal
                 isOpen={showOnboardingModal}
-                onClose={() => setShowOnboardingModal(false)}
+                onClose={() => {
+                    setShowOnboardingModal(false);
+                    setInitialRecapText(undefined);
+                }}
                 onSuccess={handleOnboardingSuccess}
+                initialRecapText={initialRecapText}
             />
         </div>
     );

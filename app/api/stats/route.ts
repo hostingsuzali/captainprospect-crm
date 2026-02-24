@@ -194,6 +194,36 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         }));
     }
 
+    // Client Portal extras: lastActivityDate, contactsReached, monthlyObjective
+    let lastActivityDate: string | null = null;
+    let contactsReached = 0;
+    let monthlyObjective = 10;
+    if (session.user.role === 'CLIENT') {
+        const lastAction = await prisma.action.findFirst({
+            where: actionWhere,
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+        });
+        lastActivityDate = lastAction?.createdAt?.toISOString() ?? null;
+
+        const distinctContacts = await prisma.action.findMany({
+            where: { ...actionWhere, contactId: { not: null } },
+            select: { contactId: true },
+            distinct: ['contactId'],
+        });
+        contactsReached = distinctContacts.length;
+
+        const mission = await prisma.mission.findFirst({
+            where: {
+                isActive: true,
+                client: { users: { some: { id: session.user.id } } },
+            },
+            select: { objective: true },
+        });
+        const parsed = parseInt(mission?.objective ?? '', 10);
+        if (!isNaN(parsed) && parsed > 0) monthlyObjective = parsed;
+    }
+
     return successResponse({
         period,
         totalActions,
@@ -204,5 +234,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         resultBreakdown,
         leaderboard,
         rdvLeaderboard,
+        lastActivityDate,
+        contactsReached,
+        monthlyObjective,
     });
 });

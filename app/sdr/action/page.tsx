@@ -332,6 +332,13 @@ export default function SDRActionPage() {
 
     const [missions, setMissions] = useState<Mission[]>([]);
     const [lists, setLists] = useState<ListItem[]>([]);
+    const [todayBlocksData, setTodayBlocksData] = useState<{
+        todayBlocks: Array<{ id: string; startTime: string; endTime: string; mission: { id: string; name: string; channel: string } }>;
+        todayMissionIds: string[];
+        weekBlocks: Array<{ id: string; date: string; startTime: string; endTime: string; mission: { id: string; name: string; channel: string } }>;
+        hasBlocksToday: boolean;
+    } | null>(null);
+    const [todayBlocksLoading, setTodayBlocksLoading] = useState(true);
     const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
     const [selectedListId, setSelectedListIdState] = useState<string | null>(null);
     const setSelectedListId = useCallback((value: string | null | ((prev: string | null) => string | null)) => {
@@ -414,31 +421,47 @@ export default function SDRActionPage() {
     // Config-driven status options (from API)
     const [statusConfig, setStatusConfig] = useState<{ statuses: Array<{ code: string; label: string; requiresNote: boolean }> } | null>(null);
 
-    // Load filters
+    // Load filters + today-blocks
     useEffect(() => {
         const controller = new AbortController();
         const signal = controller.signal;
         const loadFilters = async () => {
             try {
-                const [missionsRes, listsRes] = await Promise.all([
+                const [missionsRes, listsRes, todayRes] = await Promise.all([
                     fetch("/api/sdr/missions", { signal }),
                     fetch("/api/sdr/lists", { signal }),
+                    fetch("/api/sdr/today-blocks", { signal }),
                 ]);
                 if (signal.aborted) return;
                 const missionsJson = await missionsRes.json();
                 const listsJson = await listsRes.json();
+                const todayJson = await todayRes.json();
                 if (signal.aborted) return;
 
+                let todayMissionIds: string[] = [];
+                let hasBlocksToday = false;
+                if (todayJson.success) {
+                    setTodayBlocksData(todayJson.data);
+                    todayMissionIds = todayJson.data.todayMissionIds ?? [];
+                    hasBlocksToday = todayJson.data.hasBlocksToday ?? false;
+                }
+                setTodayBlocksLoading(false);
+
                 if (missionsJson.success) {
-                    setMissions(missionsJson.data);
+                    const allMissions: Mission[] = missionsJson.data;
+                    // Filter to only today's missions if blocks exist
+                    const filteredMissions = hasBlocksToday
+                        ? allMissions.filter((m) => todayMissionIds.includes(m.id))
+                        : allMissions;
+                    setMissions(filteredMissions);
+
                     const saved = localStorage.getItem("sdr_selected_mission");
-                    const missionId = (saved && missionsJson.data.some((m: Mission) => m.id === saved))
+                    const missionId = (saved && filteredMissions.some((m: Mission) => m.id === saved))
                         ? saved
-                        : missionsJson.data.length > 0
-                            ? missionsJson.data[0].id
+                        : filteredMissions.length > 0
+                            ? filteredMissions[0].id
                             : null;
                     if (missionId) setSelectedMissionId(missionId);
-                    // Restore selected list if it belongs to the selected mission
                     if (listsJson.success && missionId) {
                         const savedList = typeof window !== "undefined" ? localStorage.getItem("sdr_selected_list") : null;
                         if (savedList && listsJson.data.some((l: ListItem) => l.id === savedList && l.mission.id === missionId)) {
@@ -453,6 +476,7 @@ export default function SDRActionPage() {
                 if ((err as Error).name === "AbortError") return;
                 console.error("Failed to load filters:", err);
                 showError("Impossible de charger les missions et listes");
+                setTodayBlocksLoading(false);
             }
         };
         loadFilters();
@@ -1226,6 +1250,73 @@ export default function SDRActionPage() {
     const availableScriptTabs = scriptSections
         ? SCRIPT_TABS.filter(tab => scriptSections && scriptSections[tab.id])
         : [];
+
+    // ========== NO BLOCKS TODAY - EMPTY STATE ==========
+    if (!todayBlocksLoading && todayBlocksData && !todayBlocksData.hasBlocksToday) {
+        const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven'];
+        const weekBlocksByDay: Record<string, typeof todayBlocksData.weekBlocks> = {};
+        for (const wb of todayBlocksData.weekBlocks) {
+            const d = new Date(wb.date).toISOString().slice(0, 10);
+            if (!weekBlocksByDay[d]) weekBlocksByDay[d] = [];
+            weekBlocksByDay[d].push(wb);
+        }
+        const today = new Date();
+        const dow = today.getDay();
+        const monday = new Date(today);
+        monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
+
+        return (
+            <div className="flex items-center justify-center min-h-[70vh]">
+                <div className="max-w-md w-full mx-auto text-center px-6">
+                    <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-10 h-10 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                        </svg>
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800 mb-2">Aucune mission planifiée aujourd&apos;hui</h2>
+                    <p className="text-sm text-slate-500 mb-6">
+                        Votre manager n&apos;a pas encore planifié de créneaux pour aujourd&apos;hui.
+                        Contactez-le pour qu&apos;il organise vos journées via le hub de planification.
+                    </p>
+
+                    {/* Week preview */}
+                    {todayBlocksData.weekBlocks.length > 0 && (
+                        <div className="bg-white border border-slate-200 rounded-xl p-4 text-left">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Vos créneaux cette semaine</p>
+                            <div className="space-y-2">
+                                {Array.from({ length: 5 }, (_, i) => {
+                                    const date = new Date(monday);
+                                    date.setDate(date.getDate() + i);
+                                    const dateStr = date.toISOString().slice(0, 10);
+                                    const dayBlocks = weekBlocksByDay[dateStr] ?? [];
+                                    const isToday = date.toDateString() === today.toDateString();
+                                    return (
+                                        <div key={i} className={`flex items-center gap-3 py-1.5 px-2 rounded-lg ${isToday ? 'bg-red-50' : ''}`}>
+                                            <span className={`text-xs font-bold w-8 ${isToday ? 'text-red-600' : 'text-slate-500'}`}>{weekDays[i]}</span>
+                                            <span className="text-xs text-slate-400 w-12">{date.getDate()}/{date.getMonth() + 1}</span>
+                                            {dayBlocks.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {dayBlocks.map((b) => (
+                                                        <span key={b.id} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                                                            {b.mission.name} {b.startTime}–{b.endTime}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <span className={`text-xs italic ${isToday ? 'text-red-400' : 'text-slate-300'}`}>
+                                                    {isToday ? 'Aucun créneau' : '—'}
+                                                </span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     // ========== TABLE VIEW ==========
     if (viewMode === "table") {

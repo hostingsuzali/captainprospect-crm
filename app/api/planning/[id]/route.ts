@@ -11,6 +11,7 @@ import {
     createScheduleUpdateNotification, 
     createScheduleCancelNotification 
 } from '@/lib/notifications';
+import { recomputeConflicts } from '@/lib/planning/conflictEngine';
 import { z } from 'zod';
 
 interface RouteParams {
@@ -219,6 +220,8 @@ export const DELETE = withErrorHandler(async (request: NextRequest, { params }: 
             },
         },
     });
+    // allocationId is not in include, fetch it separately
+    const blockFull = await prisma.scheduleBlock.findUnique({ where: { id }, select: { allocationId: true, sdrId: true } });
 
     if (!block) {
         return errorResponse('Bloc non trouvé', 404);
@@ -235,9 +238,32 @@ export const DELETE = withErrorHandler(async (request: NextRequest, { params }: 
         endTime: block.endTime,
     });
 
+    // Decrement scheduledDays on allocation before deleting
+    if (blockFull?.allocationId) {
+        await prisma.sdrDayAllocation.update({
+            where: { id: blockFull.allocationId },
+            data: { scheduledDays: { decrement: 1 } },
+        }).catch(() => null);
+    }
+
     await prisma.scheduleBlock.delete({
         where: { id },
     });
+
+    // Recompute conflicts if block was linked to an allocation
+    if (blockFull?.allocationId) {
+        const alloc = await prisma.sdrDayAllocation.findUnique({
+            where: { id: blockFull.allocationId },
+            include: { missionMonthPlan: true },
+        }).catch(() => null);
+        if (alloc) {
+            await recomputeConflicts({
+                sdrId: blockFull.sdrId,
+                missionId: alloc.missionMonthPlan.missionId,
+                month: alloc.missionMonthPlan.month,
+            });
+        }
+    }
 
     return successResponse({ message: 'Bloc supprimé' });
 });

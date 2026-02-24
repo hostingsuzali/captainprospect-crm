@@ -91,6 +91,19 @@ enum Urgency {
   LONG
 }
 
+enum MeetingOutcome {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  NO_SHOW
+}
+
+enum RecontactPreference {
+  YES
+  NO
+  MAYBE
+}
+
 enum ProjectStatus {
   ACTIVE
   COMPLETED
@@ -346,6 +359,11 @@ model User {
   createdScheduleBlocks ScheduleBlock[] @relation("CreatedScheduleBlocks")
   missionPlanSdrAssignments MissionPlanSdr[]
   
+  // Advanced Planning: allocations, capacity, absences
+  sdrDayAllocations    SdrDayAllocation[] @relation("SdrDayAllocations")
+  sdrMonthCapacities   SdrMonthCapacity[] @relation("SdrMonthCapacities")
+  sdrAbsences          SdrAbsence[]       @relation("SdrAbsences")
+  
   // CRM Activity Tracking
   crmActivityDays     CrmActivityDay[]
   
@@ -374,6 +392,9 @@ model User {
   
   // VoIP (unified layer: one provider per SDR)
   userVoipConfig      UserVoipConfig?
+  
+  // Leexi imports
+  leexiImports  LeexiCallImport[] @relation("LeexiImporter")
   
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -446,6 +467,7 @@ model Client {
   industry      String?
   logo          String?
   bookingUrl    String?   // URL for booking tools (Calendly, etc.)
+  salesPlaybook Json?     @map("sales_playbook")
   users         User[]
   missions      Mission[]
   folders       Folder[]
@@ -471,6 +493,12 @@ model Client {
   engagements    Engagement[]
   billingClient  BillingClient?
   
+  // Leexi integration
+  leexiImports  LeexiCallImport[]
+
+  // Client Portal: shareable report links
+  sharedReportLinks SharedReportLink[]
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -489,8 +517,10 @@ model Mission {
   campaigns     Campaign[]
   lists         List[]
   sdrAssignments SDRAssignment[]
+  totalContractDays Int?
   scheduleBlocks ScheduleBlock[]
   missionPlans   MissionPlan[]
+  missionMonthPlans MissionMonthPlan[] @relation("MissionMonthPlans")
   folders       Folder[]
   files         File[]
 
@@ -512,6 +542,15 @@ model Mission {
   // Mission Email Templates
   emailTemplates      MissionEmailTemplate[]
   
+  // Playbook (generated from Leexi recap or manual)
+  playbook      Json?     @map("playbook")
+  
+  // Leexi integration
+  leexiImport   LeexiCallImport?
+
+  // Client Portal: shareable report links
+  sharedReportLinks SharedReportLink[]
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -643,7 +682,9 @@ model Action {
   voipTopics        Json?     // String[]
   voipActionItems   Json?     // String[]
   voipEnrichedAt    DateTime?
-  
+
+  meetingFeedback   MeetingFeedback?
+
   @@index([companyId])
   @@index([contactId])
   @@index([callbackDate])
@@ -668,17 +709,18 @@ model UserVoipConfig {
 
 // VoIP: workspace-level API keys and webhook tokens (per provider)
 model VoipWorkspaceConfig {
-  id                   String   @id @default(cuid())
-  provider             String   @unique // 'allo' | 'aircall' | 'ringover'
-  aircallApiId         String?
-  aircallApiToken      String?
-  aircallWebhookId     Int?
-  aircallWebhookToken  String?
-  ringoverApiKey       String?
+  id                    String   @id @default(cuid())
+  provider              String   @unique // 'allo' | 'aircall' | 'ringover'
+  alloApiKey            String?  // Allo API key (webhooks, optional verification)
+  aircallApiId          String?
+  aircallApiToken       String?
+  aircallWebhookId      Int?
+  aircallWebhookToken   String?
+  ringoverApiKey        String?
   ringoverWebhookSecret String?
-  active               Boolean  @default(true)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 // Config-driven action status definitions (per scope: GLOBAL, CLIENT, MISSION, CAMPAIGN)
@@ -1164,6 +1206,10 @@ model ScheduleBlock {
   missionPlan       MissionPlan? @relation(fields: [missionPlanId], references: [id], onDelete: SetNull)
   generatedAt       DateTime?
   
+  // Link to month-level allocation budget
+  allocationId      String?
+  allocation        SdrDayAllocation? @relation("AllocationBlocks", fields: [allocationId], references: [id], onDelete: SetNull)
+
   // Created by (manager)
   createdById       String
   createdBy         User      @relation("CreatedScheduleBlocks", fields: [createdById], references: [id])
@@ -1177,6 +1223,7 @@ model ScheduleBlock {
   @@index([createdById])
   @@index([missionPlanId])
   @@index([suggestionStatus])
+  @@index([allocationId])
 }
 
 enum ScheduleBlockStatus {
@@ -1184,6 +1231,148 @@ enum ScheduleBlockStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+// ============================================
+// ADVANCED PLANNING: MONTH PLANS, CAPACITY & CONFLICTS
+// ============================================
+
+enum MissionMonthPlanStatus {
+  DRAFT
+  ACTIVE
+  LOCKED
+}
+
+enum AllocationStatus {
+  UNCOMMITTED
+  PARTIAL
+  SCHEDULED
+  CONFIRMED
+}
+
+enum AbsenceType {
+  VACATION
+  SICK
+  TRAINING
+  PUBLIC_HOLIDAY
+  PARTIAL
+}
+
+enum ConflictSeverity {
+  P0
+  P1
+  P2
+}
+
+enum ConflictType {
+  SDR_OVERLOADED_MONTH
+  SDR_DOUBLE_BOOKED_DAY
+  MISSION_NO_SDR
+  MISSION_UNDERSTAFFED
+  MISSION_OVERSTAFFED
+  SDR_NEAR_CAPACITY
+  ALLOCATION_NOT_SCHEDULED
+  ABSENCE_CONFLICTS_BLOCK
+  CONTRACT_NOT_FULLY_PLANNED
+  MISSION_ENDING_UNPLANNED
+  NO_PLAN_FOR_ACTIVE_MONTH
+  SDR_UNDERUTILIZED
+}
+
+model MissionMonthPlan {
+  id               String                 @id @default(cuid())
+  missionId        String
+  mission          Mission                @relation("MissionMonthPlans", fields: [missionId], references: [id], onDelete: Cascade)
+  month            String                 // "2025-10" format
+  targetDays       Int
+  status           MissionMonthPlanStatus @default(DRAFT)
+  workingDays      String?                // Comma-separated day numbers: "1,3,5" (1=Mon..7=Sun)
+  defaultStartTime String?                @default("09:00")
+  defaultEndTime   String?                @default("17:00")
+
+  allocations SdrDayAllocation[]
+
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@unique([missionId, month])
+  @@index([missionId])
+  @@index([month])
+  @@index([status])
+}
+
+model SdrDayAllocation {
+  id                  String              @id @default(cuid())
+  sdrId               String
+  sdr                 User                @relation("SdrDayAllocations", fields: [sdrId], references: [id], onDelete: Cascade)
+  missionMonthPlanId  String
+  missionMonthPlan    MissionMonthPlan    @relation(fields: [missionMonthPlanId], references: [id], onDelete: Cascade)
+  allocatedDays       Int
+  scheduledDays       Int                 @default(0)
+  status              AllocationStatus    @default(UNCOMMITTED)
+
+  scheduleBlocks      ScheduleBlock[]     @relation("AllocationBlocks")
+
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@unique([sdrId, missionMonthPlanId])
+  @@index([sdrId])
+  @@index([missionMonthPlanId])
+}
+
+model SdrMonthCapacity {
+  id                    String    @id @default(cuid())
+  sdrId                 String
+  sdr                   User      @relation("SdrMonthCapacities", fields: [sdrId], references: [id], onDelete: Cascade)
+  month                 String    // "2025-10" format
+  baseWorkingDays       Int
+  effectiveAvailableDays Int
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([sdrId, month])
+  @@index([sdrId])
+  @@index([month])
+}
+
+model SdrAbsence {
+  id              String      @id @default(cuid())
+  sdrId           String
+  sdr             User        @relation("SdrAbsences", fields: [sdrId], references: [id], onDelete: Cascade)
+  startDate       DateTime    @db.Date
+  endDate         DateTime    @db.Date
+  type            AbsenceType
+  impactsPlanning Boolean     @default(true)
+  note            String?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([sdrId])
+  @@index([startDate, endDate])
+}
+
+model PlanningConflict {
+  id              String           @id @default(cuid())
+  type            ConflictType
+  severity        ConflictSeverity
+  sdrId           String?
+  missionId       String?
+  month           String           // "2025-10" format
+  message         String
+  suggestedAction String?
+  resolvedAt      DateTime?
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([severity])
+  @@index([month])
+  @@index([sdrId])
+  @@index([missionId])
+  @@index([resolvedAt])
 }
 
 // ============================================
@@ -2612,4 +2801,69 @@ model ProspectPipelineConfig {
   updatedAt     DateTime            @updatedAt
   
   @@unique([clientId])
+}
+
+// ============================================
+// LEEXI INTEGRATION
+// ============================================
+
+model LeexiCallImport {
+  id            String    @id @default(cuid())
+  leexiCallId   String
+  
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  
+  missionId     String?   @unique
+  mission       Mission?  @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  
+  importedById  String
+  importedBy    User      @relation("LeexiImporter", fields: [importedById], references: [id], onDelete: Cascade)
+  
+  source        String    @default("api") // "api" | "paste" | "webhook"
+  rawRecap      String    @db.Text
+  extractedData Json?
+  callTitle     String?
+  callDate      DateTime?
+  callDuration  Int?
+  
+  importedAt    DateTime  @default(now())
+  
+  @@index([leexiCallId])
+  @@index([clientId])
+}
+
+// ============================================
+// CLIENT PORTAL: MEETING FEEDBACK
+// ============================================
+
+model MeetingFeedback {
+  id                  String              @id @default(cuid())
+  actionId            String              @unique
+  action              Action              @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  outcome             MeetingOutcome
+  recontactRequested  RecontactPreference
+  clientNote          String?             @db.Text
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+}
+
+// ============================================
+// CLIENT PORTAL: SHAREABLE REPORT LINKS
+// ============================================
+
+model SharedReportLink {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  clientId  String
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  missionId String?
+  mission   Mission?  @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  dateFrom  DateTime
+  dateTo    DateTime
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+
+  @@index([token])
+  @@index([clientId])
 }
