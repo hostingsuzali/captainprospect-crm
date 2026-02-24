@@ -39,7 +39,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 });
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER'], request);
+    const session = await requireRole(['MANAGER'], request);
     const data = await validateRequest(request, createSchema);
 
     const plan = await prisma.missionMonthPlan.findUnique({
@@ -95,6 +95,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                 endTime: string;
                 status: string;
                 allocationId: string;
+                createdById: string;
             }> = [];
 
             let placed = 0;
@@ -114,6 +115,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                     endTime,
                     status: 'CONFIRMED',
                     allocationId: allocation.id,
+                    createdById: session.user.id,
                 });
                 placed++;
             }
