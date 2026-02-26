@@ -26,6 +26,8 @@ export interface Column<T> {
     sortField?: string;
     width?: string;
     render?: (value: any, row: T) => React.ReactNode;
+    /** Optional importance flag used for primary vs secondary columns */
+    importance?: "primary" | "secondary";
 }
 
 interface DataTableProps<T> {
@@ -43,6 +45,8 @@ interface DataTableProps<T> {
     /** Optional class name per row (e.g. for highlighting recently updated rows) */
     getRowClassName?: (row: T) => string;
     className?: string;
+    /** Enable UI to toggle visibility of columns marked as importance="secondary" */
+    enableSecondaryColumnsToggle?: boolean;
 }
 
 type SortDirection = "asc" | "desc" | null;
@@ -74,11 +78,43 @@ export function DataTable<T extends Record<string, any>>({
     onRowClick,
     getRowClassName,
     className,
+    enableSecondaryColumnsToggle = false,
 }: DataTableProps<T>) {
     const [searchQuery, setSearchQuery] = useState("");
     const [sortKey, setSortKey] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<SortDirection>(null);
     const [currentPage, setCurrentPage] = useState(1);
+    const [showSecondaryMenu, setShowSecondaryMenu] = useState(false);
+
+    // Compute secondary columns (those explicitly marked as such)
+    const secondaryColumns = useMemo(
+        () => columns.filter((c) => c.importance === "secondary"),
+        [columns]
+    );
+
+    // Visible secondary column keys; by default show none if any secondary exist,
+    // otherwise everything is treated as primary for backwards compatibility.
+    const [visibleSecondaryKeys, setVisibleSecondaryKeys] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (secondaryColumns.length === 0) {
+            setVisibleSecondaryKeys([]);
+            return;
+        }
+        // Initialize on columns change: hide all secondary columns by default
+        setVisibleSecondaryKeys([]);
+    }, [secondaryColumns]);
+
+    // Columns actually rendered in the table (all primaries + visible secondaries)
+    const visibleColumns = useMemo(
+        () =>
+            columns.filter(
+                (c) =>
+                    c.importance !== "secondary" ||
+                    visibleSecondaryKeys.includes(c.key)
+            ),
+        [columns, visibleSecondaryKeys]
+    );
 
     // Get row key
     const getRowKey = (row: T): string => {
@@ -189,12 +225,64 @@ export function DataTable<T extends Record<string, any>>({
                 </div>
             )}
 
+            {/* Secondary columns visibility toggle */}
+            {enableSecondaryColumnsToggle && secondaryColumns.length > 0 && (
+                <div className="flex justify-end px-5 py-2 border-b border-slate-100 bg-slate-50/40 relative">
+                    <button
+                        type="button"
+                        onClick={() => setShowSecondaryMenu((v) => !v)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 shadow-sm"
+                    >
+                        Colonnes secondaires
+                        <ChevronDown className="w-3 h-3" />
+                    </button>
+                    {showSecondaryMenu && (
+                        <div className="absolute z-10 mt-1 w-56 rounded-lg border border-slate-200 bg-white shadow-lg right-5 top-9">
+                            <div className="px-3 py-2 border-b border-slate-100">
+                                <p className="text-xs font-semibold text-slate-500">
+                                    Afficher / masquer
+                                </p>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto py-1">
+                                {secondaryColumns.map((col) => {
+                                    const checked = visibleSecondaryKeys.includes(col.key);
+                                    return (
+                                        <label
+                                            key={col.key}
+                                            className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 cursor-pointer"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                checked={checked}
+                                                onChange={() => {
+                                                    setVisibleSecondaryKeys((prev) =>
+                                                        checked
+                                                            ? prev.filter((k) => k !== col.key)
+                                                            : [...prev, col.key]
+                                                    );
+                                                }}
+                                            />
+                                            <span>
+                                                {typeof col.header === "string"
+                                                    ? col.header
+                                                    : col.key}
+                                            </span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Table */}
             <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead>
                         <tr className="bg-slate-50/80 border-b border-slate-200/80">
-                            {columns.map((column) => (
+                            {visibleColumns.map((column) => (
                                 <th
                                     key={column.key}
                                     className={cn(
@@ -239,7 +327,7 @@ export function DataTable<T extends Record<string, any>>({
                         {loading ? (
                             <tr>
                                 <td
-                                    colSpan={columns.length}
+                                    colSpan={visibleColumns.length}
                                     className="px-5 py-16 text-center"
                                 >
                                     <div className="flex flex-col items-center gap-3">
@@ -251,7 +339,7 @@ export function DataTable<T extends Record<string, any>>({
                         ) : paginatedData.length === 0 ? (
                             <tr>
                                 <td
-                                    colSpan={columns.length}
+                                    colSpan={visibleColumns.length}
                                     className="px-5 py-16 text-center"
                                 >
                                     <div className="flex flex-col items-center gap-3">
@@ -278,7 +366,7 @@ export function DataTable<T extends Record<string, any>>({
                                         animationDelay: `${index * 20}ms`,
                                     }}
                                 >
-                                    {columns.map((column) => (
+                                    {visibleColumns.map((column) => (
                                         <td
                                             key={column.key}
                                             className="px-5 py-3.5 text-sm text-slate-700"

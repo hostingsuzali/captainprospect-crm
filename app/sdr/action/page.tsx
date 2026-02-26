@@ -1406,6 +1406,7 @@ export default function SDRActionPage() {
             {
                 key: "lastAction",
                 header: "Dernière action",
+                importance: "secondary",
                 render: (_, row) => {
                     if (!row.lastAction) {
                         return (
@@ -1452,6 +1453,7 @@ export default function SDRActionPage() {
             {
                 key: "priority",
                 header: "Priorité",
+                importance: "secondary",
                 render: (v) => (
                     <Badge className={cn("text-xs font-medium border", PRIORITY_LABELS[v as keyof typeof PRIORITY_LABELS]?.color ?? "bg-slate-100 text-slate-700 border-slate-200")}>
                         {PRIORITY_LABELS[v as keyof typeof PRIORITY_LABELS]?.label ?? v}
@@ -1809,6 +1811,7 @@ export default function SDRActionPage() {
                             pageSize={15}
                             emptyMessage="Aucun contact dans la file. Changez de mission ou liste."
                             onRowClick={openDrawerForRow}
+                            enableSecondaryColumnsToggle
                             getRowClassName={(row) =>
                                 recentlyUpdatedRowKeys.has(queueRowKey(row))
                                     ? "!bg-emerald-50/80 border-l-4 border-l-emerald-500 animate-fade-in"

@@ -21,7 +21,7 @@ interface SdrRowProps {
 
 export function SdrRow({ sdr }: SdrRowProps) {
     const {
-        hoveredMissionId, setHoveredSdrId, focusedSdrId, setFocusedSdrId, snapshot, month, reload, setDrawerOpen,
+        hoveredMissionId, setHoveredSdrId, focusedSdrId, setFocusedSdrId, snapshot, month, backgroundSync, setDrawerOpen,
     } = usePlanningMonth();
     const { success, error: showError } = useToast();
 
@@ -84,11 +84,13 @@ export function SdrRow({ sdr }: SdrRowProps) {
     const totalPct = segments.reduce((s, seg) => s + seg.pct, 0);
 
     const absences = sdr.sdrAbsences;
-    const absenceDays = absences.reduce((s, a) => {
-        const start = new Date(a.startDate);
-        const end = new Date(a.endDate);
-        return s + Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    }, 0);
+    const absenceDays = absences
+        .filter((a) => a.impactsPlanning)
+        .reduce((s, a) => {
+            const start = new Date(a.startDate);
+            const end = new Date(a.endDate);
+            return s + Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        }, 0);
 
     // Suggestions
     const suggestions: Array<{ text: string; type: 'reduce' | 'reassign' }> = [];
@@ -143,7 +145,7 @@ export function SdrRow({ sdr }: SdrRowProps) {
             });
             const json = await res.json();
             if (json.success) {
-                reload();
+                backgroundSync();
             } else {
                 showError('Erreur', json.error || 'Impossible de sauvegarder');
                 setEditingCapacity(true);
@@ -158,19 +160,20 @@ export function SdrRow({ sdr }: SdrRowProps) {
 
     async function handleAddAbsence() {
         if (!newAbsence.startDate || !newAbsence.endDate) return;
+        const payload = { ...newAbsence };
         setAddingAbsence(true);
-        setShowAddAbsence(false);
-        setNewAbsence({ startDate: '', endDate: '', type: 'VACATION', impactsPlanning: true });
         try {
             const res = await fetch('/api/sdr-absences', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sdrId: sdr.id, ...newAbsence }),
+                body: JSON.stringify({ sdrId: sdr.id, ...payload }),
             });
             const json = await res.json();
             if (json.success) {
                 success('Absence ajoutée', '');
-                reload();
+                backgroundSync();
+                setShowAddAbsence(false);
+                setNewAbsence({ startDate: '', endDate: '', type: 'VACATION', impactsPlanning: true });
             } else {
                 showError('Erreur', json.error || "Impossible d'ajouter");
             }
@@ -185,7 +188,7 @@ export function SdrRow({ sdr }: SdrRowProps) {
         setDeletingAbsId(id);
         try {
             await fetch(`/api/sdr-absences/${id}`, { method: 'DELETE' });
-            reload();
+            backgroundSync();
         } finally {
             setDeletingAbsId(null);
         }
@@ -218,7 +221,10 @@ export function SdrRow({ sdr }: SdrRowProps) {
                                     {statusCfg.label}
                                 </span>
                                 {absenceDays > 0 && (
-                                    <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-full font-medium">
+                                    <span className={cn(
+                                        'text-[10px] px-1.5 py-0.5 rounded-full font-medium',
+                                        absenceDays > 3 ? 'text-red-600 bg-red-50' : 'text-orange-600 bg-orange-50'
+                                    )}>
                                         {absenceDays}j abs.
                                     </span>
                                 )}
@@ -250,6 +256,7 @@ export function SdrRow({ sdr }: SdrRowProps) {
                         </div>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className={cn('w-2 h-2 rounded-full', statusCfg.dot)} />
                         <span className={cn(
                             'text-sm font-bold tabular-nums',
                             loadPct > 100 ? 'text-red-600' : loadPct >= 85 ? 'text-amber-600' : 'text-slate-700'
@@ -277,6 +284,7 @@ export function SdrRow({ sdr }: SdrRowProps) {
                                         width: `${Math.min(seg.pct, 100)}%`,
                                         backgroundColor: seg.color.hex,
                                         opacity: hoveredSegment && hoveredSegment !== seg.id ? 0.4 : 1,
+                                        borderRight: '1px solid rgba(255,255,255,0.9)',
                                     }}
                                 >
                                     {hoveredSegment === seg.id && (
@@ -394,13 +402,23 @@ export function SdrRow({ sdr }: SdrRowProps) {
                                                 {abs.startDate !== abs.endDate && ` → ${new Date(abs.endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
                                             </span>
                                         </div>
-                                        <button
-                                            onClick={() => handleDeleteAbsence(abs.id)}
-                                            disabled={deletingAbsId === abs.id}
-                                            className="text-slate-300 hover:text-red-400 transition-colors"
-                                        >
-                                            {deletingAbsId === abs.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                                        </button>
+                                            <button
+                                                onClick={() => {
+                                                    if (deletingAbsId === abs.id) {
+                                                        void handleDeleteAbsence(abs.id);
+                                                    } else {
+                                                        setDeletingAbsId(abs.id);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    'transition-colors',
+                                                    deletingAbsId === abs.id
+                                                        ? 'text-red-600'
+                                                        : 'text-slate-300 hover:text-red-400',
+                                                )}
+                                            >
+                                                {deletingAbsId === abs.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                            </button>
                                     </div>
                                 ))}
                             </div>
@@ -536,12 +554,30 @@ export function SdrRow({ sdr }: SdrRowProps) {
                     {suggestions.length > 0 && (
                         <div className="space-y-1.5">
                             {suggestions.map((s, i) => (
-                                <div key={i} className={cn(
-                                    'rounded-lg px-3 py-2 text-xs flex items-start gap-2',
-                                    s.type === 'reduce' ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-blue-50 text-blue-700 border border-blue-100'
-                                )}>
+                                <div
+                                    key={i}
+                                    className={cn(
+                                        'rounded-lg px-3 py-2 text-xs flex items-start gap-2',
+                                        s.type === 'reduce'
+                                            ? 'bg-red-50 text-red-700 border border-red-100'
+                                            : 'bg-blue-50 text-blue-700 border border-blue-100',
+                                    )}
+                                >
                                     <ArrowRight className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                                    <span>{s.text}</span>
+                                    <div className="flex-1 flex items-center justify-between gap-2">
+                                        <span>{s.text}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (navigator.clipboard) {
+                                                    void navigator.clipboard.writeText(s.text);
+                                                }
+                                            }}
+                                            className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/60 text-slate-600 hover:bg-white transition-colors"
+                                        >
+                                            Appliquer
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>

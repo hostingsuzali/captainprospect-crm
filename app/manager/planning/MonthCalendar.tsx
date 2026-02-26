@@ -72,7 +72,7 @@ export function MonthCalendar() {
     const fetchMonthly = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/planning/monthly?month=${month}`);
+            const res = await fetch(`/api/planning/month?month=${month}`);
             const json = await res.json();
             if (json.success) setData(json.data);
             else showError('Erreur', json.error || 'Impossible de charger');
@@ -358,6 +358,7 @@ function MonthView({
                                             isSelected && 'bg-indigo-50/80 ring-2 ring-inset ring-indigo-400',
                                             isWeekend && cell.isCurrentMonth && 'bg-slate-50/50',
                                         )}
+                                        title={cell.isCurrentMonth ? `Planifier le ${cell.date}` : undefined}
                                     >
                                         {/* Day number */}
                                         <div className="flex items-center justify-between mb-1.5">
@@ -571,6 +572,7 @@ function DaySidebar({
     const dayLabel = dateObj.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
     const [cancelling, setCancelling] = useState<string | null>(null);
+    const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
 
     async function handleCancel(blockId: string) {
         setCancelling(blockId);
@@ -591,6 +593,7 @@ function DaySidebar({
             showError('Erreur', 'Une erreur est survenue');
         } finally {
             setCancelling(null);
+            setPendingCancelId(null);
         }
     }
 
@@ -643,13 +646,19 @@ function DaySidebar({
 
             {/* Block list grouped by SDR */}
             <div className="flex-1 overflow-y-auto">
-                {blocks.length === 0 && !showAddForm && (
-                    <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                        <CalendarDays className="w-10 h-10 mb-3 text-slate-200" />
-                        <p className="text-sm font-medium text-slate-500">Aucun créneau</p>
-                        <p className="text-xs mt-1 text-slate-400">Cliquez + pour planifier un créneau.</p>
-                    </div>
-                )}
+                            {blocks.length === 0 && !showAddForm && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAddForm(true)}
+                                    className="flex flex-col items-center justify-center py-16 text-slate-400 w-full hover:bg-slate-50 transition-colors"
+                                >
+                                    <CalendarDays className="w-10 h-10 mb-3 text-slate-200" />
+                                    <p className="text-sm font-medium text-slate-500">Aucun créneau</p>
+                                    <p className="text-xs mt-1 text-slate-400 underline">
+                                        Cliquez ici pour planifier un créneau.
+                                    </p>
+                                </button>
+                            )}
 
                 {sdrGroups.map(({ sdr, blocks: sdrBlocks }) => (
                     <div key={sdr.id} className="border-b border-slate-100">
@@ -679,12 +688,25 @@ function DaySidebar({
                                                 <p className="text-[11px] text-slate-400 mt-0.5 ml-6">{block.mission.client.name}</p>
                                             </div>
                                             <button
-                                                onClick={() => handleCancel(block.id)}
+                                                onClick={() => {
+                                                    if (pendingCancelId === block.id) {
+                                                        void handleCancel(block.id);
+                                                    } else {
+                                                        setPendingCancelId(block.id);
+                                                    }
+                                                }}
                                                 disabled={cancelling === block.id}
-                                                className="text-slate-300 hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-50 flex-shrink-0"
-                                                title="Annuler"
+                                                className={cn(
+                                                    'p-1 rounded-lg flex-shrink-0 transition-colors',
+                                                    pendingCancelId === block.id
+                                                        ? 'bg-red-50 text-red-600'
+                                                        : 'text-slate-300 hover:text-red-500 hover:bg-red-50',
+                                                )}
+                                                title={pendingCancelId === block.id ? 'Confirmer ?' : 'Annuler'}
                                             >
-                                                {cancelling === block.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                                {cancelling === block.id
+                                                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    : <Trash2 className="w-3.5 h-3.5" />}
                                             </button>
                                         </div>
                                         <div className="flex items-center gap-3 mt-2 ml-6 text-[11px]">
@@ -709,6 +731,13 @@ function DaySidebar({
                         </div>
                     </div>
                 ))}
+                {blocks.length > 0 && !showAddForm && (
+                    <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/60 text-[11px] text-slate-600 flex items-center justify-between gap-2">
+                        <span>
+                            Pour planifier automatiquement plusieurs jours sur une mission, utilisez l&apos;affectation dans la carte mission.
+                        </span>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -731,6 +760,11 @@ function AddBlockForm({
     const [startTime, setStartTime] = useState('09:00');
     const [endTime, setEndTime] = useState('12:00');
     const [submitting, setSubmitting] = useState(false);
+
+    const filteredMissions = useMemo(
+        () => (sdrId ? missions.filter((m) => m.sdrAssignments.some((a) => a.sdr.id === sdrId)) : missions),
+        [missions, sdrId],
+    );
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -784,7 +818,7 @@ function AddBlockForm({
                         required
                     >
                         <option value="">Sélectionner...</option>
-                        {missions.map((m) => (
+                        {filteredMissions.map((m) => (
                             <option key={m.id} value={m.id}>{m.name}</option>
                         ))}
                     </select>

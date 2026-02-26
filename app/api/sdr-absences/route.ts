@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { successResponse, requireRole, withErrorHandler, validateRequest } from '@/lib/api-utils';
-import { recomputeConflicts, recalcEffectiveCapacity } from '@/lib/planning/conflictEngine';
+import { detectAbsenceCascade } from '@/lib/planning/conflictEngine';
 import { z } from 'zod';
 
 const createSchema = z.object({
@@ -12,19 +12,6 @@ const createSchema = z.object({
     impactsPlanning: z.boolean().default(true),
     note: z.string().optional(),
 });
-
-// Derive all YYYY-MM months that an absence spans
-function absenceMonths(startDate: string, endDate: string): string[] {
-    const months: string[] = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-    while (cur <= end) {
-        months.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`);
-        cur.setMonth(cur.getMonth() + 1);
-    }
-    return months;
-}
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
     await requireRole(['MANAGER'], request);
@@ -69,14 +56,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         include: { sdr: { select: { id: true, name: true } } },
     });
 
-    // Recalculate capacity and conflicts for all affected months
-    const months = absenceMonths(data.startDate, data.endDate);
-    for (const month of months) {
-        if (data.impactsPlanning) {
-            await recalcEffectiveCapacity(data.sdrId, month);
-        }
-        await recomputeConflicts({ sdrId: data.sdrId, month });
-    }
+    // Cascade: recalc capacity and recompute conflicts for affected months and missions
+    await detectAbsenceCascade({
+        sdrId: data.sdrId,
+        startDate: new Date(data.startDate),
+        endDate: new Date(data.endDate),
+        impactsPlanning: data.impactsPlanning,
+    });
 
     return successResponse(absence, 201);
 });

@@ -254,9 +254,19 @@ export default function SdrCapacityPanel({
                                     )}
                                 </div>
                                 <button
-                                    onClick={() => deleteAbsence(abs.id)}
-                                    disabled={deletingId === abs.id}
-                                    className="text-gray-300 hover:text-red-400 transition-colors"
+                                    onClick={() => {
+                                        if (deletingId === abs.id) {
+                                            void deleteAbsence(abs.id);
+                                        } else {
+                                            setDeletingId(abs.id);
+                                        }
+                                    }}
+                                    className={cn(
+                                        'transition-colors',
+                                        deletingId === abs.id
+                                            ? 'text-red-600'
+                                            : 'text-gray-300 hover:text-red-400',
+                                    )}
                                 >
                                     {deletingId === abs.id
                                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />

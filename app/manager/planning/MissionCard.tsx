@@ -5,7 +5,7 @@ import { ChevronDown, Plus, Minus, Loader2, Phone, Mail, Linkedin, AlertTriangle
 import { useToast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { usePlanningMonth, type SnapshotMission, type MonthAllocation } from './PlanningMonthContext';
-import { getMissionColor, formatMonthShort, formatMonth } from './planning-utils';
+import { getMissionColor, formatMonthShort, formatMonth, suggestMonthlySplit } from './planning-utils';
 
 const CHANNEL_ICONS: Record<string, typeof Phone> = { CALL: Phone, EMAIL: Mail, LINKEDIN: Linkedin };
 
@@ -158,11 +158,10 @@ export function MissionCard({ mission }: MissionCardProps) {
                 hasPlan && allocatedDays > targetDays && targetDays > 0 && 'border-l-4 border-l-red-400',
             )}
         >
-            {/* Header — always visible */}
-            <button
-                type="button"
+            {/* Header — always visible (clickable container, not a button to avoid nesting issues) */}
+            <div
                 onClick={() => setExpanded(!expanded)}
-                className="w-full text-left p-4"
+                className="w-full text-left p-4 cursor-pointer"
             >
                 <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
@@ -289,7 +288,7 @@ export function MissionCard({ mission }: MissionCardProps) {
                         ))}
                     </div>
                 )}
-            </button>
+            </div>
 
             {/* Expanded state */}
             {expanded && (
@@ -392,7 +391,18 @@ export function MissionCard({ mission }: MissionCardProps) {
                                 </div>
                                 <div className="bg-slate-50 rounded-lg px-2 py-2">
                                     <p className="text-[10px] text-slate-500">Blocs posés</p>
-                                    <p className={cn('text-sm font-bold', scheduledDays >= allocatedDays && allocatedDays > 0 ? 'text-emerald-600' : 'text-slate-800')}>
+                                    <p
+                                        className={cn(
+                                            'text-sm font-bold',
+                                            scheduledDays === 0 && allocatedDays > 0
+                                                ? 'text-red-600'
+                                                : scheduledDays > 0 && scheduledDays < allocatedDays
+                                                    ? 'text-amber-600'
+                                                    : scheduledDays >= allocatedDays && allocatedDays > 0
+                                                        ? 'text-emerald-600'
+                                                        : 'text-slate-800',
+                                        )}
+                                    >
                                         {scheduledDays}j
                                     </p>
                                 </div>
@@ -422,7 +432,7 @@ export function MissionCard({ mission }: MissionCardProps) {
                                         </span>
                                     )}
                                 </div>
-                                <div className="flex gap-1">
+                            <div className="flex gap-1">
                                     {[
                                         { day: 1, label: 'Lun' },
                                         { day: 2, label: 'Mar' },
@@ -447,6 +457,18 @@ export function MissionCard({ mission }: MissionCardProps) {
                                             {label}
                                         </button>
                                     ))}
+                                </div>
+                                <div className="flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            [1, 2, 3, 4, 5].forEach((d) => handleToggleWorkingDay(d));
+                                        }}
+                                        className="mt-1 text-[10px] px-2 py-0.5 rounded-full border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                    >
+                                        Jours ouvrés
+                                    </button>
                                 </div>
                                 {currentWorkingDays.size > 0 && (
                                     <div className="flex items-center gap-2">
@@ -502,7 +524,12 @@ export function MissionCard({ mission }: MissionCardProps) {
                             <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); setAssignModalMissionId(mission.id); }}
-                                className="w-full border border-dashed border-slate-300 rounded-lg py-2.5 text-xs font-medium text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors flex items-center justify-center gap-1.5"
+                                className={cn(
+                                    'w-full border border-dashed rounded-lg py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-200',
+                                    gap > 0
+                                        ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 animate-pulse'
+                                        : 'border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50/30',
+                                )}
                             >
                                 <Plus className="w-3.5 h-3.5" /> Affecter un SDR
                             </button>
@@ -658,7 +685,7 @@ function MissionLifetimeStrip({
     mission: SnapshotMission;
     month: string;
     setMonth: (m: string) => void;
-    createMonthPlan: (missionId: string, targetDays: number) => Promise<boolean>;
+    createMonthPlan: (missionId: string, targetDays: number, monthOverride?: string) => Promise<boolean>;
 }) {
     const allMonths = useMemo(() => getMonthRange(mission.startDate, mission.endDate), [mission.startDate, mission.endDate]);
     const plansByMonth = useMemo(() => {
@@ -670,9 +697,17 @@ function MissionLifetimeStrip({
     const totalPlanned = mission.missionMonthPlans.reduce((s, p) => s + p.targetDays, 0);
     const [creatingMonth, setCreatingMonth] = useState<string | null>(null);
 
+    const recommendedSplit = useMemo(
+        () =>
+            mission.totalContractDays
+                ? suggestMonthlySplit(mission.startDate, mission.endDate, mission.totalContractDays)
+                : {},
+        [mission.startDate, mission.endDate, mission.totalContractDays],
+    );
+
     async function handleCreateForMonth(m: string) {
         setCreatingMonth(m);
-        await createMonthPlan(mission.id, 18);
+        await createMonthPlan(mission.id, 18, m);
         setCreatingMonth(null);
     }
 
@@ -697,6 +732,8 @@ function MissionLifetimeStrip({
                     const isCurrent = m === month;
                     const isCreating = creatingMonth === m;
 
+                    const recommended = recommendedSplit[m];
+
                     if (!plan) {
                         return (
                             <button
@@ -713,7 +750,11 @@ function MissionLifetimeStrip({
                                     'bg-slate-50 text-slate-400 border-dashed border-slate-300 hover:border-indigo-300 hover:text-indigo-500',
                                     isCurrent && 'ring-2 ring-indigo-400 ring-offset-1',
                                 )}
-                                title="Aucun plan — cliquer pour créer"
+                                title={
+                                    recommended !== undefined
+                                        ? `Recommandé: ${recommended}j · Aucun plan — cliquer pour créer`
+                                        : 'Aucun plan — cliquer pour créer'
+                                }
                             >
                                 {isCreating ? <Loader2 className="w-3 h-3 animate-spin inline" /> : <>{formatMonthShort(m)} ○</>}
                             </button>
@@ -740,6 +781,11 @@ function MissionLifetimeStrip({
                                 !isComplete && !isOff && !isUnderstaffed && !isEmpty && 'bg-slate-50 text-slate-400 border-slate-200',
                                 isCurrent && 'ring-2 ring-indigo-400 ring-offset-1',
                             )}
+                            title={
+                                recommended !== undefined
+                                    ? `Recommandé: ${recommended}j · Objectif: ${plan.targetDays}j · Alloué: ${pAlloc}j`
+                                    : `${pAlloc}/${plan.targetDays}j planifiés sur ${formatMonthShort(m)}`
+                            }
                         >
                             {formatMonthShort(m)} {isComplete ? '✓' : (isUnderstaffed || isOff) ? '⚠' : ''} {plan.targetDays}j
                         </button>

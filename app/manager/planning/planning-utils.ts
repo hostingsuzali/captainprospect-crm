@@ -76,3 +76,64 @@ export const SDR_STATUS_CONFIG = {
     underutilized: { label: 'Sous-utilisé', className: 'text-blue-700 bg-blue-100', dot: 'bg-blue-500' },
     none: { label: '—', className: 'text-slate-400 bg-slate-100', dot: 'bg-slate-300' },
 } as const;
+
+// ── Contract distribution helpers ────────────────────────────────────────
+
+export function workingDaysBetween(start: Date, end: Date, weekdays: number[]): number {
+    const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    let count = 0;
+    while (cur <= last) {
+        const dow = cur.getDay() === 0 ? 7 : cur.getDay(); // 1=Mon..7=Sun
+        if (weekdays.includes(dow)) count++;
+        cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+}
+
+/**
+ * Suggests how to split totalContractDays across months between startDate and endDate.
+ * Returns a map { 'YYYY-MM': recommendedDays } based on available working days per month.
+ */
+export function suggestMonthlySplit(
+    startDate: string,
+    endDate: string,
+    totalContractDays: number,
+    weekdays: number[] = [1, 2, 3, 4, 5],
+): Record<string, number> {
+    if (!totalContractDays || totalContractDays <= 0) return {};
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return {};
+
+    const result: Record<string, number> = {};
+    let remaining = totalContractDays;
+
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+
+    while (cursor <= endMonth && remaining > 0) {
+        const monthKey = formatMonth(cursor);
+        const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+        const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+
+        const windowStart = monthStart < start ? start : monthStart;
+        const windowEnd = monthEnd > end ? end : monthEnd;
+
+        if (windowStart <= windowEnd) {
+            const capacity = workingDaysBetween(windowStart, windowEnd, weekdays);
+            if (capacity > 0) {
+                const assigned = Math.min(capacity, remaining);
+                if (assigned > 0) {
+                    result[monthKey] = assigned;
+                    remaining -= assigned;
+                }
+            }
+        }
+
+        cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    return result;
+}

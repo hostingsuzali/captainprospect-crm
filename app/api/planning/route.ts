@@ -179,6 +179,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         return errorResponse('Le SDR n\'est pas assigné à cette mission', 400);
     }
 
+    // Pre-start validation: block date must be within mission startDate/endDate
+    const mission = await prisma.mission.findUnique({
+        where: { id: data.missionId },
+        select: { startDate: true, endDate: true },
+    });
+
+    if (mission) {
+        const missionStart = new Date(mission.startDate);
+        missionStart.setHours(0, 0, 0, 0);
+        const missionEnd = new Date(mission.endDate);
+        missionEnd.setHours(23, 59, 59, 999);
+        if (blockDate < missionStart || blockDate > missionEnd) {
+            return errorResponse(
+                'La date du bloc doit être comprise entre le début et la fin de la mission',
+                400
+            );
+        }
+    }
+
     // Create block (manual = CONFIRMED, no mission plan)
     const block = await prisma.scheduleBlock.create({
         data: {

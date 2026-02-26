@@ -614,6 +614,44 @@ async function checkSdrUnderutilized(sdrId: string, month: string) {
 }
 
 // ============================================
+// Cascade: after creating an absence, recalc capacity and recompute conflicts
+// ============================================
+function absenceMonths(startDate: Date, endDate: Date): string[] {
+    const months: string[] = [];
+    const cur = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const end = new Date(endDate);
+    while (cur <= end) {
+        months.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`);
+        cur.setMonth(cur.getMonth() + 1);
+    }
+    return months;
+}
+
+export async function detectAbsenceCascade(params: {
+    sdrId: string;
+    startDate: Date;
+    endDate: Date;
+    impactsPlanning: boolean;
+}): Promise<void> {
+    const months = absenceMonths(params.startDate, params.endDate);
+    const assignments = await prisma.sDRAssignment.findMany({
+        where: { sdrId: params.sdrId },
+        select: { missionId: true },
+    });
+    const missionIds = assignments.map((a) => a.missionId);
+
+    for (const month of months) {
+        if (params.impactsPlanning) {
+            await recalcEffectiveCapacity(params.sdrId, month);
+        }
+        await recomputeConflicts({ sdrId: params.sdrId, month });
+        for (const missionId of missionIds) {
+            await recomputeConflicts({ missionId, month });
+        }
+    }
+}
+
+// ============================================
 // Recalculate effectiveAvailableDays for an SDR+month
 // ============================================
 export async function recalcEffectiveCapacity(sdrId: string, month: string): Promise<void> {

@@ -4,11 +4,12 @@ import { ChevronLeft, ChevronRight, AlertTriangle, CalendarDays, RefreshCw } fro
 import { usePlanningMonth } from './PlanningMonthContext';
 import { formatMonthLabel, prevMonth as prevMonthFn, nextMonth as nextMonthFn } from './planning-utils';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export function StickyHeader() {
     const { month, setMonth, snapshot, loading, drawerOpen, setDrawerOpen, reload } = usePlanningMonth();
     const [refreshing, setRefreshing] = useState(false);
+    const [shakeConflicts, setShakeConflicts] = useState(false);
 
     const health = snapshot?.healthSummary;
     const cSum = snapshot?.conflictSummary;
@@ -32,6 +33,15 @@ export function StickyHeader() {
 
     const today = new Date();
     const isCurrentMonth = month === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    useEffect(() => {
+        if (cSum && cSum.P0 > 0) {
+            setShakeConflicts(true);
+            const t = setTimeout(() => setShakeConflicts(false), 800);
+            return () => clearTimeout(t);
+        }
+        return;
+    }, [cSum?.P0]);
 
     return (
         <div className="bg-white border-b border-slate-200 sticky top-0 z-30">
@@ -84,10 +94,11 @@ export function StickyHeader() {
                             <button
                                 onClick={() => setDrawerOpen(!drawerOpen)}
                                 className={cn(
-                                    'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors border',
+                                    'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium border transition-all',
                                     drawerOpen
                                         ? 'bg-red-100 text-red-800 border-red-200'
-                                        : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                        : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',
+                                    shakeConflicts && 'animate-bounce',
                                 )}
                             >
                                 <AlertTriangle className="w-4 h-4" />
@@ -130,7 +141,10 @@ export function StickyHeader() {
                 )}
             </div>
 
-            <div className={cn('h-1 w-full transition-colors', stripColor)} />
+            <div
+                className={cn('h-1 w-full transition-colors', stripColor)}
+                title="Barre de santé: rouge = risques forts, ambre = points à surveiller, vert = planning sain"
+            />
         </div>
     );
 }

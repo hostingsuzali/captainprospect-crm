@@ -434,6 +434,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         key: `custom_${fieldKey}`,
         header: formatCustomFieldLabel(fieldKey),
         sortable: false,
+        importance: "secondary",
         render: (_, company) => {
             const value = company.customData ? company.customData[fieldKey] : undefined;
             if (value === null || value === undefined || value === "") {
@@ -784,6 +785,7 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                                 pagination
                                 pageSize={15}
                                 onRowClick={handleCompanyClick}
+                                enableSecondaryColumnsToggle
                             />
                         </div>
                     )

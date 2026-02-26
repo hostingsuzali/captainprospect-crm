@@ -235,33 +235,92 @@ export default function ClientPortalMeetingsPage() {
             ? `border-${color}-500 bg-${color}-50 shadow-sm`
             : "border-[#E8EBF0] hover:border-[#C5C8D4]";
 
+    const insightHighOpsToday = filteredMeetings.filter((m) =>
+        isUpcoming(m) &&
+        new Date(m.callbackDate || m.createdAt).toDateString() === new Date().toDateString() &&
+        m.meetingFeedback?.outcome === "POSITIVE"
+    ).length;
+
     return (
         <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-6">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-up">
-                <div>
-                    <h1 className="text-2xl font-bold text-[#12122A] tracking-tight">Mes Rendez-vous</h1>
-                    <p className="text-sm text-[#6B7194] mt-1">Gerez et preparez vos rendez-vous</p>
+            {/* Hero header */}
+            <section className="grid gap-4 md:grid-cols-[minmax(0,2.2fr)_minmax(0,1.3fr)] items-stretch animate-fade-up">
+                <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white px-6 py-5 shadow-[0_18px_45px_rgba(15,23,42,0.45)]">
+                    <h1 className="text-3xl font-semibold tracking-tight">Mes Rendez-vous</h1>
+                    <p className="mt-2 text-sm text-slate-200 max-w-xl">
+                        Votre espace pour preparer vos echanges et suivre l&apos;avancement des opportunites en cours.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                        <div className="flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-3 py-1.5 backdrop-blur-sm">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                            <span className="font-semibold">{upcomingMeetings.length}</span>
+                            <span className="text-slate-200">a venir</span>
+                        </div>
+                        <div className="flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-3 py-1.5 backdrop-blur-sm">
+                            <span className="w-2 h-2 rounded-full bg-amber-400" />
+                            <span className="font-semibold">{pastMeetings.length}</span>
+                            <span className="text-slate-200">passes</span>
+                        </div>
+                        <div className="flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-3 py-1.5 backdrop-blur-sm">
+                            <span className="w-2 h-2 rounded-full bg-sky-400" />
+                            <span className="font-semibold">
+                                {meetings.filter((m) => !!m.meetingFeedback).length}
+                            </span>
+                            <span className="text-slate-200">retours client</span>
+                        </div>
+                    </div>
                 </div>
-                <div className="relative w-full md:w-72">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A0A3BD]" />
-                    <input
-                        type="text"
-                        placeholder="Rechercher un contact, entreprise..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full h-11 pl-10 pr-9 rounded-full border border-[#E8EBF0] bg-white/80 backdrop-blur-sm text-sm text-[#12122A] placeholder:text-[#A0A3BD] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/30 focus:border-[#7C5CFC]/50 shadow-sm transition-all duration-200"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => setSearchQuery("")}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A0A3BD] hover:text-[#12122A] transition-colors"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
-                    )}
+
+                <div className="flex flex-col gap-3">
+                    {/* Search */}
+                    <div className="relative w-full">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A0A3BD]" />
+                        <input
+                            type="text"
+                            placeholder="Rechercher un contact, une entreprise..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full h-11 pl-10 pr-9 rounded-full border border-[#E8EBF0] bg-white/80 backdrop-blur-sm text-sm text-[#12122A] placeholder:text-[#A0A3BD] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/30 focus:border-[#7C5CFC]/50 shadow-sm transition-all duration-200"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery("")}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A0A3BD] hover:text-[#12122A] transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Insight card */}
+                    <div className="rounded-2xl bg-white/90 border border-[#E8EBF0] px-4 py-3 shadow-sm flex gap-3">
+                        <div className="mt-0.5">
+                            <div className="w-7 h-7 rounded-xl bg-amber-50 flex items-center justify-center">
+                                <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
+                            </div>
+                        </div>
+                        <div className="text-xs text-[#4A4B6A] space-y-0.5">
+                            <p className="font-semibold text-[#12122A]">Suggestion du jour</p>
+                            <p>
+                                Vous avez <span className="font-semibold">{upcomingMeetings.length}</span>{" "}
+                                rendez-vous a venir dans votre agenda client.
+                            </p>
+                            {insightHighOpsToday > 0 ? (
+                                <p>
+                                    <span className="font-semibold">{insightHighOpsToday}</span> rendez-vous
+                                    ont un retour positif — prenez quelques minutes pour preparer votre prochain
+                                    contact.
+                                </p>
+                            ) : (
+                                <p>
+                                    Aucun rendez-vous critique aujourd&apos;hui — profitez-en pour relire vos
+                                    derniers comptes-rendus.
+                                </p>
+                            )}
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </section>
 
             {/* Tabs */}
             <div className="animate-fade-up" style={{ animationDelay: "60ms" }}>
@@ -273,7 +332,7 @@ export default function ClientPortalMeetingsPage() {
                 />
             </div>
 
-            {/* Meetings list */}
+            {/* Meetings list with timeline */}
             {filteredMeetings.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-2xl border border-[#E8EBF0] animate-fade-up shadow-sm">
                     <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#F4F6F9] to-[#E8EBF0] flex items-center justify-center mx-auto mb-4">
@@ -291,96 +350,200 @@ export default function ClientPortalMeetingsPage() {
                     </p>
                 </div>
             ) : (
-                <div className="stagger-children space-y-4">
-                    {filteredMeetings.map((meeting) => {
+                <div className="relative animate-fade-up" style={{ animationDelay: "90ms" }}>
+                    <div className="absolute left-3 top-0 bottom-0 w-px bg-[#D5D8E3]" aria-hidden />
+                    <div className="stagger-children space-y-4 pl-7">
+                        {filteredMeetings.map((meeting, idx) => {
                         const contactName = [meeting.contact.firstName, meeting.contact.lastName].filter(Boolean).join(" ") || "Contact";
                         const upcoming = isUpcoming(meeting);
                         const cancelled = meeting.result === "MEETING_CANCELLED";
+                        const baseDate = new Date(meeting.callbackDate || meeting.createdAt);
                         const dateStr = formatLongDate(meeting.callbackDate || meeting.createdAt);
-                        const accentColor = cancelled ? "border-l-red-400" : upcoming ? "border-l-emerald-400" : "border-l-slate-300";
+                        const timeStr = baseDate.toLocaleTimeString("fr-FR", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        });
+                        const statusLabel = cancelled ? "Annule" : upcoming ? "A venir" : "Passe";
+                        const statusColor = cancelled
+                            ? "bg-red-100 text-red-700 border-red-200"
+                            : upcoming
+                                ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                : "bg-slate-100 text-slate-700 border-slate-200";
+                        const statusDotColor = cancelled ? "bg-red-400" : upcoming ? "bg-emerald-400" : "bg-slate-400";
+                        const accentColor = cancelled
+                            ? "border-l-4 border-l-red-400 bg-gradient-to-r from-red-50/90 via-rose-50/80 to-white/60 shadow-sm shadow-red-100/80"
+                            : upcoming
+                                ? "border-l-4 border-l-emerald-400 bg-gradient-to-r from-emerald-50/90 via-teal-50/80 to-white/60 shadow-sm shadow-emerald-100/80"
+                                : "border-l-4 border-l-slate-300 bg-gradient-to-r from-slate-50/90 via-sky-50/80 to-white/60 shadow-sm shadow-slate-100/80";
+                        const created = new Date(meeting.createdAt);
+                        const isNew = Date.now() - created.getTime() < 1000 * 60 * 60 * 24 * 2;
+                        const day = baseDate.getDate();
+                        const monthLabel = baseDate.toLocaleDateString("fr-FR", { month: "short" }).toUpperCase();
+                        const year = baseDate.getFullYear();
 
                         return (
-                            <div
-                                key={meeting.id}
-                                className={cn(
-                                    "premium-card border-l-4 p-5 md:p-6",
-                                    accentColor
-                                )}
-                            >
-                                <div className="flex items-start gap-3">
-                                    <div className={cn(
-                                        "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0",
-                                        cancelled ? "bg-red-50" : upcoming ? "bg-emerald-50" : "bg-slate-50"
-                                    )}>
-                                        <Calendar className={cn(
-                                            "w-4.5 h-4.5",
-                                            cancelled ? "text-red-400" : upcoming ? "text-emerald-500" : "text-slate-400"
-                                        )} />
-                                    </div>
-                                    <div className="flex-1 min-w-0 space-y-3">
-                                        <p className="text-sm font-semibold text-[#12122A] capitalize">{dateStr}</p>
-                                        <div>
-                                            <p className="text-lg font-bold text-[#12122A]">{contactName}</p>
-                                            <p className="text-sm text-[#6B7194]">
-                                                {meeting.contact.title && <>{meeting.contact.title} &middot; </>}
-                                                {meeting.contact.company.name}
-                                            </p>
-                                        </div>
-                                        <Badge className="bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-700 border-indigo-100/80 text-xs font-medium">
-                                            {meeting.campaign.mission.name}
-                                        </Badge>
-
-                                        {meeting.note && (
-                                            <div className="bg-gradient-to-r from-amber-50 to-orange-50/50 border border-amber-200/60 rounded-xl p-4 mt-2">
-                                                <div className="flex items-start gap-2">
-                                                    <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-                                                        <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs font-semibold text-amber-700 mb-1">
-                                                            Briefing SDR{meeting.sdr?.name ? ` — ${meeting.sdr.name}` : ""}
-                                                        </p>
-                                                        <p className="text-sm text-amber-800 italic line-clamp-2 leading-relaxed">{meeting.note}</p>
-                                                    </div>
+                            <div key={meeting.id} className="relative flex gap-4">
+                                {/* Timeline dot */}
+                                <div className="flex flex-col items-center pt-4">
+                                    <div
+                                        className={cn(
+                                            "w-3 h-3 rounded-full border-2 border-white shadow-sm",
+                                            cancelled
+                                                ? "bg-red-400"
+                                                : upcoming
+                                                    ? "bg-emerald-400 animate-pulse"
+                                                    : "bg-slate-400"
+                                        )}
+                                    />
+                                </div>
+                                {/* Card */}
+                                <div
+                                    className={cn(
+                                        "premium-card flex-1 rounded-2xl transition-all duration-300 hover:-translate-y-[4px] hover:shadow-2xl hover:shadow-slate-300/70 focus-within:ring-2 focus-within:ring-[#7C5CFC]/40 bg-white",
+                                        accentColor
+                                    )}
+                                >
+                                    <div className="flex items-stretch gap-4">
+                                        {/* Left date pill */}
+                                        <div className="flex-shrink-0 flex">
+                                            <div className="relative">
+                                                <div className="h-full w-20 rounded-2xl bg-gradient-to-b from-[#7C5CFC] via-[#865DFF] to-[#F43F5E] text-white flex flex-col items-center justify-center py-3 shadow-[0_12px_30px_rgba(124,92,252,0.45)]">
+                                                    <span className="text-[10px] font-semibold tracking-[0.12em] opacity-80">
+                                                        {monthLabel}
+                                                    </span>
+                                                    <span className="text-2xl font-extrabold leading-none mt-1">
+                                                        {day}
+                                                    </span>
+                                                    <span className="mt-1 text-[10px] font-medium opacity-80">
+                                                        {year}
+                                                    </span>
+                                                </div>
+                                                {/* Faux ticket edge */}
+                                                <div className="absolute inset-y-2 -right-[10px] w-5 bg-[#F8F9FC] rounded-r-2xl flex flex-col justify-between py-2">
+                                                    <div className="w-5 h-3 rounded-l-full bg-[#F8F9FC]" />
+                                                    <div className="w-5 h-3 rounded-l-full bg-[#F8F9FC]" />
                                                 </div>
                                             </div>
-                                        )}
+                                        </div>
 
-                                        {meeting.meetingFeedback && (
-                                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50/80">
-                                                <span className="text-xs text-[#6B7194]">Votre retour :</span>
-                                                <Badge className={cn("text-xs border", OUTCOME_LABELS[meeting.meetingFeedback.outcome]?.class ?? "bg-slate-100")}>
-                                                    {OUTCOME_LABELS[meeting.meetingFeedback.outcome]?.label ?? meeting.meetingFeedback.outcome}
-                                                </Badge>
+                                        {/* Main content */}
+                                        <div className="flex-1 min-w-0 space-y-3">
+                                            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                                                <div className="space-y-1">
+                                                    <p className="text-sm font-semibold text-[#12122A] capitalize tracking-tight">
+                                                        {dateStr}
+                                                    </p>
+                                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/80 border border-[#E8EBF0]/80 text-[11px] text-[#4A4B6A] shadow-xs">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-[#7C5CFC]" />
+                                                        <span>Heure : {timeStr}</span>
+                                                    </div>
+                                                    {isNew && (
+                                                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gradient-to-r from-fuchsia-50 via-pink-50 to-amber-50 border border-pink-200/60 text-[10px] font-semibold text-pink-700 shadow-[0_0_0_1px_rgba(244,114,182,0.18)] mt-1">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse" />
+                                                            Nouveau rendez-vous
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-row md:flex-col items-start md:items-end gap-2">
+                                                    <span
+                                                        className={cn(
+                                                            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold border shadow-sm bg-white/80 backdrop-blur-sm",
+                                                            statusColor
+                                                        )}
+                                                    >
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-current/70" />
+                                                        {statusLabel}
+                                                    </span>
+                                                    <Badge className="bg-gradient-to-r from-indigo-50 via-violet-50 to-fuchsia-50 text-indigo-700 border-indigo-100/80 text-[11px] font-medium rounded-full px-3 py-1 shadow-sm shadow-indigo-50/80">
+                                                        {meeting.campaign.mission.name}
+                                                    </Badge>
+                                                </div>
                                             </div>
-                                        )}
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                <div>
+                                                    <p className="text-lg font-bold text-[#12122A] tracking-tight">
+                                                        {contactName}
+                                                    </p>
+                                                    <p className="text-sm text-[#6B7194]">
+                                                        {meeting.contact.title && <>{meeting.contact.title} &middot; </>}
+                                                        {meeting.contact.company.name}
+                                                    </p>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[#6B7194]">
+                                                    {meeting.contact.email && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/70 border border-slate-200">
+                                                            <Mail className="w-3 h-3" />
+                                                            Email
+                                                        </span>
+                                                    )}
+                                                    {meeting.contact.phone && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/70 border border-slate-200">
+                                                            <Phone className="w-3 h-3" />
+                                                            Tel
+                                                        </span>
+                                                    )}
+                                                    {meeting.voipSummary && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700">
+                                                            <Linkedin className="w-3 h-3" />
+                                                            Compte-rendu dispo
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
 
-                                        <div className="flex flex-wrap items-center gap-2 pt-2">
-                                            {upcoming && (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="gap-1.5 text-xs rounded-lg hover:border-[#7C5CFC]/30 hover:text-[#7C5CFC] transition-all"
-                                                    onClick={(e) => { e.stopPropagation(); generateICS(meeting); }}
-                                                >
-                                                    <Download className="w-3.5 h-3.5" />
-                                                    Ajouter au calendrier
-                                                </Button>
+                                            {meeting.note && (
+                                                <div className="bg-gradient-to-r from-amber-50 to-orange-50/50 border border-amber-200/60 rounded-xl p-4 mt-2">
+                                                    <div className="flex items-start gap-2">
+                                                        <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                                                            <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-amber-700 mb-1">
+                                                                Briefing SDR{meeting.sdr?.name ? ` — ${meeting.sdr.name}` : ""}
+                                                            </p>
+                                                            <p className="text-sm text-amber-800 italic line-clamp-2 leading-relaxed">{meeting.note}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             )}
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="gap-1.5 text-xs text-[#7C5CFC] hover:text-[#6C3AFF] hover:bg-[#7C5CFC]/5 rounded-lg ml-auto font-semibold"
-                                                onClick={() => openDetail(meeting)}
-                                            >
-                                                Voir detail <ArrowRight className="w-3.5 h-3.5" />
-                                            </Button>
+
+                                            {meeting.meetingFeedback && (
+                                                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50/80">
+                                                    <span className="text-xs text-[#6B7194]">Votre retour :</span>
+                                                    <Badge className={cn("text-xs border", OUTCOME_LABELS[meeting.meetingFeedback.outcome]?.class ?? "bg-slate-100")}>
+                                                        {OUTCOME_LABELS[meeting.meetingFeedback.outcome]?.label ?? meeting.meetingFeedback.outcome}
+                                                    </Badge>
+                                                </div>
+                                            )}
+
+                                            <div className="flex flex-wrap items-center gap-2 pt-2">
+                                                {upcoming && (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="gap-1.5 text-xs rounded-lg hover:border-[#7C5CFC]/30 hover:text-[#7C5CFC] transition-all"
+                                                        onClick={(e) => { e.stopPropagation(); generateICS(meeting); }}
+                                                    >
+                                                        <Download className="w-3.5 h-3.5" />
+                                                        Ajouter au calendrier
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="gap-1.5 text-xs text-[#7C5CFC] hover:text-[#6C3AFF] hover:bg-[#7C5CFC]/5 rounded-lg ml-auto font-semibold"
+                                                    onClick={() => openDetail(meeting)}
+                                                >
+                                                    Voir detail <ArrowRight className="w-3.5 h-3.5" />
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         );
                     })}
+                    </div>
                 </div>
             )}
 

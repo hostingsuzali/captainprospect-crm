@@ -258,7 +258,8 @@ export function ClientOnboardingModal({ isOpen, onClose, onSuccess, initialRecap
         }
     }, []);
 
-    const fetchCallDetail = async (callId: string) => {
+    const fetchCallDetail = async (callId: string | null | undefined) => {
+        if (!callId) return;
         setIsFetchingCall(true);
         try {
             const res = await fetch(`/api/leexi/calls/${callId}`);

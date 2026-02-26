@@ -363,6 +363,8 @@ model User {
   sdrDayAllocations    SdrDayAllocation[] @relation("SdrDayAllocations")
   sdrMonthCapacities   SdrMonthCapacity[] @relation("SdrMonthCapacities")
   sdrAbsences          SdrAbsence[]       @relation("SdrAbsences")
+  sdrMissionAvailabilities SdrMissionAvailability[] @relation("SdrMissionAvailabilities")
+  sdrDayOverrides      SdrDayOverride[]   @relation("SdrDayOverrides")
   
   // CRM Activity Tracking
   crmActivityDays     CrmActivityDay[]
@@ -521,6 +523,7 @@ model Mission {
   scheduleBlocks ScheduleBlock[]
   missionPlans   MissionPlan[]
   missionMonthPlans MissionMonthPlan[] @relation("MissionMonthPlans")
+  sdrMissionAvailabilities SdrMissionAvailability[]
   folders       Folder[]
   files         File[]
 
@@ -660,7 +663,7 @@ model Action {
   sdrId         String
   sdr           User         @relation("SDRActions", fields: [sdrId], references: [id])
   campaignId    String
-  campaign      Campaign     @relation(fields: [campaignId], references: [id])
+  campaign      Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   channel       Channel
   result        ActionResult
   note          String?      @db.Text
@@ -1277,6 +1280,12 @@ enum ConflictType {
   MISSION_ENDING_UNPLANNED
   NO_PLAN_FOR_ACTIVE_MONTH
   SDR_UNDERUTILIZED
+  MISSION_NOT_COVERED
+  STAGGERED_START_GAP
+  DAILY_OVERCAPACITY
+  ORPHANED_ALLOCATION
+  PHANTOM_ALLOCATION
+  EXECUTION_MISS
 }
 
 model MissionMonthPlan {
@@ -1310,6 +1319,10 @@ model SdrDayAllocation {
   allocatedDays       Int
   scheduledDays       Int                 @default(0)
   status              AllocationStatus    @default(UNCOMMITTED)
+
+  // Date-range boundaries for phantom allocation checks
+  effectiveFrom       DateTime?
+  effectiveTo         DateTime?
 
   scheduleBlocks      ScheduleBlock[]     @relation("AllocationBlocks")
 
@@ -1373,6 +1386,62 @@ model PlanningConflict {
   @@index([sdrId])
   @@index([missionId])
   @@index([resolvedAt])
+}
+
+// ============================================
+// DATE-AWARE SDR CAPACITY
+// ============================================
+
+enum HolidayScope {
+  GLOBAL
+  CLIENT
+}
+
+model SdrMissionAvailability {
+  id             String   @id @default(cuid())
+  sdrId          String
+  sdr            User     @relation("SdrMissionAvailabilities", fields: [sdrId], references: [id], onDelete: Cascade)
+  missionId      String
+  mission        Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  month          String   // "YYYY-MM" format
+  weeklyPattern  Json     // {"1":1.0,"2":0.5,...} keys=ISO weekday 1=Mon..5=Fri, values=capacity 0|0.5|1.0
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sdrId, missionId, month])
+  @@index([sdrId])
+  @@index([missionId])
+  @@index([month])
+}
+
+model SdrDayOverride {
+  id         String    @id @default(cuid())
+  sdrId      String
+  sdr        User      @relation("SdrDayOverrides", fields: [sdrId], references: [id], onDelete: Cascade)
+  date       DateTime  @db.Date
+  missionId  String?
+  capacity   Float     // 0 | 0.5 | 1.0
+  reason     String?
+
+  createdAt  DateTime  @default(now())
+
+  @@unique([sdrId, date, missionId])
+  @@index([sdrId])
+  @@index([date])
+}
+
+model PlanningHoliday {
+  id        String        @id @default(cuid())
+  date      DateTime      @db.Date
+  label     String?
+  scope     HolidayScope  @default(GLOBAL)
+  clientId  String?
+
+  createdAt DateTime      @default(now())
+
+  @@index([date])
+  @@index([scope])
 }
 
 // ============================================

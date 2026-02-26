@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { X, AlertTriangle, AlertCircle, Info, ArrowRight, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePlanningMonth, type PlanningConflict } from './PlanningMonthContext';
@@ -11,7 +12,7 @@ const SEVERITY_CONFIG = {
 } as const;
 
 export function ConflictDrawer() {
-    const { drawerOpen, setDrawerOpen, snapshot } = usePlanningMonth();
+    const { drawerOpen, setDrawerOpen, snapshot, resolveConflict } = usePlanningMonth();
     const conflicts = snapshot?.conflicts ?? [];
 
     const grouped = {
@@ -19,6 +20,7 @@ export function ConflictDrawer() {
         P1: conflicts.filter((c) => c.severity === 'P1'),
         P2: conflicts.filter((c) => c.severity === 'P2'),
     };
+    const p0Count = grouped.P0.length;
 
     return (
         <>
@@ -40,7 +42,12 @@ export function ConflictDrawer() {
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
                     <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-5 h-5 text-red-500" />
+                        <div className="relative">
+                            <AlertTriangle className="w-5 h-5 text-red-500" />
+                            {p0Count > 0 && (
+                                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                            )}
+                        </div>
                         <h2 className="font-semibold text-slate-900">Conflits</h2>
                         <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
                             {conflicts.length}
@@ -98,7 +105,13 @@ function ConflictEntry({ conflict }: { conflict: PlanningConflict }) {
         setDrawerOpen(false);
     }
 
+    const [confirming, setConfirming] = useState(false);
+
     function handleResolve() {
+        if (!confirming) {
+            setConfirming(true);
+            return;
+        }
         resolveConflict(conflict.id);
     }
 
@@ -132,9 +145,12 @@ function ConflictEntry({ conflict }: { conflict: PlanningConflict }) {
                         )}
                         <button
                             onClick={handleResolve}
-                            className="text-[11px] font-medium text-slate-500 hover:text-slate-700 flex items-center gap-0.5"
+                            className={cn(
+                                'text-[11px] font-medium flex items-center gap-0.5',
+                                confirming ? 'text-red-600' : 'text-slate-500 hover:text-slate-700',
+                            )}
                         >
-                            <Check className="w-3 h-3" /> Résoudre
+                            <Check className="w-3 h-3" /> {confirming ? 'Confirmer ?' : 'Résoudre'}
                         </button>
                     </div>
                 </div>

@@ -121,6 +121,8 @@ interface PlanningMonthContextValue {
     snapshot: MonthSnapshot | null;
     loading: boolean;
     reload: () => Promise<void>;
+    backgroundSync: () => void;
+    getSnapshot: () => MonthSnapshot | null;
 
     hoveredMissionId: string | null;
     setHoveredMissionId: (id: string | null) => void;
@@ -247,18 +249,19 @@ export function PlanningMonthProvider({ children }: { children: ReactNode }) {
     }, [showError, backgroundSync]);
 
     // ── createMonthPlan: optimistic plan insertion ─────────────────────
-    const createMonthPlan = useCallback(async (missionId: string, targetDays: number): Promise<boolean> => {
+    const createMonthPlan = useCallback(async (missionId: string, targetDays: number, monthOverride?: string): Promise<boolean> => {
         const snap = snapshotRef.current;
         const tempId = `temp-plan-${Date.now()}`;
+        const targetMonth = monthOverride ?? monthRef.current;
         if (snap) {
-            setSnapshot(patchAddMonthPlan(snap, missionId, monthRef.current, tempId, targetDays));
+            setSnapshot(patchAddMonthPlan(snap, missionId, targetMonth, tempId, targetDays));
         }
 
         try {
             const res = await fetch('/api/mission-month-plans', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ missionId, month: monthRef.current, targetDays }),
+                body: JSON.stringify({ missionId, month: targetMonth, targetDays }),
             });
             const json = await res.json();
             if (json.success) {
@@ -388,7 +391,10 @@ export function PlanningMonthProvider({ children }: { children: ReactNode }) {
         }
     }, [success, showError, backgroundSync]);
 
-    // ── createAllocationWithBlocks: optimistic alloc + toast blocks ────
+    // ── createAllocationWithBlocks: optimistic alloc + auto-blocks ─────
+    // Creates an allocation AND asks the backend to auto-generate ScheduleBlocks
+    // across the plan's configured working days (missionMonthPlan.workingDays,
+    // defaultStartTime, defaultEndTime) for this month.
     const createAllocationWithBlocks = useCallback(async (missionMonthPlanId: string, sdrId: string, days: number, missionId: string): Promise<boolean> => {
         const snap = snapshotRef.current;
         const tempId = `temp-alloc-${Date.now()}`;
@@ -442,10 +448,14 @@ export function PlanningMonthProvider({ children }: { children: ReactNode }) {
         }
     }, [success, showError, backgroundSync]);
 
+    const getSnapshot = useCallback(() => snapshotRef.current, []);
+
     return (
         <PlanningMonthCtx.Provider value={{
             month, setMonth,
             snapshot, loading, reload,
+            backgroundSync,
+            getSnapshot,
             hoveredMissionId, setHoveredMissionId,
             hoveredSdrId, setHoveredSdrId,
             focusedMissionId, setFocusedMissionId,

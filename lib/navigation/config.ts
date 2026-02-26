@@ -85,6 +85,12 @@ export const MANAGER_NAV: NavSection[] = [
         label: "Appels",
         permission: "pages.missions",
       },
+      {
+        href: "/manager/enricher",
+        icon: Search,
+        label: "Enricher téléphones",
+        permission: "pages.prospects",
+      },
     ],
   },
   {

@@ -94,21 +94,46 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     });
 
     // -----------------------------------------------
-    // 3. ScheduleBlock counts per SDR per mission for this month
+    // 3. ScheduleBlock details for this month
+    //    - Used both for blocksBySdrMission and calendar views (MonthCalendar)
     // -----------------------------------------------
     const blocks = await prisma.scheduleBlock.findMany({
         where: {
             date: { gte: monthStart, lte: monthEnd },
             status: { not: 'CANCELLED' },
-            OR: [{ suggestionStatus: null }, { suggestionStatus: 'CONFIRMED' }],
+            OR: [
+                { suggestionStatus: null },
+                { suggestionStatus: 'SUGGESTED' },
+                { suggestionStatus: 'CONFIRMED' },
+            ],
         },
         select: {
             id: true,
+            date: true,
+            startTime: true,
+            endTime: true,
+            status: true,
+            suggestionStatus: true,
+            notes: true,
             sdrId: true,
             missionId: true,
             allocationId: true,
-            date: true,
+            sdr: {
+                select: { id: true, name: true, email: true, role: true },
+            },
+            mission: {
+                select: {
+                    id: true,
+                    name: true,
+                    channel: true,
+                    client: { select: { id: true, name: true } },
+                },
+            },
+            createdBy: {
+                select: { id: true, name: true },
+            },
         },
+        orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
     });
 
     // Build blocksBySdrMission map: sdrId+missionId -> count
@@ -116,6 +141,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     for (const b of blocks) {
         const key = `${b.sdrId}::${b.missionId}`;
         blocksBySdrMission[key] = (blocksBySdrMission[key] ?? 0) + 1;
+    }
+
+    // Group blocks by date string (YYYY-MM-DD) for calendar views
+    const blocksByDate: Record<string, typeof blocks> = {};
+    for (const block of blocks) {
+        const dateKey = block.date.toISOString().slice(0, 10);
+        if (!blocksByDate[dateKey]) blocksByDate[dateKey] = [];
+        blocksByDate[dateKey].push(block);
     }
 
     // -----------------------------------------------
@@ -186,10 +219,22 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         },
     };
 
+    // Slimmed-down team list for calendar usage
+    const team = sdrs.map((s) => ({
+        id: s.id,
+        name: s.name,
+        email: s.email,
+        role: s.role,
+    }));
+
     return successResponse({
         month,
         missions,
         sdrs,
+        daysInMonth: monthEnd.getDate(),
+        blocks,
+        blocksByDate,
+        team,
         blocksBySdrMission,
         conflicts,
         conflictSummary,
