@@ -472,82 +472,74 @@ export default function ClientsPage() {
                     )}
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {filteredClients.map((client, index) => (
-                        <div
-                            key={client.id}
-                            onClick={() => handleClientClick(client)}
-                            className="mgr-client-card group block cursor-pointer"
-                            style={{ animationDelay: `${index * 50}ms` }}
-                        >
-                            <div className="p-6">
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-xl font-bold text-indigo-600 shadow-sm group-hover:scale-110 transition-transform duration-300">
-                                        {client.name[0]?.toUpperCase() || "?"}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        {getClientRecapCount(client.id) > 0 && (
-                                            <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 gap-1 text-[10px] uppercase tracking-wider h-6 px-2 font-bold">
-                                                <Mic className="w-3 h-3" />
-                                                {getClientRecapCount(client.id)} recap{getClientRecapCount(client.id) > 1 ? "s" : ""}
-                                            </Badge>
-                                        )}
-                                        {client._count.users > 0 ? (
-                                            <Badge variant="success" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 text-[10px] uppercase tracking-wider h-6 px-2 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <ShieldCheck className="w-3 h-3" />
-                                                Portail
-                                            </Badge>
-                                        ) : (
-                                            <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 gap-1 text-[10px] uppercase tracking-wider h-6 px-2 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <ShieldAlert className="w-3 h-3" />
-                                                Pas d'accès
-                                            </Badge>
-                                        )}
+                <div className="lg">
+                    {filteredClients.map((client, index) => {
+                        const recapCount = getClientRecapCount(client.id);
+                        const hasPortal = client._count.users > 0;
+                        const recapPercent = Math.min(100, recapCount * 10);
+
+                        return (
+                            <div
+                                key={client.id}
+                                onClick={() => handleClientClick(client)}
+                                className="lc mgr-client-card"
+                                style={{ animationDelay: `${index * 50}ms` }}
+                            >
+                                <div className="lc-top">
+                                    <div>
+                                        <div className="lc-name">{client.name}</div>
+                                        <div className="lc-mission">
+                                            {client.industry || "Secteur non spécifié"}
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="mb-4">
-                                    <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                                        {client.name}
-                                    </h3>
-                                    <p className="text-sm text-slate-500 font-medium">
-                                        {client.industry || "Secteur non spécifié"}
-                                    </p>
+                                <div className="lc-div" />
+
+                                <div className="lc-met">
+                                    <div className="met-col">
+                                        <div className="met-v">{client._count.missions}</div>
+                                        <div className="met-l">Missions</div>
+                                    </div>
+                                    <div className="met-sep" />
+                                    <div className="met-col">
+                                        <div className="met-v">{client._count.users}</div>
+                                        <div className="met-l">Utilisateurs</div>
+                                    </div>
                                 </div>
 
-                                <div className="space-y-2">
-                                    {client.email && (
-                                        <div className="flex items-center gap-2.5 text-sm text-slate-600">
-                                            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                                                <Mail className="w-4 h-4 text-slate-400" />
-                                            </div>
-                                            <span className="truncate">{client.email}</span>
+                                {recapCount > 0 && (
+                                    <>
+                                        <div className="qr">
+                                            <span className="ql">Récaps Leexi</span>
+                                            <span className="qv">
+                                                {recapCount} recap{recapCount > 1 ? "s" : ""}
+                                            </span>
                                         </div>
-                                    )}
-                                    {client.phone && (
-                                        <div className="flex items-center gap-2.5 text-sm text-slate-600">
-                                            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                                                <Phone className="w-4 h-4 text-slate-400" />
-                                            </div>
-                                            <span>{client.phone}</span>
+                                        <div className="qbar">
+                                            <div
+                                                className="qfill"
+                                                style={{
+                                                    width: `${recapPercent}%`,
+                                                    background: "var(--accent)",
+                                                }}
+                                            />
                                         </div>
-                                    )}
-                                </div>
-                            </div>
+                                    </>
+                                )}
 
-                            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center gap-6">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Missions</p>
-                                    <p className="text-lg font-bold text-slate-900">{client._count.missions}</p>
-                                </div>
-                                <div className="w-px h-8 bg-slate-200" />
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Utilisateurs</p>
-                                    <p className="text-lg font-bold text-slate-900">{client._count.users}</p>
+                                <div className="lc-foot">
+                                    <span className="tag">
+                                        {hasPortal ? "Portail actif" : "Pas d'accès portail"}
+                                    </span>
+                                    <span className="lc-date">
+                                        Créé le{" "}
+                                        {new Date(client.createdAt).toLocaleDateString("fr-FR")}
+                                    </span>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

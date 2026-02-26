@@ -7,6 +7,7 @@ import {
     withErrorHandler,
     validateRequest,
 } from '@/lib/api-utils';
+import { recomputeConflicts } from '@/lib/planning/conflictEngine';
 import { z } from 'zod';
 
 interface RouteParams {
@@ -101,7 +102,29 @@ export const DELETE = withErrorHandler(async (request: NextRequest, { params }: 
         return errorResponse('Assignation non trouvée', 404);
     }
 
+    const plans = await prisma.missionMonthPlan.findMany({
+        where: { missionId: id },
+        select: { id: true, month: true },
+    });
+    const planIds = plans.map((p) => p.id);
+
+    const allocations = await prisma.sdrDayAllocation.findMany({
+        where: { sdrId, missionMonthPlanId: { in: planIds } },
+        select: { id: true },
+    });
+    const allocIds = allocations.map((a) => a.id);
+
     await prisma.$transaction([
+        ...(allocIds.length > 0
+            ? [prisma.scheduleBlock.deleteMany({ where: { allocationId: { in: allocIds } } })]
+            : []),
+        ...(planIds.length > 0
+            ? [
+                prisma.sdrDayAllocation.deleteMany({
+                    where: { sdrId, missionMonthPlanId: { in: planIds } },
+                }),
+            ]
+            : []),
         prisma.sDRAssignment.delete({
             where: { id: assignment.id },
         }),
@@ -111,6 +134,14 @@ export const DELETE = withErrorHandler(async (request: NextRequest, { params }: 
             data: { teamLeadSdrId: null },
         }),
     ]);
+
+    for (const plan of plans) {
+        await recomputeConflicts({
+            sdrId,
+            missionId: id,
+            month: plan.month,
+        });
+    }
 
     return successResponse({ message: 'SDR retiré de la mission' });
 });

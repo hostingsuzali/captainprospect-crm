@@ -68,7 +68,10 @@ export const DELETE = withErrorHandler(async (request: NextRequest, { params }: 
     });
     if (!alloc) return errorResponse('Allocation introuvable', 404);
 
-    await prisma.sdrDayAllocation.delete({ where: { id } });
+    await prisma.$transaction([
+        prisma.scheduleBlock.deleteMany({ where: { allocationId: id } }),
+        prisma.sdrDayAllocation.delete({ where: { id } }),
+    ]);
 
     await recomputeConflicts({
         sdrId: alloc.sdrId,

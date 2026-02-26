@@ -70,7 +70,16 @@ export const DELETE = withErrorHandler(async (request: NextRequest, { params }: 
     const existing = await prisma.missionMonthPlan.findUnique({ where: { id } });
     if (!existing) return errorResponse('Plan introuvable', 404);
 
+    const allocations = await prisma.sdrDayAllocation.findMany({
+        where: { missionMonthPlanId: id },
+        select: { id: true },
+    });
+    const allocIds = allocations.map((a) => a.id);
+
     await prisma.$transaction([
+        ...(allocIds.length > 0
+            ? [prisma.scheduleBlock.deleteMany({ where: { allocationId: { in: allocIds } } })]
+            : []),
         prisma.sdrDayAllocation.deleteMany({ where: { missionMonthPlanId: id } }),
         prisma.missionMonthPlan.delete({ where: { id } }),
     ]);
