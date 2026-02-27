@@ -14,14 +14,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Captain Prospect CRM | Sales Execution Platform",
-  description: "Outil interne d'exécution commerciale - Captain Prospect CRM",
+  title: "Suzalink | Plateforme d'Exécution Commerciale",
+  description: "Outil interne d'exécution commerciale - Suzalink",
 icons: {
       icon: [
-        { url: "/Group%20503.png", type: "image/png" },
+        { url: "/suzalink_logo.png", type: "image/png" },
         { url: "/favicon.ico", sizes: "any" },
       ],
-    apple: "/Group%20503.png",
+    apple: "/suzalink_logo.png",
     },
 };
 

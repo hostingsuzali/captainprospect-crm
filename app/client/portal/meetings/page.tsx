@@ -88,7 +88,7 @@ function generateICS(meeting: Meeting): void {
     const ics = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//CaptainProspect//RDV//FR",
+        "PRODID:-//Suzalink//RDV//FR",
         "BEGIN:VEVENT",
         `DTSTART:${dtStart}`,
         `DTEND:${dtEnd}`,

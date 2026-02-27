@@ -143,7 +143,7 @@ export default async function SharedReportPage({ params }: Props) {
 
                 {/* Footer */}
                 <div className="text-center text-xs text-[#A0A3BD] py-4">
-                    Rapport genere via <span className="font-semibold text-[#6B7194]">CaptainProspect</span>
+                    Rapport genere via <span className="font-semibold text-[#6B7194]">Suzalink</span>
                 </div>
             </div>
         </div>

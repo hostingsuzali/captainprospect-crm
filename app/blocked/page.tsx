@@ -34,7 +34,7 @@ export default function BlockedPage() {
                     </button>
                     
                     <a
-                        href="mailto:support@captainprospect.com"
+                        href="mailto:support@suzalink.com"
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-medium transition-colors"
                     >
                         <Mail className="w-4 h-4" />

@@ -2,7 +2,7 @@
  * Singleton Socket.IO client for CRM comms (VPS at 173.212.231.174, port 4000).
  * Connects over WebSocket only. Set NEXT_PUBLIC_SOCKET_URL to override (e.g. for production behind a domain).
  * When the app is served over HTTPS (e.g. Vercel), the socket URL is forced to HTTPS so the browser uses wss://
- * and does not block mixed content. For production, use a URL with valid TLS (e.g. https://captainprospect.com).
+ * and does not block mixed content. For production, use a URL with valid TLS (e.g. https://suzalink.com).
  */
 
 import { io, type Socket } from "socket.io-client";

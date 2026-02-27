@@ -69,7 +69,7 @@ export default function DeveloperLayout({ children }: { children: React.ReactNod
                         <Code2 className="w-5 h-5 text-white" />
                     </div>
                     <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white tracking-tight">Captain Prospect CRM</span>
+                        <span className="font-semibold text-white tracking-tight">Suzalink</span>
                         <span className="text-xs font-medium text-blue-400 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20">
                             Dev
                         </span>

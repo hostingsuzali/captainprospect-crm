@@ -1,4 +1,4 @@
-// Captain Prospect CRM Utility Functions
+// Suzalink CRM Utility Functions
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 

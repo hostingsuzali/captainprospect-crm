@@ -351,8 +351,7 @@ export function GlobalSidebar({ navigation }: GlobalSidebarProps) {
                         </div>
                         {isExpanded && (
                             <span className="cp-brand-name">
-                                <span>captain</span>
-                                <span className="cp-brand-name-accent">prospect</span>
+                                <span className="cp-brand-name-accent">suzalink</span>
                             </span>
                         )}
                     </Link>

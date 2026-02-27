@@ -1,5 +1,5 @@
 // ============================================
-// Captain Prospect CRM CONFIGURATION
+// Suzalink CRM CONFIGURATION
 // ============================================
 // Centralized configuration to replace hardcoded values
 // Environment-aware settings
@@ -90,7 +90,7 @@ export const config = {
   notifications: {
     email: {
       enabled: !!process.env.SENDGRID_API_KEY,
-      from: process.env.EMAIL_FROM || "noreply@captainprospect.com",
+      from: process.env.EMAIL_FROM || "noreply@suzalink.com",
     },
     slack: {
       enabled: !!process.env.SLACK_WEBHOOK_URL,

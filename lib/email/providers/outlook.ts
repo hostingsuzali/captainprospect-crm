@@ -464,7 +464,7 @@ export class OutlookProvider implements IEmailProvider {
                 notificationUrl: callbackUrl,
                 resource: '/me/mailFolders(\'Inbox\')/messages',
                 expirationDateTime: expirationDateTime.toISOString(),
-                clientState: process.env.WEBHOOK_SECRET || 'captainprospect-email-webhook',
+                clientState: process.env.WEBHOOK_SECRET || 'suzalink-email-webhook',
             }),
         });
 

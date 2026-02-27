@@ -174,7 +174,7 @@ function App() {
             <div className="w-8 h-8 rounded-lg bg-[#4f6ef7] flex items-center justify-center">
               <span className="text-white font-bold text-sm">CP</span>
             </div>
-            <span className="text-white font-semibold text-[15px] tracking-tight">Captain Prospect</span>
+            <span className="text-white font-semibold text-[15px] tracking-tight">Suzalink</span>
           </div>
         </div>
 

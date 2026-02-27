@@ -241,7 +241,7 @@ export function ReportLayout({ data: d, printMode, className }: ReportLayoutProp
 
                 {/* Footer */}
                 <footer className="pt-8 border-t border-[#E8EBF0]">
-                    <p className="text-xs text-[#8B8BA7]">Captain Prospect · Rapport d'activité</p>
+                    <p className="text-xs text-[#8B8BA7]">Suzalink · Rapport d'activité</p>
                 </footer>
             </div>
         </article>

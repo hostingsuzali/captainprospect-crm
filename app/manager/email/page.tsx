@@ -6,7 +6,7 @@
 import { InboxLayout } from "@/components/email/inbox";
 
 export const metadata = {
-    title: "Email | Captain Prospect CRM",
+    title: "Email | Suzalink",
     description: "Gérez vos emails et conversations",
 };
 

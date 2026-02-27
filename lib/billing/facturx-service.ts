@@ -298,7 +298,7 @@ export class FacturXService {
                     info: {
                         Title: `${invoice.documentType === "CREDIT_NOTE" ? "Avoir" : "Facture"} ${invoice.invoiceNumber || ""}`,
                         Author: invoice.companyIssuer.legalName,
-                        Creator: "Captain Prospect CRM - Facturation Factur-X EN16931",
+                        Creator: "Suzalink - Facturation Factur-X EN16931",
                     },
                 });
 
@@ -544,8 +544,8 @@ export class FacturXService {
             const title = `${invoice.documentType === "CREDIT_NOTE" ? "Avoir" : "Facture"} ${invoice.invoiceNumber || ""}`;
             pdfDoc.setTitle(title);
             pdfDoc.setAuthor(invoice.companyIssuer.legalName);
-            pdfDoc.setCreator("Captain Prospect CRM Facturation - Factur-X EN16931");
-            pdfDoc.setProducer("Captain Prospect CRM / pdf-lib / pdfkit");
+            pdfDoc.setCreator("Suzalink Facturation - Factur-X EN16931");
+            pdfDoc.setProducer("Suzalink / pdf-lib / pdfkit");
             pdfDoc.setCreationDate(new Date());
             pdfDoc.setModificationDate(new Date());
 
@@ -599,7 +599,7 @@ export class FacturXService {
           <rdf:li>${now}</rdf:li>
         </rdf:Seq>
       </dc:date>
-      <pdf:Producer>Captain Prospect CRM / pdf-lib / pdfkit</pdf:Producer>
+      <pdf:Producer>Suzalink / pdf-lib / pdfkit</pdf:Producer>
       <pdfaid:part>3</pdfaid:part>
       <pdfaid:conformance>B</pdfaid:conformance>
       <fx:DocumentType>INVOICE</fx:DocumentType>

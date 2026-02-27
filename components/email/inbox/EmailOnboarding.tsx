@@ -509,7 +509,7 @@ export function EmailOnboarding({ onMailboxConnected }: EmailOnboardingProps) {
                         Bienvenue dans Email Hub
                     </h1>
                     <p className="text-slate-500 max-w-md mx-auto">
-                        Connectez votre boîte mail pour commencer à gérer vos emails directement depuis Captain Prospect CRM
+                        Connectez votre boîte mail pour commencer à gérer vos emails directement depuis Suzalink
                     </p>
                 </div>
 
