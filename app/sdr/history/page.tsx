@@ -116,9 +116,10 @@ const PRESET_LABELS: Record<DateRangePreset, string> = {
 // ============================================
 
 export default function SDRHistoryPage() {
-    const { error: showError } = useToast();
+    const { error: showError, success: showSuccess } = useToast();
     const [actions, setActions] = useState<HistoryAction[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSyncingAllo, setIsSyncingAllo] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
     const [missions, setMissions] = useState<Mission[]>([]);
 
@@ -192,7 +193,7 @@ export default function SDRHistoryPage() {
             .then((json) => {
                 if (json.success && Array.isArray(json.data)) setMissions(json.data);
             })
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     useEffect(() => {
@@ -225,6 +226,43 @@ export default function SDRHistoryPage() {
             )
         ).then(() => fetchHistory());
     }, [actions, fetchHistory]);
+
+    const handleSyncAllo = async () => {
+        const alloActions = actions.filter(
+            (a) => a.channel === "CALL" && a.voipProvider === "allo" && !a.voipSummary
+        );
+        if (alloActions.length === 0) {
+            showError("Aucun appel Allo en attente de résumé.");
+            return;
+        }
+
+        setIsSyncingAllo(true);
+        let updatedCount = 0;
+        try {
+            await Promise.allSettled(
+                alloActions.map(async (a) => {
+                    const res = await fetch("/api/voip/allo/sync-call", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ actionId: a.id }),
+                    });
+                    const json = await res.json();
+                    if (json.ok && json.updated) updatedCount++;
+                })
+            );
+            fetchHistory();
+            if (updatedCount > 0) {
+                showSuccess(`${updatedCount} appel(s) Allo synchronisé(s) avec succès.`);
+            } else {
+                showSuccess("La synchronisation est terminée, mais aucune nouvelle donnée n'a été trouvée.");
+            }
+        } catch (err) {
+            console.error(err);
+            showError("Erreur lors de la synchronisation avec Web Allo.");
+        } finally {
+            setIsSyncingAllo(false);
+        }
+    };
 
     const openDrawer = (row: HistoryAction) => {
         if (!row.companyId) return;
@@ -438,6 +476,15 @@ export default function SDRHistoryPage() {
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
+                        <Button
+                            variant="secondary"
+                            onClick={handleSyncAllo}
+                            disabled={isSyncingAllo || actions.length === 0}
+                            className="rounded-xl border border-white/20 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 gap-2"
+                        >
+                            {isSyncingAllo ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                            Sync Web Allo
+                        </Button>
                         <Button
                             variant="secondary"
                             onClick={() => fetchHistory()}

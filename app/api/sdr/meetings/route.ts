@@ -81,10 +81,16 @@ export async function GET(request: NextRequest) {
                         lastName: true,
                         title: true,
                         email: true,
+                        phone: true,
+                        linkedin: true,
                         company: {
                             select: {
                                 id: true,
                                 name: true,
+                                country: true,
+                                industry: true,
+                                website: true,
+                                size: true,
                                 list: {
                                     select: {
                                         id: true,

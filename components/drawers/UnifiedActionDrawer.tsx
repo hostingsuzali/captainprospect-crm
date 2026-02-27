@@ -220,6 +220,19 @@ export function UnifiedActionDrawer({
         userId,
         enabled: isOpen && !!userId,
         onCallCompleted: (data) => {
+            if (data.autoValidated) {
+                success("Appel Allo", `Résumé IA enregistré pour ${data.contactName || "le contact"}`);
+                setActionsLoading(true);
+                const q = contactId ? `contactId=${contactId}` : `companyId=${companyId}`;
+                fetch(`/api/actions?${q}&limit=10`)
+                    .then((res) => res.json())
+                    .then((json) => {
+                        if (json.success && Array.isArray(json.data)) setActions(json.data);
+                    })
+                    .finally(() => setActionsLoading(false));
+                onActionRecorded?.();
+                return;
+            }
             setVoipModalActionId(data.actionId);
             setVoipModalData(data);
             setVoipEnrichmentSummary(null);

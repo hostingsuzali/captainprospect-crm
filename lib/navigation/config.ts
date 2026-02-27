@@ -85,12 +85,6 @@ export const MANAGER_NAV: NavSection[] = [
         label: "Appels",
         permission: "pages.missions",
       },
-      {
-        href: "/manager/enricher",
-        icon: Search,
-        label: "Enricher téléphones",
-        permission: "pages.prospects",
-      },
     ],
   },
   {
@@ -101,6 +95,12 @@ export const MANAGER_NAV: NavSection[] = [
         icon: Building2,
         label: "Clients",
         permission: "pages.clients",
+      },
+      {
+        href: "/manager/analytics",
+        icon: BarChart3,
+        label: "Statistiques",
+        permission: "pages.analytics",
       },
       {
         href: "/manager/email",

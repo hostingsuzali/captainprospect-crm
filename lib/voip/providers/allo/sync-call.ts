@@ -119,6 +119,7 @@ export async function syncAlloCallForAction(
       voipRecordingUrl: match.recording_url ?? undefined,
       duration: durationSeconds,
       note: match.summary ?? action.note,
+      actionStatus: null, // Allo auto-validation: treat as done
     },
   });
 

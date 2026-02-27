@@ -7,7 +7,7 @@ import {
     XCircle, Ban, Loader2, Clock, Calendar, Sparkles, Filter, RotateCcw,
     RefreshCw, ArrowLeft, Target, BarChart3, TrendingUp, Search, CalendarPlus, ChevronRight
 } from "lucide-react";
-import { Card, Badge, Button, DataTable } from "@/components/ui";
+import { Card, Badge, Button, DataTable, useToast } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
 import { ACTION_RESULT_LABELS } from "@/lib/types";
@@ -57,6 +57,9 @@ interface ActionRecord {
     duration?: number;
     createdAt: string;
     _searchKey?: string;
+    voipProvider?: string | null;
+    voipSummary?: string | null;
+    voipRecordingUrl?: string | null;
 }
 
 const RESULT_ICON_MAP: Record<string, React.ReactNode> = {
@@ -100,6 +103,8 @@ export default function ManagerProspectionPage() {
     const [actions, setActions] = useState<ActionRecord[]>([]);
     const [stats, setStats] = useState<any>(null);
     const [loadingData, setLoadingData] = useState(false);
+    const [isSyncingAllo, setIsSyncingAllo] = useState(false);
+    const { error: showError, success: showSuccess } = useToast();
 
     // Filters
     const [search, setSearch] = useState("");
@@ -159,6 +164,47 @@ export default function ManagerProspectionPage() {
     const missionsFilteredByChannel = useMemo(() => {
         return missions.filter(m => m.channels?.includes(channel) ?? m.channel === channel);
     }, [missions, channel]);
+
+    const handleSyncAllo = async () => {
+        const alloActions = actions.filter(
+            (a) => a.channel === "CALL" && a.voipProvider === "allo" && !a.voipSummary
+        );
+        if (alloActions.length === 0) {
+            showError("Aucun appel Allo en attente de résumé.");
+            return;
+        }
+
+        setIsSyncingAllo(true);
+        let updatedCount = 0;
+        try {
+            await Promise.allSettled(
+                alloActions.map(async (a) => {
+                    const res = await fetch("/api/voip/allo/sync-call", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ actionId: a.id }),
+                    });
+                    const json = await res.json();
+                    if (json.ok && json.updated) updatedCount++;
+                })
+            );
+
+            if (selectedMission) {
+                fetchMissionData(selectedMission.id);
+            }
+
+            if (updatedCount > 0) {
+                showSuccess(`${updatedCount} appel(s) Allo synchronisé(s) avec succès.`);
+            } else {
+                showSuccess("La synchronisation est terminée, mais aucune nouvelle donnée n'a été trouvée.");
+            }
+        } catch (err) {
+            console.error(err);
+            showError("Erreur lors de la synchronisation avec Web Allo.");
+        } finally {
+            setIsSyncingAllo(false);
+        }
+    };
 
     const filteredActions = useMemo(() => {
         return actions.filter(a => {
@@ -245,20 +291,47 @@ export default function ManagerProspectionPage() {
         {
             key: "note",
             header: "Remarque / Durée",
-            render: (_, row) => (
-                <div className="max-w-[250px]">
-                    {row.note ? (
-                        <p className="text-sm text-slate-600 truncate" title={row.note}>{row.note}</p>
-                    ) : (
-                        <span className="text-xs text-slate-400 italic">Aucune note</span>
-                    )}
-                    {row.duration && (
-                        <p className="text-xs text-slate-400 mt-0.5">
-                            {Math.floor(row.duration / 60)}m {row.duration % 60}s
-                        </p>
-                    )}
-                </div>
-            )
+            render: (_, row) => {
+                const displayNote = row.voipSummary ?? row.note;
+                const isVoipCall = row.channel === "CALL" && row.voipProvider;
+                const waitingForVoipInfo = isVoipCall && !row.voipSummary && !row.note;
+                return (
+                    <div className="max-w-[250px]">
+                        {waitingForVoipInfo ? (
+                            <div className="flex items-center gap-2 text-amber-600 mb-1">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                <span className="text-xs font-medium">En attente du résumé Allo…</span>
+                            </div>
+                        ) : displayNote ? (
+                            <div className="space-y-0.5">
+                                {isVoipCall && (
+                                    <span className="text-[10px] font-medium text-emerald-600 uppercase tracking-wider">
+                                        {row.voipProvider === "allo" ? "Allo" : row.voipProvider} •
+                                    </span>
+                                )}
+                                <p className="text-sm text-slate-600 truncate italic" title={displayNote}>&quot;{displayNote}&quot;</p>
+                            </div>
+                        ) : (
+                            <span className="text-xs text-slate-400 italic">Aucune note</span>
+                        )}
+                        {row.voipRecordingUrl && (
+                            <a
+                                href={row.voipRecordingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-indigo-600 hover:underline block mt-0.5"
+                            >
+                                Écouter l&apos;enregistrement
+                            </a>
+                        )}
+                        {row.duration && !row.voipRecordingUrl && (
+                            <p className="text-xs text-slate-400 mt-0.5">
+                                {Math.floor(row.duration / 60)}m {row.duration % 60}s
+                            </p>
+                        )}
+                    </div>
+                );
+            }
         }
     ];
 
@@ -374,6 +447,18 @@ export default function ManagerProspectionPage() {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        {channel === "CALL" && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleSyncAllo}
+                                disabled={isSyncingAllo || actions.length === 0}
+                                className="gap-2 bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100"
+                            >
+                                {isSyncingAllo ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                Sync Web Allo
+                            </Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => fetchMissionData(selectedMission.id)} className="gap-2 bg-white">
                             <RefreshCw className={cn("w-4 h-4", loadingData && "animate-spin")} />
                             Actualiser
