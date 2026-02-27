@@ -18,7 +18,9 @@ import {
     AlertCircle,
     Clock,
     RefreshCw,
-    PenLine
+    PenLine,
+    Trash2,
+    Loader2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -95,6 +97,10 @@ export default function SDRListDetailPage({ params }: { params: Promise<{ id: st
     // Drawer state (contact or company fiche — view and edit)
     const [editContact, setEditContact] = useState<Contact | null>(null);
     const [editCompany, setEditCompany] = useState<Company | null>(null);
+
+    // Multi-select for bulk delete
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const hasAppliedUrlDrawers = useRef(false);
 
@@ -193,6 +199,55 @@ export default function SDRListDetailPage({ params }: { params: Promise<{ id: st
         fetchList();
     };
 
+    // ============================================
+    // BULK DELETE
+    // ============================================
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Supprimer ${selectedIds.size} élément(s) sélectionné(s) ?`)) return;
+
+        const idsToRemove = new Set(selectedIds);
+        const isCompanies = view === "companies";
+
+        // Optimistic: remove from UI immediately
+        if (isCompanies) {
+            setCompanies((prev) => prev.filter((c) => !idsToRemove.has(c.id)));
+        } else {
+            setCompanies((prev) =>
+                prev.map((c) => ({
+                    ...c,
+                    contacts: c.contacts.filter((ct) => !idsToRemove.has(ct.id)),
+                    _count: {
+                        ...c._count,
+                        contacts: c.contacts.filter((ct) => !idsToRemove.has(ct.id)).length,
+                    },
+                }))
+            );
+        }
+        setSelectedIds(new Set());
+        setIsDeleting(false);
+
+        // Server: delete in background
+        const endpoint = isCompanies ? "/api/companies" : "/api/contacts";
+        let failed = 0;
+        const promises = Array.from(idsToRemove).map(async (id) => {
+            try {
+                const res = await fetch(`${endpoint}/${id}`, { method: "DELETE" });
+                if (!res.ok) failed++;
+            } catch {
+                failed++;
+            }
+        });
+        await Promise.all(promises);
+
+        if (failed > 0) {
+            await fetchList();
+            showError("Erreur", `${failed} élément(s) n'ont pas pu être supprimés.`);
+        } else {
+            success("Supprimé", `${idsToRemove.size} élément(s) supprimé(s).`);
+        }
+    };
 
     // ============================================
     // COLUMNS
@@ -339,14 +394,14 @@ export default function SDRListDetailPage({ params }: { params: Promise<{ id: st
                 </div>
                 <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200">
                     <button
-                        onClick={() => setView("contacts")}
+                        onClick={() => { setView("contacts"); setSelectedIds(new Set()); }}
                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${view === "contacts" ? "bg-indigo-50 text-indigo-700 shadow-sm" : "text-slate-600 hover:bg-slate-50"
                             }`}
                     >
                         Vue Contacts
                     </button>
                     <button
-                        onClick={() => setView("companies")}
+                        onClick={() => { setView("companies"); setSelectedIds(new Set()); }}
                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${view === "companies" ? "bg-indigo-50 text-indigo-700 shadow-sm" : "text-slate-600 hover:bg-slate-50"
                             }`}
                     >
@@ -358,17 +413,53 @@ export default function SDRListDetailPage({ params }: { params: Promise<{ id: st
                 </div>
             </div>
 
+            {/* Bulk delete bar */}
+            {selectedIds.size > 0 && (
+                <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-indigo-50 border border-indigo-200">
+                    <span className="text-sm font-medium text-indigo-800">
+                        {selectedIds.size} élément(s) sélectionné(s)
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedIds(new Set())}
+                            disabled={isDeleting}
+                        >
+                            Annuler
+                        </Button>
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={handleBulkDelete}
+                            disabled={isDeleting}
+                            className="gap-2"
+                        >
+                            {isDeleting ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Trash2 className="w-4 h-4" />
+                            )}
+                            Supprimer la sélection
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             {/* Table */}
             <Card className="shadow-sm">
                 <DataTable
-                    data={view === 'companies' ? companies : allContacts as any}
-                    columns={view === 'companies' ? companyColumns : contactColumns as any}
+                    data={view === "companies" ? companies : (allContacts as (Contact & { companyName: string })[])}
+                    columns={view === "companies" ? companyColumns : contactColumns}
                     keyField="id"
                     searchable
-                    searchPlaceholder={`Rechercher ${view === 'companies' ? 'une société' : 'un contact'}...`}
-                    searchFields={view === 'companies' ? ['name', 'industry'] : ['firstName', 'lastName', 'email', 'companyName']}
+                    searchPlaceholder={`Rechercher ${view === "companies" ? "une société" : "un contact"}...`}
+                    searchFields={view === "companies" ? ["name", "industry"] : ["firstName", "lastName", "email", "companyName"]}
                     pagination
                     pageSize={20}
+                    selectable
+                    selectedIds={selectedIds}
+                    onSelectionChange={(ids) => setSelectedIds(new Set(ids))}
                 />
             </Card>
 

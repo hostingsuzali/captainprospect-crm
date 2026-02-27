@@ -116,7 +116,7 @@ export const DELETE = withErrorHandler(async (
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) => {
-    await requireRole(['MANAGER'], request);
+    await requireRole(['MANAGER', 'SDR'], request);
     const { id } = await params;
 
     const company = await prisma.company.findUnique({
