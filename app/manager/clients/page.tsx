@@ -472,7 +472,7 @@ export default function ClientsPage() {
                     )}
                 </div>
             ) : (
-                <div className="lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
                     {filteredClients.map((client, index) => {
                         const recapCount = getClientRecapCount(client.id);
                         const hasPortal = client._count.users > 0;
@@ -482,59 +482,72 @@ export default function ClientsPage() {
                             <div
                                 key={client.id}
                                 onClick={() => handleClientClick(client)}
-                                className="lc mgr-client-card"
+                                className="group bg-white rounded-2xl border border-slate-200 p-5 hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-100/50 transition-all duration-300 cursor-pointer flex flex-col relative overflow-hidden"
                                 style={{ animationDelay: `${index * 50}ms` }}
                             >
-                                <div className="lc-top">
-                                    <div>
-                                        <div className="lc-name">{client.name}</div>
-                                        <div className="lc-mission">
-                                            {client.industry || "Secteur non spécifié"}
+                                <div className="absolute top-0 left-0 w-1 bg-indigo-500 h-0 group-hover:h-full transition-all duration-300"></div>
+
+                                <div className="flex items-start justify-between mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100/50 flex items-center justify-center border border-indigo-100/50 flex-shrink-0 group-hover:scale-105 transition-transform">
+                                            <Building2 className="w-5 h-5 text-indigo-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-base font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                                {client.name}
+                                            </h3>
+                                            <p className="text-xs text-slate-500 font-medium">
+                                                {client.industry || "Secteur non spécifié"}
+                                            </p>
                                         </div>
                                     </div>
+                                    {hasPortal ? (
+                                        <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-none px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+                                            Portail
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="text-slate-400 border-slate-200 text-[10px] font-medium px-2.5 py-0.5 tracking-wide uppercase">
+                                            Sans accès
+                                        </Badge>
+                                    )}
                                 </div>
 
-                                <div className="lc-div" />
-
-                                <div className="lc-met">
-                                    <div className="met-col">
-                                        <div className="met-v">{client._count.missions}</div>
-                                        <div className="met-l">Missions</div>
+                                <div className="grid grid-cols-2 gap-3 mb-5 p-3 rounded-xl bg-slate-50/80 border border-slate-100/50">
+                                    <div className="flex flex-col">
+                                        <span className="text-2xl font-bold text-slate-800">{client._count.missions}</span>
+                                        <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider mt-0.5 flex items-center gap-1.5"><Target className="w-3.5 h-3.5 text-emerald-500" /> Missions</span>
                                     </div>
-                                    <div className="met-sep" />
-                                    <div className="met-col">
-                                        <div className="met-v">{client._count.users}</div>
-                                        <div className="met-l">Utilisateurs</div>
+                                    <div className="flex flex-col border-l border-slate-200/60 pl-3">
+                                        <span className="text-2xl font-bold text-slate-800">{client._count.users}</span>
+                                        <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider mt-0.5 flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-amber-500" /> Interlocuteurs</span>
                                     </div>
                                 </div>
 
                                 {recapCount > 0 && (
-                                    <>
-                                        <div className="qr">
-                                            <span className="ql">Récaps Leexi</span>
-                                            <span className="qv">
-                                                {recapCount} recap{recapCount > 1 ? "s" : ""}
+                                    <div className="mb-5">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                                <Mic className="w-3.5 h-3.5 text-violet-500" /> Récaps Leexi
+                                            </span>
+                                            <span className="text-[11px] font-medium text-violet-600 bg-violet-50 px-2.5 py-0.5 rounded-full border border-violet-100">
+                                                {recapCount}
                                             </span>
                                         </div>
-                                        <div className="qbar">
+                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                                             <div
-                                                className="qfill"
-                                                style={{
-                                                    width: `${recapPercent}%`,
-                                                    background: "var(--accent)",
-                                                }}
+                                                className="h-full bg-gradient-to-r from-violet-400 to-indigo-500 rounded-full"
+                                                style={{ width: `${recapPercent}%`, transition: "width 1s ease-in-out" }}
                                             />
                                         </div>
-                                    </>
+                                    </div>
                                 )}
 
-                                <div className="lc-foot">
-                                    <span className="tag">
-                                        {hasPortal ? "Portail actif" : "Pas d'accès portail"}
+                                <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 font-medium">
+                                    <span className="flex items-center gap-1.5">
+                                        <Clock className="w-3.5 h-3.5" /> Créé le {new Date(client.createdAt).toLocaleDateString("fr-FR")}
                                     </span>
-                                    <span className="lc-date">
-                                        Créé le{" "}
-                                        {new Date(client.createdAt).toLocaleDateString("fr-FR")}
+                                    <span className="text-indigo-600 font-semibold opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all flex items-center gap-1">
+                                        Gérer <ArrowRight className="w-3.5 h-3.5" />
                                     </span>
                                 </div>
                             </div>

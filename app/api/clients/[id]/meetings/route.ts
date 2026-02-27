@@ -99,6 +99,7 @@ export const GET = withErrorHandler(async (
                             id: true,
                             name: true,
                             industry: true,
+                            customData: true,
                         },
                     },
                 },

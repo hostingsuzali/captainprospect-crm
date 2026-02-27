@@ -26,7 +26,8 @@ interface Meeting {
         title: string | null;
         email: string | null;
         phone?: string | null;
-        company: { id: string; name: string; industry?: string | null };
+        customData?: Record<string, unknown> | null;
+        company: { id: string; name: string; industry?: string | null; customData?: Record<string, unknown> | null };
     };
     campaign: {
         id: string;
@@ -63,6 +64,17 @@ const OUTCOME_LABELS: Record<string, { label: string; class: string }> = {
     NEGATIVE: { label: "Negatif", class: "bg-red-50 text-red-700 border-red-200" },
     NO_SHOW: { label: "Pas eu lieu", class: "bg-slate-100 text-slate-600 border-slate-200" },
 };
+
+function formatCustomLabel(key: string): string {
+    const withSpaces = key
+        .replace(/_/g, " ")
+        .replace(/([a-z])([A-Z])/g, "$1 $2");
+    return withSpaces
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+}
 
 function generateICS(meeting: Meeting): void {
     const contactName = [meeting.contact.firstName, meeting.contact.lastName].filter(Boolean).join(" ");
@@ -601,6 +613,27 @@ export default function ClientPortalMeetingsPage() {
                                         </a>
                                     )}
                                 </div>
+                                {selectedMeeting.contact.customData && typeof selectedMeeting.contact.customData === "object" && Object.keys(selectedMeeting.contact.customData as Record<string, unknown>).length > 0 && (
+                                    <div className="mt-3 rounded-xl border border-[#E8EBF0] bg-white/70 px-3 py-2">
+                                        <p className="text-[11px] font-semibold text-[#4A4B6A] mb-1">
+                                            Infos supplémentaires contact
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {Object.entries(selectedMeeting.contact.customData as Record<string, unknown>).map(([key, value]) => {
+                                                if (value === null || value === undefined || value === "") return null;
+                                                return (
+                                                    <span
+                                                        key={key}
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#F4F6F9] border border-[#E0E4F0] text-[11px] text-[#4A4B6A]"
+                                                    >
+                                                        <span className="font-semibold">{formatCustomLabel(key)}:</span>
+                                                        <span>{String(value)}</span>
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             <div className="bg-gradient-to-br from-[#F8F7FF] to-[#F4F6F9] rounded-2xl p-5 space-y-3 border border-[#E8EBF0]/50">
                                 <div className="flex items-center gap-2 text-xs font-semibold text-[#7C5CFC] uppercase tracking-wider">
@@ -613,6 +646,27 @@ export default function ClientPortalMeetingsPage() {
                                 <Badge className="bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-700 border-indigo-100/80 text-xs mt-2 font-medium">
                                     Mission : {selectedMeeting.campaign.mission.name}
                                 </Badge>
+                                {selectedMeeting.contact.company.customData && typeof selectedMeeting.contact.company.customData === "object" && Object.keys(selectedMeeting.contact.company.customData as Record<string, unknown>).length > 0 && (
+                                    <div className="mt-3 rounded-xl border border-[#E8EBF0] bg-white/70 px-3 py-2">
+                                        <p className="text-[11px] font-semibold text-[#4A4B6A] mb-1">
+                                            Infos supplémentaires société
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {Object.entries(selectedMeeting.contact.company.customData as Record<string, unknown>).map(([key, value]) => {
+                                                if (value === null || value === undefined || value === "") return null;
+                                                return (
+                                                    <span
+                                                        key={key}
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#F4F6F9] border border-[#E0E4F0] text-[11px] text-[#4A4B6A]"
+                                                    >
+                                                        <span className="font-semibold">{formatCustomLabel(key)}:</span>
+                                                        <span>{String(value)}</span>
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

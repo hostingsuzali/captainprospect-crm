@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Button, Select, FileUpload, useToast } from "@/components/ui";
+import { Card, Button, Select, FileUpload, useToast, Modal, Input } from "@/components/ui";
 import {
     ArrowLeft,
     ArrowRight,
@@ -125,6 +125,13 @@ export default function ImportListPage() {
     } | null>(null);
 
     const [importProgress, setImportProgress] = useState<number | null>(null);
+
+    // Custom field modal state
+    const [customFieldPrompt, setCustomFieldPrompt] = useState<{
+        index: number;
+        type: "company" | "contact";
+    } | null>(null);
+    const [customFieldValue, setCustomFieldValue] = useState("");
 
     // ============================================
     // FETCH MISSIONS
@@ -660,8 +667,19 @@ export default function ImportListPage() {
                             {mappings.map((mapping, i) => {
                                 // Filter fields based on import type
                                 const availableFields = importType === "companies-only"
-                                    ? COMPANY_FIELDS
-                                    : ALL_FIELDS;
+                                    ? [...COMPANY_FIELDS]
+                                    : [...ALL_FIELDS];
+
+                                const currentTarget = mapping.targetField;
+                                const isCustomCompany = currentTarget.startsWith("company.") && !COMPANY_FIELDS.some(f => f.value === currentTarget);
+                                const isCustomContact = currentTarget.startsWith("contact.") && !CONTACT_FIELDS.some(f => f.value === currentTarget);
+
+                                if (isCustomCompany) {
+                                    availableFields.push({ value: currentTarget, label: `Société (Perso): ${currentTarget.replace('company.', '')}` });
+                                }
+                                if (isCustomContact) {
+                                    availableFields.push({ value: currentTarget, label: `Contact (Perso): ${currentTarget.replace('contact.', '')}` });
+                                }
 
                                 return (
                                     <div key={mapping.csvColumn} className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl">
@@ -680,20 +698,15 @@ export default function ImportListPage() {
 
                                                 // Handle custom field selection
                                                 if (value === "__custom_company__") {
-                                                    const fieldName = prompt("Nom du champ personnalisé (ex: revenue, techStack):");
-                                                    if (fieldName && fieldName.trim()) {
-                                                        newMappings[i].targetField = `company.${fieldName.trim()}`;
-                                                    }
+                                                    setCustomFieldPrompt({ index: i, type: 'company' });
+                                                    setCustomFieldValue("");
                                                 } else if (value === "__custom_contact__") {
-                                                    const fieldName = prompt("Nom du champ personnalisé (ex: department, seniority):");
-                                                    if (fieldName && fieldName.trim()) {
-                                                        newMappings[i].targetField = `contact.${fieldName.trim()}`;
-                                                    }
+                                                    setCustomFieldPrompt({ index: i, type: 'contact' });
+                                                    setCustomFieldValue("");
                                                 } else {
                                                     newMappings[i].targetField = value;
+                                                    setMappings(newMappings);
                                                 }
-
-                                                setMappings(newMappings);
                                             }}
                                             className="w-48"
                                         />
@@ -865,6 +878,47 @@ export default function ImportListPage() {
                     </div>
                 </Card>
             )}
+            {/* Custom Field Modal */}
+            <Modal
+                isOpen={customFieldPrompt !== null}
+                onClose={() => setCustomFieldPrompt(null)}
+                title={customFieldPrompt?.type === 'company' ? "Champ personnalisé société" : "Champ personnalisé contact"}
+                size="sm"
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-600">
+                        Saisissez le nom du champ personnalisé à utiliser. Ne mettez pas d'espaces.
+                    </p>
+                    <Input
+                        label="Nom du champ"
+                        placeholder={customFieldPrompt?.type === 'company' ? "ex: revenue, techStack" : "ex: department, seniority"}
+                        value={customFieldValue}
+                        onChange={(e) => setCustomFieldValue(e.target.value)}
+                        autoFocus
+                    />
+                    <div className="flex justify-end gap-3 pt-4">
+                        <Button variant="ghost" onClick={() => setCustomFieldPrompt(null)}>
+                            Annuler
+                        </Button>
+                        <Button
+                            variant="primary"
+                            disabled={!customFieldValue.trim()}
+                            onClick={() => {
+                                if (customFieldPrompt && customFieldValue.trim()) {
+                                    const newMappings = [...mappings];
+                                    const prefix = customFieldPrompt.type === 'company' ? 'company' : 'contact';
+                                    const sanitized = customFieldValue.trim().replace(/\s+/g, '_');
+                                    newMappings[customFieldPrompt.index].targetField = `${prefix}.${sanitized}`;
+                                    setMappings(newMappings);
+                                    setCustomFieldPrompt(null);
+                                }
+                            }}
+                        >
+                            Valider
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }

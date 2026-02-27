@@ -61,6 +61,7 @@ interface Contact {
     linkedin: string | null;
     status: "INCOMPLETE" | "PARTIAL" | "ACTIONABLE";
     companyId: string;
+    customData?: Record<string, unknown> | null;
 }
 
 interface Company {
@@ -74,6 +75,7 @@ interface Company {
     status: "INCOMPLETE" | "PARTIAL" | "ACTIONABLE";
     contacts: Contact[];
     _count?: { contacts: number };
+    customData?: Record<string, unknown> | null;
 }
 
 interface UnifiedActionDrawerProps {
@@ -116,6 +118,17 @@ const ACTION_RESULT_COLORS: Record<string, { bg: string; text: string; border: s
     DISQUALIFIED: { bg: "bg-slate-50", text: "text-slate-500", border: "border-slate-200", dot: "bg-slate-400" },
     ENVOIE_MAIL: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", dot: "bg-blue-400" },
 };
+
+function formatCustomLabel(key: string): string {
+    const withSpaces = key
+        .replace(/_/g, " ")
+        .replace(/([a-z])([A-Z])/g, "$1 $2");
+    return withSpaces
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+}
 
 // ============================================
 // UNIFIED ACTION DRAWER COMPONENT
@@ -1083,6 +1096,34 @@ export function UnifiedActionDrawer({
                                     </div>
                                 )}
 
+                                {/* Contact custom data (from CSV / Apollo) */}
+                                {contact.customData && typeof contact.customData === "object" && Object.keys(contact.customData as Record<string, unknown>).length > 0 && !isEditingContact && (
+                                    <div className="p-3.5 border-t border-slate-100 bg-slate-50/60">
+                                        <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium mb-1.5 flex items-center gap-1.5">
+                                            <FileText className="w-3 h-3 text-slate-400" />
+                                            Infos supplémentaires contact
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {Object.entries(contact.customData as Record<string, unknown>).map(([key, value]) => {
+                                                if (value === null || value === undefined || value === "") return null;
+                                                return (
+                                                    <div
+                                                        key={key}
+                                                        className="px-2.5 py-1 rounded-full bg-white border border-slate-200 text-[11px] text-slate-700 shadow-xs"
+                                                    >
+                                                        <span className="font-semibold text-slate-500 mr-1">
+                                                            {formatCustomLabel(key)}:
+                                                        </span>
+                                                        <span className="text-slate-800">
+                                                            {String(value)}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {!isEditingContact && !contact.phone && !contact.email && !contact.linkedin &&
                                     !(contact.additionalPhones && contact.additionalPhones.filter(Boolean).length > 0) &&
                                     !(contact.additionalEmails && contact.additionalEmails.filter(Boolean).length > 0) && (
@@ -1322,6 +1363,34 @@ export function UnifiedActionDrawer({
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Company custom data (from CSV / Apollo) */}
+                                {company.customData && typeof company.customData === "object" && Object.keys(company.customData as Record<string, unknown>).length > 0 && !isEditingCompany && (
+                                    <div className="p-3.5 border-t border-slate-100 bg-slate-50/60">
+                                        <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium mb-1.5 flex items-center gap-1.5">
+                                            <FileText className="w-3 h-3 text-slate-400" />
+                                            Infos supplémentaires société
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {Object.entries(company.customData as Record<string, unknown>).map(([key, value]) => {
+                                                if (value === null || value === undefined || value === "") return null;
+                                                return (
+                                                    <div
+                                                        key={key}
+                                                        className="px-2.5 py-1 rounded-full bg-white border border-slate-200 text-[11px] text-slate-700 shadow-xs"
+                                                    >
+                                                        <span className="font-semibold text-slate-500 mr-1">
+                                                            {formatCustomLabel(key)}:
+                                                        </span>
+                                                        <span className="text-slate-800">
+                                                            {String(value)}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Other Contacts in Company */}
                                 {company.contacts && company.contacts.length > 0 && (
