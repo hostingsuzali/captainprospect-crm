@@ -22,6 +22,8 @@ export interface CreateActionInput {
     /** When result triggers callback: set from calendar UI; if not provided, parsed from note. */
     callbackDate?: Date;
     duration?: number;
+    meetingType?: string;
+    meetingAddress?: string;
 }
 
 export interface ActionWithRelations {
@@ -48,11 +50,11 @@ export class ActionService {
         statusDef?: EffectiveStatusDefinition | null
     ): Promise<ActionWithRelations> {
         const triggersCallback = statusDef?.triggersCallback ?? (input.result === 'CALLBACK_REQUESTED');
-        const triggersOpportunity = statusDef?.triggersOpportunity ?? 
+        const triggersOpportunity = statusDef?.triggersOpportunity ??
             (input.result === 'MEETING_BOOKED' || input.result === 'INTERESTED');
 
         // Use transaction to ensure atomicity
-        return await prisma.$transaction(async (tx) => {
+        const actionRecord = await prisma.$transaction(async (tx) => {
             // Validate that either contactId or companyId is provided
             if (!input.contactId && !input.companyId) {
                 throw new Error('Either contactId or companyId must be provided');
@@ -108,10 +110,12 @@ export class ActionService {
                     sdrId: input.sdrId,
                     campaignId: input.campaignId,
                     channel: input.channel,
-                    result: input.result,
+                    result: input.result as any,
                     note: noteToStore,
                     callbackDate: callbackDate,
                     duration: input.duration,
+                    meetingType: input.meetingType,
+                    meetingAddress: input.meetingAddress,
                 },
                 include: {
                     contact: input.contactId ? {
@@ -140,14 +144,14 @@ export class ActionService {
         });
 
         // 4. Notify client portal (outside transaction)
-        if (action.result === 'MEETING_BOOKED' || action.result === 'INTERESTED') {
+        if (actionRecord.result === 'MEETING_BOOKED' || actionRecord.result === 'INTERESTED') {
             const campaign = await prisma.campaign.findUnique({
-                where: { id: action.campaignId },
+                where: { id: actionRecord.campaignId },
                 select: { mission: { select: { clientId: true } } },
             });
             const clientId = campaign?.mission?.clientId;
             if (clientId) {
-                if (action.result === 'MEETING_BOOKED') {
+                if (actionRecord.result === 'MEETING_BOOKED') {
                     await createClientPortalNotification(clientId, {
                         title: 'Nouveau RDV réservé',
                         message: 'Un nouveau rendez-vous a été réservé pour une de vos missions.',
@@ -164,7 +168,7 @@ export class ActionService {
                 }
             }
         }
-        return action;
+        return actionRecord as any;
     }
 
     // ============================================

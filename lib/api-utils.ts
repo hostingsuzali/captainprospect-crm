@@ -176,7 +176,7 @@ export function withErrorHandler<T = any>(
 
 export function getPaginationParams(searchParams: URLSearchParams) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')));
+    const limit = Math.min(5000, Math.max(1, parseInt(searchParams.get('limit') || '20')));
     const skip = (page - 1) * limit;
     return { page, limit, skip };
 }
@@ -191,5 +191,5 @@ export const idParamSchema = z.object({
 
 export const paginationSchema = z.object({
     page: z.coerce.number().positive().optional().default(1),
-    limit: z.coerce.number().positive().max(100).optional().default(20),
+    limit: z.coerce.number().positive().max(5000).optional().default(20),
 });

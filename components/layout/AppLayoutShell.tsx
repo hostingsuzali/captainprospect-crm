@@ -69,15 +69,21 @@ function InnerLayout({
     const navigation =
         customNavigation || (userRole ? getNavByRole(userRole) : []);
 
-    const isEmailPage =
+    // Old standalone full-screen email pages (no sidebar)
+    const isLegacyEmailPage =
         pathname === "/sdr/email" || pathname === "/manager/email";
-    if (isEmailPage) {
+    if (isLegacyEmailPage) {
         return (
             <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#fafbfc]">
                 {children}
             </div>
         );
     }
+
+    // New Email Hub — needs sidebar but NOT the padded cp-content wrapper
+    const isEmailHub =
+        pathname.startsWith("/manager/emails") ||
+        pathname.startsWith("/sdr/emails");
 
     const pathParts = pathname.split("/").filter(Boolean);
     const rawPage = pathParts[pathParts.length - 1]?.replace(/-/g, " ") || "Dashboard";
@@ -90,6 +96,7 @@ function InnerLayout({
         team: "Performance",
         planning: "Planning",
         projects: "Projets",
+        emails: "Email Hub",
     };
     const currentPage = pageLabels[rawPage?.toLowerCase()] || rawPage;
 
@@ -137,11 +144,18 @@ function InnerLayout({
                     </div>
                 </header>
 
-                <div className="cp-content">
-                    <div className="max-w-[1440px] mx-auto w-full">
+                {isEmailHub ? (
+                    // Email Hub: fill remaining height, no padding wrapper
+                    <div className="flex-1 overflow-hidden" style={{ height: 'calc(100vh - 56px)' }}>
                         {children}
                     </div>
-                </div>
+                ) : (
+                    <div className="cp-content">
+                        <div className="max-w-[1440px] mx-auto w-full">
+                            {children}
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );

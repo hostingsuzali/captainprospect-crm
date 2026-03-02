@@ -25,6 +25,8 @@ const createActionSchema = z.object({
     note: z.string().max(500, 'Note trop longue (max 500 caractères)').optional(),
     callbackDate: z.union([z.string(), z.date()]).optional().transform((s) => (s ? (typeof s === 'string' ? new Date(s) : s) : undefined)),
     duration: z.number().positive().max(7200, 'Durée invalide').optional(),
+    meetingType: z.enum(['VISIO', 'PHYSIQUE', 'TELEPHONIQUE']).optional(),
+    meetingAddress: z.string().optional(),
 }).refine(data => data.contactId || data.companyId, {
     message: 'Contact ou Company requis',
     path: ['contactId'],
@@ -117,6 +119,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             note: data.note,
             callbackDate: data.callbackDate,
             duration: data.duration,
+            meetingType: data.meetingType,
+            meetingAddress: data.meetingAddress,
         }, statusDef);
         return successResponse(action, 201);
     } catch (err) {

@@ -676,6 +676,8 @@ model Action {
   callbackDate  DateTime?    // Auto-detected from note for CALLBACK_REQUESTED; for MEETING_BOOKED = scheduled meeting date
   duration      Int?         // Duration in seconds
   cancellationReason String? // When result = MEETING_CANCELLED: by_mistake, wrong_contact, client_cancelled, double_booking, other
+  meetingType     String?    // 'VISIO' | 'PHYSIQUE' | 'TELEPHONIQUE' — type of meeting for MEETING_BOOKED
+  meetingAddress  String?    // Physical address (for PHYSIQUE meetings only)
   createdAt     DateTime     @default(now())
 
   // Call workflow: IN_PROGRESS when call started, PENDING_VALIDATION when webhook received

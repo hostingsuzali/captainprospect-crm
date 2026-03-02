@@ -103,11 +103,10 @@ export const MANAGER_NAV: NavSection[] = [
         permission: "pages.analytics",
       },
       {
-        href: "/manager/email",
+        href: "/manager/emails",
         icon: Mail,
-        label: "Emails",
+        label: "Email Hub",
         permission: "pages.email",
-        openInNewTab: true,
       },
       {
         href: "/manager/comms",
@@ -215,16 +214,9 @@ export const SDR_NAV: NavSection[] = [
     title: "Communication",
     items: [
       {
-        href: "/sdr/email",
+        href: "/sdr/emails",
         icon: Mail,
-        label: "Mes emails",
-        permission: "pages.email",
-        openInNewTab: true,
-      },
-      {
-        href: "/sdr/emails/sent",
-        icon: Send,
-        label: "Emails envoyes",
+        label: "Email Hub",
         permission: "pages.email",
       },
       {
@@ -430,6 +422,12 @@ export const CLIENT_NAV: NavSection[] = [
   {
     title: "Outils",
     items: [
+      {
+        href: "/client/portal/email",
+        icon: Mail,
+        label: "Mon Email",
+        permission: "pages.dashboard",
+      },
       {
         href: "/client/portal/files",
         icon: FileText,
