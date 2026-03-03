@@ -4,7 +4,7 @@ import { successResponse, errorResponse, requireRole, withErrorHandler } from "@
 
 // GET /api/companies/[id]/mission - Returns missionId for this company (for drawer "add action" form)
 export const GET = withErrorHandler(async (
-    _request: NextRequest,
+    request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) => {
     await requireRole(["MANAGER", "SDR", "BUSINESS_DEVELOPER"], request);

@@ -69,7 +69,14 @@ export async function GET(request: NextRequest) {
       skip: offset,
       take: limit,
       orderBy: { createdAt: "desc" },
-      include: {
+      // IMPORTANT: Do not rely on Prisma's default selection of all Action scalar fields.
+      // If the database schema is behind (e.g. missing Action.meetingAddress), selecting
+      // all columns will throw P2022 and break this endpoint.
+      select: {
+        id: true,
+        sdrId: true,
+        result: true,
+        createdAt: true,
         sdr: {
           select: {
             id: true,

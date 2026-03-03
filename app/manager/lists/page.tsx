@@ -261,13 +261,6 @@ export default function ListsPage() {
                                 <Upload className="w-4 h-4" />
                                 Importer CSV
                             </Link>
-                            <Link
-                                href="/manager/lists/new"
-                                className="mgr-btn-primary flex items-center gap-2 h-10 px-5 text-sm font-medium"
-                            >
-                                <Plus className="w-4 h-4" />
-                                Nouvelle liste
-                            </Link>
                         </>
                     )}
                 </div>
@@ -393,10 +386,6 @@ export default function ListsPage() {
                                     <Link href="/manager/lists/import" className="flex items-center gap-2 h-11 px-6 text-sm font-medium border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-indigo-600 rounded-lg transition-colors shadow-sm">
                                         <Upload className="w-4 h-4" />
                                         Importer un CSV
-                                    </Link>
-                                    <Link href="/manager/lists/new" className="mgr-btn-primary flex items-center gap-2 h-11 px-6 text-sm font-medium">
-                                        <Plus className="w-4 h-4" />
-                                        Créer une liste
                                     </Link>
                                 </div>
                             )}

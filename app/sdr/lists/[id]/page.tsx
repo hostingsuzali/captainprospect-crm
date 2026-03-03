@@ -62,8 +62,10 @@ interface Company {
     industry: string | null;
     country: string | null;
     website: string | null;
+    phone: string | null;
     size: string | null;
     status: "INCOMPLETE" | "PARTIAL" | "ACTIONABLE";
+    customData?: Record<string, any> | null;
     _count: {
         contacts: number;
     };
@@ -193,6 +195,25 @@ export default function SDRListDetailPage({ params }: { params: Promise<{ id: st
         fetchList();
     };
 
+    // ============================================
+    // CUSTOM FIELDS EXTRACTION
+    // ============================================
+
+    const customCompanyFieldKeys = Array.from(
+        new Set(
+            companies.flatMap((company) =>
+                company.customData ? Object.keys(company.customData) : []
+            )
+        )
+    );
+
+    const formatCustomFieldLabel = (fieldKey: string): string => {
+        return fieldKey
+            .replace(/_/g, " ")
+            .split(" ")
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(" ");
+    };
 
     // ============================================
     // COLUMNS
@@ -243,6 +264,21 @@ export default function SDRListDetailPage({ params }: { params: Promise<{ id: st
             ),
         },
     ];
+
+    // Custom company columns for SDR view
+    const customCompanyColumns: Column<Company>[] = customCompanyFieldKeys.map((fieldKey) => ({
+        key: `custom_${fieldKey}`,
+        header: formatCustomFieldLabel(fieldKey),
+        sortable: false,
+        importance: "secondary",
+        render: (_, company) => {
+            const value = company.customData ? company.customData[fieldKey] : undefined;
+            if (value === null || value === undefined || value === "") {
+                return <span className="text-slate-400">—</span>;
+            }
+            return <span className="text-slate-600">{String(value)}</span>;
+        },
+    }));
 
     const allContacts = companies.flatMap((company) =>
         company.contacts.map((contact) => ({
@@ -362,13 +398,14 @@ export default function SDRListDetailPage({ params }: { params: Promise<{ id: st
             <Card className="shadow-sm">
                 <DataTable
                     data={view === 'companies' ? companies : allContacts as any}
-                    columns={view === 'companies' ? companyColumns : contactColumns as any}
+                    columns={view === 'companies' ? [...companyColumns, ...customCompanyColumns] : contactColumns as any}
                     keyField="id"
                     searchable
                     searchPlaceholder={`Rechercher ${view === 'companies' ? 'une société' : 'un contact'}...`}
                     searchFields={view === 'companies' ? ['name', 'industry'] : ['firstName', 'lastName', 'email', 'companyName']}
                     pagination
                     pageSize={20}
+                    enableSecondaryColumnsToggle={view === 'companies'}
                 />
             </Card>
 

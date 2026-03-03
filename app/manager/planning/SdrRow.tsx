@@ -194,6 +194,17 @@ export function SdrRow({ sdr }: SdrRowProps) {
         }
     }
 
+    function handleToggleExpanded() {
+        setExpanded((v) => !v);
+    }
+
+    function handleHeaderKeyDown(e: React.KeyboardEvent) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleToggleExpanded();
+        }
+    }
+
     return (
         <div
             ref={rowRef}
@@ -208,7 +219,13 @@ export function SdrRow({ sdr }: SdrRowProps) {
                 status === 'underutilized' && 'border-l-4 border-l-blue-300',
             )}
         >
-            <button type="button" onClick={() => setExpanded(!expanded)} className="w-full text-left p-4">
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={handleToggleExpanded}
+                onKeyDown={handleHeaderKeyDown}
+                className="w-full text-left p-4"
+            >
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                         <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 flex-shrink-0">
@@ -307,7 +324,7 @@ export function SdrRow({ sdr }: SdrRowProps) {
                         </div>
                     </div>
                 )}
-            </button>
+            </div>
 
             {/* Expanded state */}
             {expanded && (

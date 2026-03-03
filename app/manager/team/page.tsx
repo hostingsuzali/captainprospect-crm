@@ -73,6 +73,7 @@ interface TeamMemberMetrics {
     meetingsBookedThisWeek: number;
     conversionRate: number;
     lastActiveAt: string | null;
+    lastSeenMinutesAgo?: number | null;
     currentMission: string | null;
     activeBlockId: string | null;
     status: "online" | "busy" | "away" | "offline";
@@ -361,6 +362,8 @@ function MemberCard({
         avgCallsPerHour: 0,
         meetingsBookedThisWeek: 0,
         conversionRate: 0,
+        lastActiveAt: null,
+        lastSeenMinutesAgo: null,
         status: "offline" as const,
         currentMission: null,
         currentStreak: 0,
@@ -484,6 +487,12 @@ function MemberCard({
             {(member.lastConnectedAt || member.lastSignInAt || member.lastSignInIp || member.lastSignInCountry) && (
                 <div className="px-5 pb-3 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                        {metrics.lastActiveAt && (
+                            <span className="flex items-center gap-1" title="Dernière activité dans l'app">
+                                <Activity className="w-3 h-3 text-slate-400" />
+                                Activité: {formatSessionDate(metrics.lastActiveAt)}
+                            </span>
+                        )}
                         {member.lastConnectedAt && (
                             <span className="flex items-center gap-1" title="Dernière connexion (app)">
                                 <Activity className="w-3 h-3 text-slate-400" />
@@ -939,15 +948,20 @@ export default function TeamDashboardPage() {
 
             // Fetch SDR activity status
             const sdrAndBd = teamMembers.filter(m => ["SDR", "BUSINESS_DEVELOPER"].includes(m.role));
-            const activityByUserId = new Map<string, boolean>();
+            const activityByUserId = new Map<string, { isActive: boolean; status: string; lastSeenMinutesAgo: number | null }>();
             if (sdrAndBd.length > 0) {
                 try {
                     const ids = sdrAndBd.map((m) => m.id).join(",");
                     const activityRes = await fetch(`/api/sdr/activity/batch?userIds=${encodeURIComponent(ids)}`);
                     const activityJson = await activityRes.json();
                     if (activityJson.success && activityJson.data) {
-                        for (const [uid, v] of Object.entries(activityJson.data as Record<string, { isActive: boolean }>)) {
-                            activityByUserId.set(uid, v?.isActive ?? false);
+                        for (const [uid, raw] of Object.entries(activityJson.data as Record<string, { isActive: boolean; status: string; lastSeenMinutesAgo: number | null }>)) {
+                            const isActive = raw?.isActive ?? false;
+                            const status = raw?.status ?? "offline";
+                            const lastSeenMinutesAgo = typeof raw?.lastSeenMinutesAgo === "number"
+                                ? raw.lastSeenMinutesAgo
+                                : null;
+                            activityByUserId.set(uid, { isActive, status, lastSeenMinutesAgo });
                         }
                     }
                 } catch { /* fallback: all offline */ }
@@ -988,7 +1002,8 @@ export default function TeamDashboardPage() {
                         b.status !== "CANCELLED";
                 });
 
-                const isActiveFromChrono = activityByUserId.get(member.id) === true;
+                const activityEntry = activityByUserId.get(member.id);
+                const isActiveFromChrono = activityEntry?.isActive === true;
 
                 let status: "online" | "busy" | "away" | "offline" = "offline";
                 if (isActiveFromChrono) {
@@ -1022,7 +1037,10 @@ export default function TeamDashboardPage() {
                         meetingsBooked: memberStats.meetingsBooked || meetingsBookedThisWeek,
                         meetingsBookedThisWeek,
                         conversionRate,
-                        lastActiveAt: null,
+                        lastActiveAt: activityEntry?.lastSeenMinutesAgo != null
+                            ? new Date(now.getTime() - activityEntry.lastSeenMinutesAgo * 60000).toISOString()
+                            : null,
+                        lastSeenMinutesAgo: activityEntry?.lastSeenMinutesAgo ?? null,
                         currentMission: activeBlock?.mission?.name || null,
                         activeBlockId: activeBlock?.id || null,
                         status,

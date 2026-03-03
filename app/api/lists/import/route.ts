@@ -182,6 +182,10 @@ export async function POST(req: NextRequest) {
         const importType = (formData.get("importType") as string) || "companies-contacts";
         const totalRowsStr = formData.get("totalRows") as string | null;
         const totalRows = totalRowsStr ? parseInt(totalRowsStr, 10) : null;
+        const importActionsStr = formData.get("importActions") as string | null;
+        const actionColumnMappingStr = formData.get("actionColumnMapping") as string | null;
+        const statusMappingsStr = formData.get("statusMappings") as string | null;
+        const channelMappingsStr = formData.get("channelMappings") as string | null;
 
         if (!file || !missionId || !listName || !mappingsStr) {
             return NextResponse.json(
@@ -198,6 +202,38 @@ export async function POST(req: NextRequest) {
                 { success: false, error: "mappings invalide (JSON attendu)" },
                 { status: 400 }
             );
+        }
+
+        const importActions = importActionsStr === "true";
+        let actionColumnMapping: {
+            statusColumn?: string;
+            dateColumn?: string;
+            noteColumn?: string;
+            channelColumn?: string;
+        } | null = null;
+        let statusMappings: { csvValue: string; actionResult: string; count: number }[] = [];
+        let channelMappings: { csvValue: string; channel: "CALL" | "EMAIL" | "LINKEDIN"; count: number }[] = [];
+
+        if (actionColumnMappingStr) {
+            try {
+                actionColumnMapping = JSON.parse(actionColumnMappingStr) as typeof actionColumnMapping;
+            } catch {
+                actionColumnMapping = null;
+            }
+        }
+        if (statusMappingsStr) {
+            try {
+                statusMappings = JSON.parse(statusMappingsStr) as typeof statusMappings;
+            } catch {
+                statusMappings = [];
+            }
+        }
+        if (channelMappingsStr) {
+            try {
+                channelMappings = JSON.parse(channelMappingsStr) as typeof channelMappings;
+            } catch {
+                channelMappings = [];
+            }
         }
 
         const mission = await prisma.mission.findUnique({
@@ -220,12 +256,19 @@ export async function POST(req: NextRequest) {
                     importType,
                     mappings,
                     importedAt: new Date().toISOString(),
+                    actionHistory: {
+                        importActions,
+                        actionColumnMapping,
+                        statusMappings,
+                        channelMappings,
+                    },
                 },
             },
         });
 
         let companiesCreated = 0;
         let contactsCreated = 0;
+        let actionsCreated = 0;
         const errors: string[] = [];
 
         const encoder = new TextEncoder();
@@ -258,14 +301,24 @@ export async function POST(req: NextRequest) {
                         if (lineBuffer.length >= BATCH_SIZE) {
                             const rows = parseBatch(lineBuffer, headers, delimiter, globalRowIndex);
                             globalRowIndex += rows.length;
-                            const { companies: batchCompanies, contacts: batchContacts, errs } = await processBatch(
-                                list.id,
-                                rows,
-                                mappings,
-                                importType
-                            );
+                            const { companies: batchCompanies, contacts: batchContacts, actions: batchActions, errs } =
+                                await processBatch(
+                                    list.id,
+                                    rows,
+                                    mappings,
+                                    importType,
+                                    {
+                                        importActions,
+                                        actionColumnMapping,
+                                        statusMappings,
+                                        channelMappings,
+                                        missionId,
+                                        sdrId: session.user.id,
+                                    }
+                                );
                             companiesCreated += batchCompanies;
                             contactsCreated += batchContacts;
+                            actionsCreated += batchActions;
                             errors.push(...errs);
                             lineBuffer = [];
                             const percent =
@@ -279,14 +332,24 @@ export async function POST(req: NextRequest) {
                     if (lineBuffer.length > 0) {
                         const rows = parseBatch(lineBuffer, headers, delimiter, globalRowIndex);
                         globalRowIndex += rows.length;
-                        const { companies: batchCompanies, contacts: batchContacts, errs } = await processBatch(
-                            list.id,
-                            rows,
-                            mappings,
-                            importType
-                        );
+                        const { companies: batchCompanies, contacts: batchContacts, actions: batchActions, errs } =
+                            await processBatch(
+                                list.id,
+                                rows,
+                                mappings,
+                                importType,
+                                {
+                                    importActions,
+                                    actionColumnMapping,
+                                    statusMappings,
+                                    channelMappings,
+                                    missionId,
+                                    sdrId: session.user.id,
+                                }
+                            );
                         companiesCreated += batchCompanies;
                         contactsCreated += batchContacts;
+                        actionsCreated += batchActions;
                         errors.push(...errs);
                         send({ type: "progress", percent: 100, processed: globalRowIndex });
                     }
@@ -297,7 +360,8 @@ export async function POST(req: NextRequest) {
                             listId: list.id,
                             companiesCreated,
                             contactsCreated,
-                            errors: errors.length,
+                                actionsCreated,
+                                errors: errors.length,
                             errorDetails: errors.slice(0, 10),
                         },
                     });
@@ -329,11 +393,25 @@ async function processBatch(
     listId: string,
     rows: { rowIndex: number; row: Record<string, string> }[],
     mappings: { csvColumn: string; targetField: string }[],
-    importType: string
-): Promise<{ companies: number; contacts: number; errs: string[] }> {
+    importType: string,
+    options?: {
+        importActions: boolean;
+        actionColumnMapping: {
+            statusColumn?: string;
+            dateColumn?: string;
+            noteColumn?: string;
+            channelColumn?: string;
+        } | null;
+        statusMappings: { csvValue: string; actionResult: string; count: number }[];
+        channelMappings: { csvValue: string; channel: "CALL" | "EMAIL" | "LINKEDIN"; count: number }[];
+        missionId: string | null;
+        sdrId: string;
+    }
+): Promise<{ companies: number; contacts: number; actions: number; errs: string[] }> {
     const errs: string[] = [];
     let companiesCreated = 0;
     let contactsCreated = 0;
+    let actionsCreated = 0;
 
     // 1) Build parsed rows with company/contact extraction (same validation as before)
     type RowInfo = {
@@ -495,5 +573,163 @@ async function processBatch(
         contactsCreated = contactsToCreate.length;
     }
 
-    return { companies: companiesCreated, contacts: contactsCreated, errs };
+    // 5) Actions: create historical actions if configured
+    const shouldCreateActions =
+        options &&
+        options.importActions &&
+        options.actionColumnMapping &&
+        !!options.actionColumnMapping.statusColumn &&
+        options.statusMappings &&
+        options.statusMappings.length > 0;
+
+    if (shouldCreateActions && options) {
+        const { actionColumnMapping, statusMappings, channelMappings, sdrId } = options;
+
+        // Reload contacts with IDs so we can link actions
+        const allContacts = await prisma.contact.findMany({
+            where: { companyId: { in: companyIds } },
+            select: { id: true, companyId: true, email: true, firstName: true, lastName: true },
+        });
+        const contactIdByKey = new Map<string, string>();
+        for (const c of allContacts) {
+            const emailKey = c.email ? `${c.companyId}:email:${c.email}` : null;
+            const nameKey = `${c.companyId}:name:${c.firstName ?? ""}:${c.lastName ?? ""}`;
+            if (emailKey && !contactIdByKey.has(emailKey)) contactIdByKey.set(emailKey, c.id);
+            if (!contactIdByKey.has(nameKey)) contactIdByKey.set(nameKey, c.id);
+        }
+
+        const findContactIdForRow = (companyId: string, rowInfo: RowInfo): string | undefined => {
+            const cd = rowInfo.contactData;
+            if (!cd) return undefined;
+            const email = cd.email?.trim();
+            const firstName = cd.firstName?.trim() ?? "";
+            const lastName = cd.lastName?.trim() ?? "";
+            if (email) {
+                const key = `${companyId}:email:${email}`;
+                const id = contactIdByKey.get(key);
+                if (id) return id;
+            }
+            const nameKey = `${companyId}:name:${firstName}:${lastName}`;
+            return contactIdByKey.get(nameKey);
+        };
+
+        const actionsToCreate: {
+            contactId?: string | null;
+            companyId: string;
+            sdrId: string;
+            campaignId: string;
+            channel: "CALL" | "EMAIL" | "LINKEDIN";
+            result: string;
+            note?: string | null;
+            createdAt?: Date;
+        }[] = [];
+
+        const statusMap = new Map<string, string>();
+        for (const m of statusMappings) {
+            if (m.actionResult) {
+                statusMap.set(m.csvValue, m.actionResult);
+            }
+        }
+        const channelMap = new Map<string, "CALL" | "EMAIL" | "LINKEDIN">();
+        for (const m of channelMappings) {
+            channelMap.set(m.csvValue, m.channel);
+        }
+
+        const statusColumn = actionColumnMapping.statusColumn!;
+        const dateColumn = actionColumnMapping.dateColumn;
+        const noteColumn = actionColumnMapping.noteColumn;
+        const channelColumn = actionColumnMapping.channelColumn;
+
+        const defaultChannel: "CALL" | "EMAIL" | "LINKEDIN" = "CALL";
+
+        // Determine or create campaign for this import (one per list)
+        const campaignName = `Historique import - ${validRows[0]?.companyName ?? "Liste"}`;
+        const listWithMission = await prisma.list.findUnique({
+            where: { id: listId },
+            select: {
+                missionId: true,
+            },
+        });
+        let campaignId: string | null = null;
+        if (listWithMission?.missionId) {
+            const existingCampaign = await prisma.campaign.findFirst({
+                where: {
+                    missionId: listWithMission.missionId,
+                    name: campaignName,
+                },
+                select: { id: true },
+            });
+            if (existingCampaign) {
+                campaignId = existingCampaign.id;
+            } else {
+                const createdCampaign = await prisma.campaign.create({
+                    data: {
+                        missionId: listWithMission.missionId,
+                        name: campaignName,
+                        icp: "Import CSV historique",
+                        pitch: "Campagne générée automatiquement pour l'import d'historique d'actions depuis un CSV.",
+                        isActive: true,
+                    },
+                    select: { id: true },
+                });
+                campaignId = createdCampaign.id;
+            }
+        }
+
+        if (campaignId) {
+            for (const info of validRows) {
+                const company = companyMap.get(info.companyName);
+                if (!company) continue;
+
+                const rawStatus = info.row[statusColumn];
+                if (!rawStatus || !rawStatus.trim()) continue;
+                const trimmedStatus = rawStatus.trim();
+                const result = statusMap.get(trimmedStatus);
+                if (!result) continue;
+
+                let channel: "CALL" | "EMAIL" | "LINKEDIN" = defaultChannel;
+                if (channelColumn) {
+                    const rawChannel = info.row[channelColumn];
+                    if (rawChannel && rawChannel.trim()) {
+                        const mapped = channelMap.get(rawChannel.trim());
+                        if (mapped) channel = mapped;
+                    }
+                }
+
+                let createdAt: Date | undefined;
+                if (dateColumn) {
+                    const rawDate = info.row[dateColumn];
+                    if (rawDate && rawDate.trim()) {
+                        const d = new Date(rawDate);
+                        if (!Number.isNaN(d.getTime())) {
+                            createdAt = d;
+                        }
+                    }
+                }
+
+                const note = noteColumn ? (info.row[noteColumn] || "").trim() || undefined : undefined;
+                const contactId = findContactIdForRow(company.id, info);
+
+                actionsToCreate.push({
+                    companyId: company.id,
+                    contactId: contactId ?? null,
+                    sdrId,
+                    campaignId,
+                    channel,
+                    result,
+                    note: note ?? null,
+                    createdAt,
+                });
+            }
+
+            if (actionsToCreate.length > 0) {
+                await prisma.action.createMany({
+                    data: actionsToCreate,
+                });
+                actionsCreated = actionsToCreate.length;
+            }
+        }
+    }
+
+    return { companies: companiesCreated, contacts: contactsCreated, actions: actionsCreated, errs };
 }
