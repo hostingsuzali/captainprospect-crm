@@ -4,6 +4,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "./prisma";
 import bcrypt from "bcryptjs";
 import type { UserRole } from "@prisma/client";
+import { getClientIp, getCountryFromIp } from "./geo-ip";
 
 // Extend NextAuth types
 declare module "next-auth" {
@@ -39,7 +40,7 @@ export const authOptions: NextAuthOptions = {
                 email: { label: "Email", type: "email" },
                 password: { label: "Mot de passe", type: "password" },
             },
-            async authorize(credentials) {
+            async authorize(credentials, req) {
                 const LOG_PREFIX = "[auth:login]";
 
                 try {
@@ -73,6 +74,32 @@ export const authOptions: NextAuthOptions = {
                         console.debug(LOG_PREFIX, "FAIL: invalid password for", user.email);
                         return null;
                     }
+
+                    // Record sign-in: IP immediately, country async
+                    const ip = req ? getClientIp(req as { headers?: Headers }) : null;
+                    const now = new Date();
+                    prisma.user
+                        .update({
+                            where: { id: user.id },
+                            data: {
+                                lastSignInAt: now,
+                                lastSignInIp: ip,
+                                lastSignInCountry: null, // Updated async below
+                            },
+                        })
+                        .then(() => {
+                            if (ip) {
+                                getCountryFromIp(ip).then((country) => {
+                                    if (country) {
+                                        prisma.user.update({
+                                            where: { id: user.id },
+                                            data: { lastSignInCountry: country },
+                                        }).catch(() => {});
+                                    }
+                                });
+                            }
+                        })
+                        .catch(() => {});
 
                     console.debug(LOG_PREFIX, "OK: logged in", user.email);
                     return {

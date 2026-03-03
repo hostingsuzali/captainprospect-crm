@@ -37,6 +37,8 @@ import {
     Pause,
     CalendarDays,
     PieChart,
+    Globe,
+    LogIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -52,6 +54,10 @@ interface TeamMember {
     role: string;
     isActive: boolean;
     createdAt: string;
+    lastSignInAt?: string | null;
+    lastSignInIp?: string | null;
+    lastSignInCountry?: string | null;
+    lastConnectedAt?: string | null;
     _count: {
         assignedMissions: number;
         actions: number;
@@ -137,6 +143,21 @@ function formatHours(hours: number): string {
 
 function getInitials(name: string): string {
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+}
+
+function formatSessionDate(iso: string | null | undefined): string {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return "À l'instant";
+    if (diffMins < 60) return `Il y a ${diffMins} min`;
+    if (diffHours < 24) return `Il y a ${diffHours}h`;
+    if (diffDays < 7) return `Il y a ${diffDays} j`;
+    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 function getWeekDates(): Date[] {
@@ -873,6 +894,51 @@ export default function TeamMemberDetailPage() {
                             </div>
                         </Card>
                     </div>
+
+                    {/* Connexion / Sign-in info */}
+                    {(member.lastConnectedAt || member.lastSignInAt || member.lastSignInIp || member.lastSignInCountry) && (
+                        <Card className="shadow-sm">
+                            <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                <Activity className="w-4 h-4 text-slate-500" />
+                                Dernière connexion
+                            </h3>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                                {member.lastConnectedAt && (
+                                    <div>
+                                        <p className="text-slate-500 mb-0.5">Dernière connexion (app)</p>
+                                        <p className="font-medium text-slate-900 flex items-center gap-1.5">
+                                            <Activity className="w-3.5 h-3.5 text-slate-400" />
+                                            {formatSessionDate(member.lastConnectedAt)}
+                                        </p>
+                                    </div>
+                                )}
+                                {member.lastSignInAt && (
+                                    <div>
+                                        <p className="text-slate-500 mb-0.5">Dernière connexion (login)</p>
+                                        <p className="font-medium text-slate-900 flex items-center gap-1.5">
+                                            <LogIn className="w-3.5 h-3.5 text-slate-400" />
+                                            {formatSessionDate(member.lastSignInAt)}
+                                        </p>
+                                    </div>
+                                )}
+                                {member.lastSignInIp && (
+                                    <div>
+                                        <p className="text-slate-500 mb-0.5">Adresse IP</p>
+                                        <p className="font-mono font-medium text-slate-900">{member.lastSignInIp}</p>
+                                    </div>
+                                )}
+                                {member.lastSignInCountry && (
+                                    <div>
+                                        <p className="text-slate-500 mb-0.5">Pays</p>
+                                        <p className="font-medium text-slate-900 flex items-center gap-1.5">
+                                            <Globe className="w-3.5 h-3.5 text-slate-400" />
+                                            {member.lastSignInCountry}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </Card>
+                    )}
 
                     <div className="grid grid-cols-3 gap-6">
                         {/* Left column - Short history preview */}

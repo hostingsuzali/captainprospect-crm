@@ -199,7 +199,8 @@ export async function startSession(userId: string): Promise<{
 }
 
 /**
- * Update last activity timestamp (heartbeat)
+ * Update last activity timestamp (heartbeat).
+ * Also updates User.lastConnectedAt for team performance tracking.
  */
 export async function updateLastActivity(userId: string): Promise<{
     success: boolean;
@@ -210,26 +211,32 @@ export async function updateLastActivity(userId: string): Promise<{
     const now = new Date();
 
     try {
-        const activity = await prisma.crmActivityDay.upsert({
-            where: {
-                userId_date: {
+        const [activity, _] = await prisma.$transaction([
+            prisma.crmActivityDay.upsert({
+                where: {
+                    userId_date: {
+                        userId,
+                        date: today,
+                    },
+                },
+                create: {
                     userId,
                     date: today,
+                    totalActiveSeconds: 0,
+                    currentSessionStartedAt: now,
+                    lastActivityAt: now,
+                    sessionCount: 0,
+                    longestSessionSeconds: 0,
                 },
-            },
-            create: {
-                userId,
-                date: today,
-                totalActiveSeconds: 0,
-                currentSessionStartedAt: now,
-                lastActivityAt: now,
-                sessionCount: 0,
-                longestSessionSeconds: 0,
-            },
-            update: {
-                lastActivityAt: now,
-            },
-        });
+                update: {
+                    lastActivityAt: now,
+                },
+            }),
+            prisma.user.update({
+                where: { id: userId },
+                data: { lastConnectedAt: now },
+            }),
+        ]);
 
         return {
             success: true,

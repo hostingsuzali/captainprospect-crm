@@ -33,6 +33,8 @@ import {
     Download,
     AlertCircle,
     Settings,
+    Globe,
+    LogIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +49,10 @@ interface TeamMember {
     role: string;
     isActive: boolean;
     createdAt: string;
+    lastSignInAt?: string | null;
+    lastSignInIp?: string | null;
+    lastSignInCountry?: string | null;
+    lastConnectedAt?: string | null;
     _count: {
         assignedMissions: number;
         actions: number;
@@ -158,6 +164,21 @@ function formatHours(hours: number): string {
     const h = Math.floor(hours);
     const m = Math.round((hours - h) * 60);
     return m > 0 ? `${h}h${m.toString().padStart(2, "0")}` : `${h}h`;
+}
+
+function formatSessionDate(iso: string | null | undefined): string {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return "À l'instant";
+    if (diffMins < 60) return `Il y a ${diffMins} min`;
+    if (diffHours < 24) return `Il y a ${diffHours}h`;
+    if (diffDays < 7) return `Il y a ${diffDays} j`;
+    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 function getInitials(name: string): string {
@@ -459,6 +480,37 @@ function MemberCard({
                 <MiniDailyChart data={metrics.dailyHours} />
             </div>
 
+            {/* Session / Sign-in info */}
+            {(member.lastConnectedAt || member.lastSignInAt || member.lastSignInIp || member.lastSignInCountry) && (
+                <div className="px-5 pb-3 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                        {member.lastConnectedAt && (
+                            <span className="flex items-center gap-1" title="Dernière connexion (app)">
+                                <Activity className="w-3 h-3 text-slate-400" />
+                                Connexion: {formatSessionDate(member.lastConnectedAt)}
+                            </span>
+                        )}
+                        {member.lastSignInAt && (
+                            <span className="flex items-center gap-1" title="Dernière connexion (login)">
+                                <LogIn className="w-3 h-3 text-slate-400" />
+                                Login: {formatSessionDate(member.lastSignInAt)}
+                            </span>
+                        )}
+                        {member.lastSignInIp && (
+                            <span className="tabular-nums" title="IP">
+                                IP: {member.lastSignInIp}
+                            </span>
+                        )}
+                        {member.lastSignInCountry && (
+                            <span className="flex items-center gap-1" title="Pays">
+                                <Globe className="w-3 h-3 text-slate-400" />
+                                {member.lastSignInCountry}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Footer */}
             <div className="px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between rounded-b-2xl">
                 <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -523,6 +575,16 @@ function MemberListRow({
                         </span>
                     )}
                 </div>
+                {(member.lastConnectedAt || member.lastSignInAt || member.lastSignInIp || member.lastSignInCountry) && (
+                    <div className="flex flex-wrap items-center gap-x-2 mt-1 text-[10px] text-slate-400">
+                        {member.lastConnectedAt && <span>Connexion: {formatSessionDate(member.lastConnectedAt)}</span>}
+                        {member.lastSignInAt && member.lastSignInAt !== member.lastConnectedAt && (
+                            <span>Login: {formatSessionDate(member.lastSignInAt)}</span>
+                        )}
+                        {member.lastSignInIp && <span>IP: {member.lastSignInIp}</span>}
+                        {member.lastSignInCountry && <span>{member.lastSignInCountry}</span>}
+                    </div>
+                )}
             </div>
 
             {/* Stats */}

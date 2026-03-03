@@ -351,6 +351,12 @@ model User {
   timezone             String?   @default("Europe/Paris")
   preferences          Json?     // notifications, appearance, workingHours
 
+  // Sign-in / connection tracking (for team performance)
+  lastSignInAt         DateTime?
+  lastSignInIp         String?
+  lastSignInCountry    String?
+  lastConnectedAt      DateTime? // Updated by SDR heartbeat
+
   // Business Developer portfolio
   bdPortfolio          BusinessDeveloperClient[]
   

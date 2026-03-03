@@ -25,6 +25,10 @@ interface User {
     role: string;
     isActive: boolean;
     createdAt: string;
+    lastSignInAt?: string | null;
+    lastSignInIp?: string | null;
+    lastSignInCountry?: string | null;
+    lastConnectedAt?: string | null;
     client?: { id: string; name: string } | null;
     _count: {
         assignedMissions: number;
@@ -55,6 +59,21 @@ const ROLE_LABELS: Record<string, string> = {
     DEVELOPER: "Développeur",
     CLIENT: "Client",
 };
+
+function formatSessionDate(iso: string | null | undefined): string {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return "À l'instant";
+    if (diffMins < 60) return `Il y a ${diffMins} min`;
+    if (diffHours < 24) return `Il y a ${diffHours}h`;
+    if (diffDays < 7) return `Il y a ${diffDays} j`;
+    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
 
 export function ReglagesTab() {
     const { success, error: showError } = useToast();
@@ -442,13 +461,14 @@ export function ReglagesTab() {
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Client</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Missions</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions (total)</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Connexion</th>
                                 <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center">
+                                    <td colSpan={8} className="px-6 py-12 text-center">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
                                             <span className="text-slate-500">Chargement...</span>
@@ -457,7 +477,7 @@ export function ReglagesTab() {
                                 </tr>
                             ) : users.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center">
+                                    <td colSpan={8} className="px-6 py-12 text-center">
                                         <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                                         <p className="text-slate-500">Aucun utilisateur trouvé</p>
                                     </td>
@@ -509,6 +529,18 @@ export function ReglagesTab() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="text-slate-900 font-medium">{user._count.actions}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {(user.lastConnectedAt || user.lastSignInAt || user.lastSignInIp || user.lastSignInCountry) ? (
+                                                <div className="text-xs text-slate-500 space-y-0.5 max-w-[180px]">
+                                                    {user.lastConnectedAt && <div title="Dernière connexion">Connexion: {formatSessionDate(user.lastConnectedAt)}</div>}
+                                                    {user.lastSignInAt && <div title="Dernière connexion (login)">Login: {formatSessionDate(user.lastSignInAt)}</div>}
+                                                    {user.lastSignInIp && <div className="font-mono truncate" title="IP">IP: {user.lastSignInIp}</div>}
+                                                    {user.lastSignInCountry && <div title="Pays">{user.lastSignInCountry}</div>}
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-400">—</span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center justify-end gap-2">
