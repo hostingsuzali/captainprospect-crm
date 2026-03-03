@@ -685,7 +685,16 @@ export default function SDRMeetingsPage() {
                                     <p className="text-lg font-semibold text-slate-900">
                                         {selectedMeeting.contact.firstName} {selectedMeeting.contact.lastName}
                                     </p>
-                                    <p className="text-slate-500 text-sm mb-4">{selectedMeeting.contact.title}</p>
+                                    {selectedMeeting.contact.title && (
+                                        <p className="text-slate-500 text-sm mb-4">
+                                            <span className="font-semibold uppercase text-xs tracking-wide text-slate-400 mr-1">
+                                                Fonction
+                                            </span>
+                                            <span className="text-slate-600 normal-case text-sm">
+                                                {selectedMeeting.contact.title}
+                                            </span>
+                                        </p>
+                                    )}
                                     <div className="space-y-2">
                                         {selectedMeeting.contact.email && (
                                             <a href={`mailto:${selectedMeeting.contact.email}`} className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors group">
