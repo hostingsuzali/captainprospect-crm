@@ -174,6 +174,8 @@ export default function ImportListPage() {
     const [detectedStatuses, setDetectedStatuses] = useState<string[]>([]);
     const [detectedChannels, setDetectedChannels] = useState<string[]>([]);
     const [channelMappings, setChannelMappings] = useState<ChannelMapping[]>([]);
+    /** Per-column unique values and counts from ALL rows (used for status/channel mapping) */
+    const [fullColumnUniqueValues, setFullColumnUniqueValues] = useState<Record<string, { values: string[]; counts: Record<string, number> }>>({});
 
     // Step 4: Validation
     const [validationResult, setValidationResult] = useState<{
@@ -221,60 +223,49 @@ export default function ImportListPage() {
         fetchMissions();
     }, []);
 
-    // Detect unique status values when status column is selected
+    // Detect unique status values when status column is selected (uses ALL rows, not just preview)
     useEffect(() => {
-        if (actionColumnMapping.statusColumn && previewData.length > 0) {
-            const statusValues = new Set<string>();
-            const statusCounts: Record<string, number> = {};
-            
-            previewData.forEach(row => {
-                const status = row[actionColumnMapping.statusColumn];
-                if (status && status.trim()) {
-                    const trimmedStatus = status.trim();
-                    statusValues.add(trimmedStatus);
-                    statusCounts[trimmedStatus] = (statusCounts[trimmedStatus] || 0) + 1;
-                }
-            });
-            
-            setDetectedStatuses(Array.from(statusValues).sort());
-            setStatusMappings(Array.from(statusValues).map(csvValue => ({
+        const col = actionColumnMapping.statusColumn;
+        if (!col) {
+            setDetectedStatuses([]);
+            setStatusMappings([]);
+            return;
+        }
+        const data = fullColumnUniqueValues[col];
+        if (data && data.values.length > 0) {
+            setDetectedStatuses(data.values);
+            setStatusMappings(data.values.map(csvValue => ({
                 csvValue,
                 actionResult: "",
-                count: statusCounts[csvValue] || 0
+                count: data.counts[csvValue] || 0
             })));
         } else {
             setDetectedStatuses([]);
             setStatusMappings([]);
         }
-    }, [actionColumnMapping.statusColumn, previewData]);
+    }, [actionColumnMapping.statusColumn, fullColumnUniqueValues]);
 
-    // Detect unique channel values when channel column is selected
+    // Detect unique channel values when channel column is selected (uses ALL rows, not just preview)
     useEffect(() => {
-        if (actionColumnMapping.channelColumn && previewData.length > 0) {
-            const channelValues = new Set<string>();
-            const channelCounts: Record<string, number> = {};
-
-            previewData.forEach(row => {
-                const raw = row[actionColumnMapping.channelColumn];
-                if (raw && raw.trim()) {
-                    const trimmed = raw.trim();
-                    channelValues.add(trimmed);
-                    channelCounts[trimmed] = (channelCounts[trimmed] || 0) + 1;
-                }
-            });
-
-            const sorted = Array.from(channelValues).sort();
-            setDetectedChannels(sorted);
-            setChannelMappings(sorted.map(csvValue => ({
+        const col = actionColumnMapping.channelColumn;
+        if (!col) {
+            setDetectedChannels([]);
+            setChannelMappings([]);
+            return;
+        }
+        const data = fullColumnUniqueValues[col];
+        if (data && data.values.length > 0) {
+            setDetectedChannels(data.values);
+            setChannelMappings(data.values.map(csvValue => ({
                 csvValue,
                 channel: 'CALL',
-                count: channelCounts[csvValue] || 0
+                count: data.counts[csvValue] || 0
             })));
         } else {
             setDetectedChannels([]);
             setChannelMappings([]);
         }
-    }, [actionColumnMapping.channelColumn, previewData]);
+    }, [actionColumnMapping.channelColumn, fullColumnUniqueValues]);
 
     // ============================================
     // ADVANCED CSV PARSING
@@ -411,6 +402,26 @@ export default function ImportListPage() {
             });
 
             setPreviewData(dataRows);
+
+            // Scan ALL rows to build unique values + counts per column (for status/channel mapping)
+            const colUnique: Record<string, { values: string[]; counts: Record<string, number> }> = {};
+            headers.forEach(h => { colUnique[h] = { values: [], counts: {} }; });
+            for (let r = 1; r < lines.length; r++) {
+                const values = parseCSVLine(lines[r], delimiter).map(v => v.replace(/^"|"$/g, '').trim());
+                headers.forEach((header, i) => {
+                    const val = values[i] || "";
+                    if (!val) return;
+                    const existing = colUnique[header].counts[val];
+                    if (existing === undefined) {
+                        colUnique[header].values.push(val);
+                        colUnique[header].counts[val] = 1;
+                    } else {
+                        colUnique[header].counts[val]++;
+                    }
+                });
+            }
+            headers.forEach(h => { colUnique[h].values.sort(); });
+            setFullColumnUniqueValues(colUnique);
 
             // Set total row count for validation
             setTotalRows(lines.length - 1);
