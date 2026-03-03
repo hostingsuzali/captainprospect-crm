@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   },
   // Prevent bundling pdfkit so its font data files (.afm) resolve correctly at runtime
   // puppeteer + @sparticuz/chromium: keep external for Vercel PDF generation (Chrome binary)
-  serverExternalPackages: ["pdfkit", "puppeteer", "@sparticuz/chromium"],
+  serverExternalPackages: ["pdfkit", "puppeteer", "puppeteer-core", "@sparticuz/chromium-min"],
   // Allow larger request bodies for email send (attachments). Default is 1MB.
   experimental: {
     serverActions: {

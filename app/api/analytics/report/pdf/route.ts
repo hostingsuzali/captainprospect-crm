@@ -3,10 +3,10 @@ import {
     requireRole,
     withErrorHandler,
 } from "@/lib/api-utils";
-import puppeteer from "puppeteer";
-import chromium from "@sparticuz/chromium";
+import { getChromiumExecutablePath } from "@/lib/pdf-chromium";
 import { getAnalyticsReportData } from "../get-report-data";
 import { getAnalyticsReportHtml } from "../report-template";
+import { uploadReportPdf } from "@/lib/storage/supabase-report-storage";
 
 const MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_MODEL = "mistral-large-latest";
@@ -25,6 +25,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const missionIds = searchParams.getAll("missionIds[]");
     const sdrIds = searchParams.getAll("sdrIds[]");
     const clientIds = searchParams.getAll("clientIds[]");
+    const listIds = searchParams.getAll("listIds[]");
 
     if (!from || !to) {
         return NextResponse.json(
@@ -58,6 +59,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         missionIds,
         sdrIds,
         clientIds,
+        listIds,
     });
 
     // AI summary
@@ -116,11 +118,13 @@ ${notesText ? `\nNotes d'appel (échantillon) :\n${notesText}` : ""}
     };
     const html = getAnalyticsReportHtml(templateData);
 
-    const isVercel = process.env.VERCEL === "1";
-    const browser = await puppeteer.launch({
+    const isVercel = !!process.env.VERCEL;
+    const puppeteer = isVercel ? await import("puppeteer-core") : await import("puppeteer");
+    const chromium = isVercel ? (await import("@sparticuz/chromium-min")).default : null;
+    const browser = await puppeteer.default.launch({
         headless: true,
-        args: isVercel ? chromium.args : ["--no-sandbox", "--disable-setuid-sandbox"],
-        executablePath: isVercel ? await chromium.executablePath() : undefined,
+        args: isVercel ? chromium!.args : ["--no-sandbox", "--disable-setuid-sandbox"],
+        executablePath: isVercel ? await getChromiumExecutablePath() : undefined,
     });
     try {
         const page = await browser.newPage();
@@ -131,12 +135,25 @@ ${notesText ? `\nNotes d'appel (échantillon) :\n${notesText}` : ""}
             margin: { top: "12mm", right: "12mm", bottom: "12mm", left: "12mm" },
         });
         const filename = `rapport-analytics-${from}-${to}.pdf`;
-        return new NextResponse(new Uint8Array(pdfBuffer), {
+        const buffer = Buffer.from(pdfBuffer);
+
+        // Upload to Supabase Storage when configured (avoids download errors, keeps history)
+        const stored = await uploadReportPdf(buffer, filename);
+        if (stored) {
+            return NextResponse.json({
+                success: true,
+                url: stored.url,
+                filename,
+            });
+        }
+
+        // Fallback: return PDF binary directly
+        return new NextResponse(new Uint8Array(buffer), {
             status: 200,
             headers: {
                 "Content-Type": "application/pdf",
                 "Content-Disposition": `attachment; filename="${filename}"`,
-                "Content-Length": String(pdfBuffer.length),
+                "Content-Length": String(buffer.length),
             },
         });
     } finally {

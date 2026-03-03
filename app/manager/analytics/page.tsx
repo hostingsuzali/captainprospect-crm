@@ -3,10 +3,12 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
     Calendar, Download, RefreshCw, Target, User, Briefcase, TrendingUp, X, Phone, Clock, Search,
-    Activity, BrainCircuit, Zap, Flame, Trophy, Play, CheckCircle2, LayoutDashboard, Sparkles, FileText, Loader2
+    Activity, BrainCircuit, Zap, Flame, Trophy, Play, CheckCircle2, LayoutDashboard, Sparkles, FileText, Loader2, List,
+    BarChart3, GitCompare
 } from "lucide-react";
 import {
-    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+    BarChart, Bar, Cell
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { ACTION_RESULT_LABELS } from "@/lib/types";
@@ -29,12 +31,14 @@ export default function AnalyticsPage() {
     const [selectedSdrs, setSelectedSdrs] = useState<string[]>([]);
     const [selectedMissions, setSelectedMissions] = useState<string[]>([]);
     const [selectedClients, setSelectedClients] = useState<string[]>([]);
+    const [selectedLists, setSelectedLists] = useState<string[]>([]);
 
     // Data State
     const [stats, setStats] = useState<any>(null);
     const [missions, setMissions] = useState<any[]>([]);
     const [sdrs, setSdrs] = useState<any[]>([]);
     const [clients, setClients] = useState<any[]>([]);
+    const [lists, setLists] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -56,6 +60,17 @@ export default function AnalyticsPage() {
     const [statusLabelMap, setStatusLabelMap] = useState<Record<string, string>>(ACTION_RESULT_LABELS);
     const [statusColorMap, setStatusColorMap] = useState<Record<string, string>>(defaultColors);
 
+    // Persona / Target Intelligence
+    const [personaData, setPersonaData] = useState<any>(null);
+    const [isLoadingPersona, setIsLoadingPersona] = useState(false);
+    const [personaDimension, setPersonaDimension] = useState<'byFunction' | 'byCompanySize' | 'bySector' | 'byGeography' | 'byCampaign'>('byFunction');
+    const [personaMetric, setPersonaMetric] = useState<'conversion' | 'calls' | 'meetings'>('conversion');
+    const [compareMode, setCompareMode] = useState<'none' | 'lists' | 'missions'>('none');
+    const [compareListA, setCompareListA] = useState<string>('');
+    const [compareListB, setCompareListB] = useState<string>('');
+    const [compareMissionA, setCompareMissionA] = useState<string[]>([]);
+    const [compareMissionB, setCompareMissionB] = useState<string[]>([]);
+
     // Report modal
     const [showReportModal, setShowReportModal] = useState(false);
     const [reportType, setReportType] = useState<'daily' | 'weekly' | 'custom'>('weekly');
@@ -72,22 +87,27 @@ export default function AnalyticsPage() {
     useEffect(() => {
         const fetchRefs = async () => {
             try {
-                const [mRes, sRes, cRes] = await Promise.all([
+                const listUrl = selectedMissions.length === 1
+                    ? `/api/lists?missionId=${selectedMissions[0]}&limit=200`
+                    : '/api/lists?limit=200';
+                const [mRes, sRes, cRes, lRes] = await Promise.all([
                     fetch('/api/missions?isActive=true'),
                     fetch('/api/users?role=SDR,BUSINESS_DEVELOPER&limit=100'),
-                    fetch('/api/clients?limit=100')
+                    fetch('/api/clients?limit=100'),
+                    fetch(listUrl)
                 ]);
-                const [mJson, sJson, cJson] = await Promise.all([mRes.json(), sRes.json(), cRes.json()]);
+                const [mJson, sJson, cJson, lJson] = await Promise.all([mRes.json(), sRes.json(), cRes.json(), lRes.json()]);
 
                 if (mJson.success) setMissions(mJson.data || []);
                 if (sJson.success) setSdrs(sJson.data?.users || sJson.users || []);
                 if (cJson.success) setClients(cJson.data || []);
+                if (lJson.success) setLists(lJson.data || []);
             } catch (err) {
                 console.error("Refs fetch error:", err);
             }
         };
         fetchRefs();
-    }, []);
+    }, [selectedMissions]);
 
     // Fetch Stats Data
     const fetchStats = async () => {
@@ -99,6 +119,7 @@ export default function AnalyticsPage() {
             selectedSdrs.forEach(id => params.append('sdrIds[]', id));
             selectedMissions.forEach(id => params.append('missionIds[]', id));
             selectedClients.forEach(id => params.append('clientIds[]', id));
+            selectedLists.forEach(id => params.append('listIds[]', id));
 
             const res = await fetch(`/api/analytics/stats?${params.toString()}`);
             const json = await res.json();
@@ -124,6 +145,7 @@ export default function AnalyticsPage() {
             selectedSdrs.forEach(id => params.append('sdrIds[]', id));
             selectedMissions.forEach(id => params.append('missionIds[]', id));
             selectedClients.forEach(id => params.append('clientIds[]', id));
+            selectedLists.forEach(id => params.append('listIds[]', id));
 
             const res = await fetch(`/api/analytics/actions?${params.toString()}`);
             const json = await res.json();
@@ -140,7 +162,46 @@ export default function AnalyticsPage() {
     useEffect(() => {
         fetchStats();
         fetchActions();
-    }, [dateRange, selectedSdrs, selectedMissions, selectedClients]);
+    }, [dateRange, selectedSdrs, selectedMissions, selectedClients, selectedLists]);
+
+    // Fetch Persona / Target Intelligence
+    const fetchPersona = useCallback(async () => {
+        setIsLoadingPersona(true);
+        try {
+            const params = new URLSearchParams();
+            params.set('from', dateRange.from);
+            params.set('to', dateRange.to);
+            selectedSdrs.forEach(id => params.append('sdrIds[]', id));
+            if (compareMode === 'none') {
+                selectedMissions.forEach(id => params.append('missionIds[]', id));
+                selectedLists.forEach(id => params.append('listIds[]', id));
+            } else if (compareMode === 'lists' && selectedMissions.length === 1 && compareListA && compareListB) {
+                params.set('compareListA', compareListA);
+                params.set('compareListB', compareListB);
+                params.append('missionIds[]', selectedMissions[0]);
+            } else if (compareMode === 'missions' && compareMissionA.length > 0 && compareMissionB.length > 0) {
+                compareMissionA.forEach(id => params.append('compareMissionA[]', id));
+                compareMissionB.forEach(id => params.append('compareMissionB[]', id));
+            }
+            const res = await fetch(`/api/analytics/persona?${params.toString()}`);
+            const json = await res.json();
+            if (json.success) setPersonaData(json.data);
+            else setPersonaData(null);
+        } catch (err) {
+            console.error("Persona fetch error:", err);
+            setPersonaData(null);
+        } finally {
+            setIsLoadingPersona(false);
+        }
+    }, [dateRange, selectedSdrs, selectedMissions, selectedLists, compareMode, compareListA, compareListB, compareMissionA, compareMissionB]);
+
+    useEffect(() => {
+        const shouldFetch = compareMode === 'none'
+            || (compareMode === 'lists' && selectedMissions.length === 1 && compareListA && compareListB)
+            || (compareMode === 'missions' && compareMissionA.length > 0 && compareMissionB.length > 0);
+        if (shouldFetch) fetchPersona();
+        else setPersonaData(null);
+    }, [fetchPersona, compareMode, selectedMissions.length, compareListA, compareListB, compareMissionA.length, compareMissionB.length]);
 
     // Fetch mission-specific status labels when a single mission is selected
     useEffect(() => {
@@ -212,18 +273,31 @@ export default function AnalyticsPage() {
             selectedMissions.forEach((id) => params.append("missionIds[]", id));
             selectedSdrs.forEach((id) => params.append("sdrIds[]", id));
             selectedClients.forEach((id) => params.append("clientIds[]", id));
+            selectedLists.forEach((id) => params.append("listIds[]", id));
             const res = await fetch(`/api/analytics/report/pdf?${params.toString()}`);
             if (!res.ok) {
                 const j = await res.json().catch(() => ({}));
                 throw new Error((j as { error?: string }).error || "Erreur lors de la génération");
             }
+            const contentType = res.headers.get("content-type") || "";
+            const filename = `rapport-analytics-${from}-${to}.pdf`;
+
+            if (contentType.includes("application/json")) {
+                const j = await res.json();
+                if (j.success && j.url) {
+                    window.open(j.url, "_blank", "noopener,noreferrer");
+                    setShowReportModal(false);
+                    return;
+                }
+            }
+
             const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
+            const blobUrl = URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.href = url;
-            a.download = `rapport-analytics-${from}-${to}.pdf`;
+            a.href = blobUrl;
+            a.download = filename;
             a.click();
-            URL.revokeObjectURL(url);
+            URL.revokeObjectURL(blobUrl);
             setShowReportModal(false);
         } catch (err) {
             console.error("Report generation failed:", err);
@@ -231,7 +305,7 @@ export default function AnalyticsPage() {
         } finally {
             setIsGeneratingReport(false);
         }
-    }, [reportType, reportDate, reportDateFrom, reportDateTo, selectedMissions, selectedSdrs, selectedClients]);
+    }, [reportType, reportDate, reportDateFrom, reportDateTo, selectedMissions, selectedSdrs, selectedClients, selectedLists]);
 
     // Data Formatting
     const dailyData = useMemo(() => {
@@ -268,6 +342,65 @@ export default function AnalyticsPage() {
         if (journalFilter === 'no_response') return actions.filter(a => a.result === 'NO_RESPONSE');
         return actions;
     }, [actions, journalFilter]);
+
+    // Persona chart data (for BarChart) — sorted by selected metric
+    const personaChartData = useMemo(() => {
+        if (!personaData || personaData.mode !== 'single' || !personaData[personaDimension]) return [];
+        const rows = (personaData[personaDimension] || []).map((r: any) => ({
+            name: r.value?.length > 18 ? r.value.slice(0, 18) + '…' : r.value,
+            fullName: r.value,
+            conversionRate: r.conversionRate,
+            calls: r.calls,
+            meetings: r.meetings,
+        }));
+        const sorted = [...rows].sort((a, b) => {
+            if (personaMetric === 'conversion') return b.conversionRate - a.conversionRate;
+            if (personaMetric === 'calls') return b.calls - a.calls;
+            return b.meetings - a.meetings;
+        });
+        return sorted.slice(0, 10);
+    }, [personaData, personaDimension, personaMetric]);
+
+    const getBarColor = (entry: { conversionRate: number; calls: number; meetings: number }) => {
+        if (personaMetric === 'conversion') {
+            if (entry.conversionRate >= 5) return '#10b981';
+            if (entry.conversionRate >= 3) return '#6366f1';
+            return '#94a3b8';
+        }
+        if (personaMetric === 'calls') return '#6366f1';
+        return '#10b981'; // meetings
+    };
+
+    const PersonaTooltip = ({ active, payload }: any) => {
+        if (!active || !payload?.length) return null;
+        const p = payload[0]?.payload;
+        if (!p) return null;
+        return (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-lg px-4 py-3 text-[12px]">
+                <div className="font-bold text-slate-800 mb-1">{p.fullName}</div>
+                <div className="text-slate-500">{p.calls} appels · {p.meetings} RDV · {p.conversionRate}% conversion</div>
+            </div>
+        );
+    };
+
+    const PersonaChart = ({ data, height = 280, metric }: { data: any[]; height?: number; metric: 'conversion' | 'calls' | 'meetings' }) => {
+        const dataKey = metric === 'conversion' ? 'conversionRate' : metric === 'calls' ? 'calls' : 'meetings';
+        const tickFormatter = metric === 'conversion' ? (v: number) => `${v}%` : (v: number) => String(v);
+        return (
+            <ResponsiveContainer width="100%" height={height}>
+                <BarChart data={data} layout="vertical" margin={{ top: 4, right: 24, left: 0, bottom: 4 }}>
+                    <XAxis type="number" domain={[0, 'auto']} tickFormatter={tickFormatter} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={false} tickLine={false} />
+                    <RechartsTooltip content={<PersonaTooltip />} cursor={{ fill: 'rgba(99, 102, 241, 0.06)' }} />
+                    <Bar dataKey={dataKey} name={metric === 'conversion' ? 'Conversion' : metric === 'calls' ? 'Appels' : 'RDV'} radius={[0, 6, 6, 0]} barSize={22} minPointSize={4}>
+                        {data.map((entry, i) => (
+                            <Cell key={i} fill={getBarColor(entry)} stroke="none" />
+                        ))}
+                    </Bar>
+                </BarChart>
+            </ResponsiveContainer>
+        );
+    };
 
     // Build dynamic status items from statusBreakdown using mission-specific labels (must be before early return)
     const statusItems = useMemo(() => {
@@ -402,6 +535,26 @@ export default function AnalyticsPage() {
                         </select>
                     </div>
                     <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0"><Briefcase className="w-4 h-4 text-amber-500" /></div>
+                </div>
+
+                <div className="flex-1 min-w-[200px] flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 transition-all hover:border-violet-300 shadow-sm">
+                    <div className="flex-1">
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Liste</span>
+                        <select
+                            className="w-full bg-transparent border-none text-[13px] font-semibold text-slate-700 outline-none p-0 cursor-pointer"
+                            value={selectedLists[0] || "all"}
+                            onChange={(e) => {
+                                if (e.target.value === "all") setSelectedLists([]);
+                                else setSelectedLists([e.target.value]);
+                            }}
+                        >
+                            <option value="all">Toutes les listes</option>
+                            {(lists || []).map((l) => (
+                                <option key={l.id} value={l.id}>{l.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0"><List className="w-4 h-4 text-slate-500" /></div>
                 </div>
             </div>
 
@@ -716,6 +869,191 @@ export default function AnalyticsPage() {
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* Persona / Target Intelligence */}
+            <div className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow p-5 mb-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+                    <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                            <BarChart3 className="w-5 h-5 text-indigo-600" />
+                        </div>
+                        <div>
+                            <h3 className="text-[15px] font-bold text-slate-800">Persona / Target Intelligence</h3>
+                            <p className="text-[11px] text-slate-500">Conversion par fonction, secteur, taille, géographie</p>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <select
+                            value={compareMode}
+                            onChange={(e) => setCompareMode(e.target.value as 'none' | 'lists' | 'missions')}
+                            className="text-[12px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl px-3 py-2 hover:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                        >
+                            <option value="none">Vue globale</option>
+                            <option value="lists">Comparer 2 listes</option>
+                            <option value="missions">Comparer 2 missions</option>
+                        </select>
+                        {compareMode === 'lists' && selectedMissions.length === 1 && (
+                            <>
+                                <select value={compareListA} onChange={(e) => setCompareListA(e.target.value)} className="text-[12px] font-medium border border-slate-200 rounded-xl px-3 py-2 min-w-[140px]">
+                                    <option value="">Liste A</option>
+                                    {lists.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                </select>
+                                <span className="text-slate-400">vs</span>
+                                <select value={compareListB} onChange={(e) => setCompareListB(e.target.value)} className="text-[12px] font-medium border border-slate-200 rounded-xl px-3 py-2 min-w-[140px]">
+                                    <option value="">Liste B</option>
+                                    {lists.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                </select>
+                            </>
+                        )}
+                        {compareMode === 'missions' && (
+                            <>
+                                <select
+                                    value={compareMissionA[0] || ''}
+                                    onChange={(e) => setCompareMissionA(e.target.value ? [e.target.value] : [])}
+                                    className="text-[12px] font-medium border border-slate-200 rounded-xl px-3 py-2 min-w-[160px]"
+                                >
+                                    <option value="">Mission A</option>
+                                    {missions.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                                <span className="text-slate-400">vs</span>
+                                <select
+                                    value={compareMissionB[0] || ''}
+                                    onChange={(e) => setCompareMissionB(e.target.value ? [e.target.value] : [])}
+                                    className="text-[12px] font-medium border border-slate-200 rounded-xl px-3 py-2 min-w-[160px]"
+                                >
+                                    <option value="">Mission B</option>
+                                    {missions.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 mb-5">
+                    <div className="flex flex-wrap gap-2">
+                        {(['byFunction', 'byCompanySize', 'bySector', 'byGeography', 'byCampaign'] as const).map((dim) => (
+                            <button
+                                key={dim}
+                                onClick={() => setPersonaDimension(dim)}
+                                className={cn(
+                                    "px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all",
+                                    personaDimension === dim
+                                        ? "bg-indigo-600 text-white shadow-md"
+                                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                )}
+                            >
+                                {dim === 'byFunction' && 'Fonction'}
+                                {dim === 'byCompanySize' && 'Taille entreprise'}
+                                {dim === 'bySector' && 'Secteur'}
+                                {dim === 'byGeography' && 'Géographie'}
+                                {dim === 'byCampaign' && 'Campagne'}
+                            </button>
+                        ))}
+                    </div>
+                    <span className="text-slate-300">|</span>
+                    <div className="flex flex-wrap gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider self-center">Afficher</span>
+                        {(['conversion', 'calls', 'meetings'] as const).map((m) => (
+                            <button
+                                key={m}
+                                onClick={() => setPersonaMetric(m)}
+                                className={cn(
+                                    "px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all",
+                                    personaMetric === m
+                                        ? "bg-slate-800 text-white shadow-md"
+                                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                )}
+                            >
+                                {m === 'conversion' && 'Conversion %'}
+                                {m === 'calls' && 'Appels'}
+                                {m === 'meetings' && 'RDV'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {isLoadingPersona ? (
+                    <div className="flex items-center justify-center py-12">
+                        <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
+                    </div>
+                ) : personaData && (personaData.mode === 'single' ? personaData[personaDimension] : true) ? (
+                    personaData.mode === 'compare' ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="rounded-xl border border-slate-100 bg-gradient-to-br from-violet-50/30 to-white p-5">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+                                        <GitCompare className="w-4 h-4 text-violet-600" />
+                                    </div>
+                                    <h4 className="text-[13px] font-bold text-slate-800">{personaData.segmentA?.label}</h4>
+                                </div>
+                                <PersonaChart
+                                    data={[...(personaData.segmentA?.[personaDimension] || [])]
+                                        .map((r: any) => ({
+                                            name: r.value?.length > 16 ? r.value.slice(0, 16) + '…' : r.value,
+                                            fullName: r.value,
+                                            conversionRate: r.conversionRate,
+                                            calls: r.calls,
+                                            meetings: r.meetings,
+                                        }))
+                                        .sort((a: any, b: any) => personaMetric === 'conversion' ? b.conversionRate - a.conversionRate : personaMetric === 'calls' ? b.calls - a.calls : b.meetings - a.meetings)
+                                        .slice(0, 8)}
+                                    height={260}
+                                    metric={personaMetric}
+                                />
+                            </div>
+                            <div className="rounded-xl border border-slate-100 bg-gradient-to-br from-indigo-50/30 to-white p-5">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                        <GitCompare className="w-4 h-4 text-indigo-600" />
+                                    </div>
+                                    <h4 className="text-[13px] font-bold text-slate-800">{personaData.segmentB?.label}</h4>
+                                </div>
+                                <PersonaChart
+                                    data={[...(personaData.segmentB?.[personaDimension] || [])]
+                                        .map((r: any) => ({
+                                            name: r.value?.length > 16 ? r.value.slice(0, 16) + '…' : r.value,
+                                            fullName: r.value,
+                                            conversionRate: r.conversionRate,
+                                            calls: r.calls,
+                                            meetings: r.meetings,
+                                        }))
+                                        .sort((a: any, b: any) => personaMetric === 'conversion' ? b.conversionRate - a.conversionRate : personaMetric === 'calls' ? b.calls - a.calls : b.meetings - a.meetings)
+                                        .slice(0, 8)}
+                                    height={260}
+                                    metric={personaMetric}
+                                />
+                            </div>
+                        </div>
+                    ) : personaChartData.length > 0 ? (
+                        <div className="rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50/50 to-white p-5">
+                            {personaMetric === 'conversion' && (
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="flex gap-1.5 text-[11px] font-bold text-slate-500">
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" />≥5%</span>
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500" />≥3%</span>
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-400" />&lt;3%</span>
+                                    </div>
+                                </div>
+                            )}
+                            <PersonaChart data={personaChartData} height={300} metric={personaMetric} />
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 text-[13px] text-slate-500 font-medium">
+                            {compareMode === 'lists' && (!selectedMissions.length || selectedMissions.length > 1)
+                                ? "Sélectionnez une mission pour comparer deux listes."
+                                : compareMode === 'lists' && (!compareListA || !compareListB)
+                                    ? "Sélectionnez les deux listes à comparer."
+                                    : compareMode === 'missions' && (compareMissionA.length === 0 || compareMissionB.length === 0)
+                                        ? "Sélectionnez les deux missions à comparer."
+                                        : "Aucune donnée pour cette période et ces filtres."}
+                        </div>
+                    )
+                ) : (
+                    <div className="text-center py-12 text-[13px] text-slate-500 font-medium">
+                        Aucune donnée pour cette période et ces filtres.
+                    </div>
+                )}
             </div>
 
             {/* JOURNAL TABLE */}

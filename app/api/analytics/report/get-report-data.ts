@@ -11,6 +11,7 @@ export interface ReportDataParams {
     missionIds: string[];
     sdrIds: string[];
     clientIds: string[];
+    listIds?: string[];
 }
 
 export interface ReportDataResult {
@@ -30,7 +31,7 @@ export interface ReportDataResult {
 }
 
 export async function getAnalyticsReportData(params: ReportDataParams): Promise<ReportDataResult> {
-    const { from, to, missionIds, sdrIds, clientIds } = params;
+    const { from, to, missionIds, sdrIds, clientIds, listIds = [] } = params;
 
     const dateFrom = new Date(from);
     const dateTo = new Date(to);
@@ -50,6 +51,12 @@ export async function getAnalyticsReportData(params: ReportDataParams): Promise<
             },
         };
     }
+    if (listIds.length > 0) {
+        where.OR = [
+            { company: { listId: { in: listIds } } },
+            { contact: { company: { listId: { in: listIds } } } },
+        ];
+    }
 
     const sdrFilterRaw = sdrIds.length > 0
         ? Prisma.sql`AND a."sdrId" IN (${Prisma.join(sdrIds)})`
@@ -59,6 +66,12 @@ export async function getAnalyticsReportData(params: ReportDataParams): Promise<
         : Prisma.empty;
     const clientFilterM = clientIds.length > 0
         ? Prisma.sql`AND m."clientId" IN (${Prisma.join(clientIds)})`
+        : Prisma.empty;
+    const listFilterA = listIds.length > 0
+        ? Prisma.sql`AND (
+            a."companyId" IS NOT NULL AND a."companyId" IN (SELECT id FROM "Company" WHERE "listId" IN (${Prisma.join(listIds)}))
+            OR a."contactId" IS NOT NULL AND a."contactId" IN (SELECT c.id FROM "Contact" c JOIN "Company" co ON c."companyId" = co.id WHERE co."listId" IN (${Prisma.join(listIds)}))
+        )`
         : Prisma.empty;
 
     const [basicStats, statusBreakdown, sdrPerf, actionsWithNotes, missionNames] = await Promise.all([
@@ -86,6 +99,7 @@ export async function getAnalyticsReportData(params: ReportDataParams): Promise<
               ${sdrFilterRaw}
               ${missionFilterM}
               ${clientFilterM}
+              ${listFilterA}
             GROUP BY u.id, u."name"
             ORDER BY calls DESC
         `),

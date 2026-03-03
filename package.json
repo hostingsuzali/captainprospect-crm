@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/postinstall.mjs",
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
@@ -17,7 +18,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@netlify/plugin-nextjs": "^5.15.8",
     "@prisma/client": "^6.19.1",
-    "@sparticuz/chromium": "^143.0.4",
+    "@sparticuz/chromium-min": "^143.0.4",
     "@supabase/supabase-js": "^2.90.1",
     "@tanstack/react-query": "^5.90.16",
     "@types/bcryptjs": "^2.4.6",
@@ -43,6 +44,7 @@
     "pdfkit": "^0.17.2",
     "prisma": "^6.19.1",
     "puppeteer": "^24.37.5",
+    "puppeteer-core": "^24.37.5",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-dropzone": "^14.3.8",
@@ -55,6 +57,7 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@sparticuz/chromium": "^143.0.4",
     "@tailwindcss/postcss": "^4",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^20",

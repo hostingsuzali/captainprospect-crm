@@ -17,6 +17,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const sdrIds = searchParams.getAll('sdrIds[]');
     const missionIds = searchParams.getAll('missionIds[]');
     const clientIds = searchParams.getAll('clientIds[]');
+    const listIds = searchParams.getAll('listIds[]');
 
     // Default timeframe: last 30 days
     const dateTo = to ? new Date(to) : new Date();
@@ -50,6 +51,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         };
     }
 
+    if (listIds.length > 0) {
+        where.OR = [
+            { company: { listId: { in: listIds } } },
+            { contact: { company: { listId: { in: listIds } } } },
+        ];
+    }
+
     // Prepare SQL Fragments for filtering in raw queries
     const sdrFilterRaw = sdrIds.length > 0
         ? Prisma.sql`AND "sdrId" IN (${Prisma.join(sdrIds)})`
@@ -65,6 +73,20 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
     const clientFilterAliasM = clientIds.length > 0
         ? Prisma.sql`AND m."clientId" IN (${Prisma.join(clientIds)})`
+        : Prisma.empty;
+
+    const listFilterRaw = listIds.length > 0
+        ? Prisma.sql`AND (
+            "companyId" IS NOT NULL AND "companyId" IN (SELECT id FROM "Company" WHERE "listId" IN (${Prisma.join(listIds)}))
+            OR "contactId" IS NOT NULL AND "contactId" IN (SELECT c.id FROM "Contact" c JOIN "Company" co ON c."companyId" = co.id WHERE co."listId" IN (${Prisma.join(listIds)}))
+        )`
+        : Prisma.empty;
+
+    const listFilterAliasA = listIds.length > 0
+        ? Prisma.sql`AND (
+            a."companyId" IS NOT NULL AND a."companyId" IN (SELECT id FROM "Company" WHERE "listId" IN (${Prisma.join(listIds)}))
+            OR a."contactId" IS NOT NULL AND a."contactId" IN (SELECT c.id FROM "Contact" c JOIN "Company" co ON c."companyId" = co.id WHERE co."listId" IN (${Prisma.join(listIds)}))
+        )`
         : Prisma.empty;
 
     // Heavy Lifting with Parallel Aggregations
@@ -101,6 +123,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               AND "createdAt" >= ${dateFrom}
               AND "createdAt" <= ${dateTo}
               ${sdrFilterRaw}
+              ${listFilterRaw}
             GROUP BY date
             ORDER BY date ASC
         `),
@@ -116,6 +139,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               AND "createdAt" >= ${dateFrom}
               AND "createdAt" <= ${dateTo}
               ${sdrFilterRaw}
+              ${listFilterRaw}
             GROUP BY day, hour
         `),
 
@@ -140,6 +164,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               ${sdrFilterAliasA}
               ${missionFilterAliasM}
               ${clientFilterAliasM}
+              ${listFilterAliasA}
             GROUP BY u.id, u."name", u."role"
             ORDER BY calls DESC
         `),
@@ -166,6 +191,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               ${sdrFilterAliasA}
               ${missionFilterAliasM}
               ${clientFilterAliasM}
+              ${listFilterAliasA}
             GROUP BY m.id, m."name", m."isActive", cl."name"
             ORDER BY calls DESC
             LIMIT 10

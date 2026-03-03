@@ -19,6 +19,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const sdrIds = searchParams.getAll('sdrIds[]');
     const missionIds = searchParams.getAll('missionIds[]');
     const clientIds = searchParams.getAll('clientIds[]');
+    const listIds = searchParams.getAll('listIds[]');
     const results = searchParams.getAll('results[]');
 
     const dateTo = to ? new Date(to) : new Date();
@@ -49,6 +50,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 ...(clientIds.length > 0 && { clientId: { in: clientIds } }),
             }
         };
+    }
+
+    if (listIds.length > 0) {
+        where.OR = [
+            { company: { listId: { in: listIds } } },
+            { contact: { company: { listId: { in: listIds } } } },
+        ];
     }
 
     if (results.length > 0) {

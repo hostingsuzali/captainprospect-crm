@@ -4,8 +4,7 @@ import {
     withErrorHandler,
     AuthError,
 } from "@/lib/api-utils";
-import puppeteer from "puppeteer";
-import chromium from "@sparticuz/chromium";
+import { getChromiumExecutablePath } from "@/lib/pdf-chromium";
 import { getReportHtml } from "./report-template";
 import { getReportData, toReportData } from "../get-report-data";
 
@@ -74,11 +73,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         missions: reportData.missions.map(({ id: _id, ...m }) => m),
     };
     const html = getReportHtml(templateData);
-    const isVercel = process.env.VERCEL === "1";
-    const browser = await puppeteer.launch({
+    const isVercel = !!process.env.VERCEL;
+    const puppeteer = isVercel ? await import("puppeteer-core") : await import("puppeteer");
+    const chromium = isVercel ? (await import("@sparticuz/chromium-min")).default : null;
+    const browser = await puppeteer.default.launch({
         headless: true,
-        args: isVercel ? chromium.args : ["--no-sandbox", "--disable-setuid-sandbox"],
-        executablePath: isVercel ? await chromium.executablePath() : undefined,
+        args: isVercel ? chromium!.args : ["--no-sandbox", "--disable-setuid-sandbox"],
+        executablePath: isVercel ? await getChromiumExecutablePath() : undefined,
     });
     try {
         const page = await browser.newPage();
