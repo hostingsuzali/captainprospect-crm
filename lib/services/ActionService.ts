@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
 import { parseDateFromNote } from '@/lib/utils/parseDateFromNote';
 import { createClientPortalNotification } from '@/lib/notifications';
 import type { EffectiveStatusDefinition } from './StatusConfigService';
@@ -41,105 +40,80 @@ export interface ActionWithRelations {
 
 export class ActionService {
     // ============================================
-    // CREATE ACTION WITH TRANSACTION
+    // CREATE ACTION (no $transaction - avoids P2028 with Supabase pooler transaction mode)
     // ============================================
     async createAction(
         input: CreateActionInput,
         statusDef?: EffectiveStatusDefinition | null
     ): Promise<ActionWithRelations> {
         const triggersCallback = statusDef?.triggersCallback ?? (input.result === 'CALLBACK_REQUESTED');
-        const triggersOpportunity = statusDef?.triggersOpportunity ?? 
+        const triggersOpportunity = statusDef?.triggersOpportunity ??
             (input.result === 'MEETING_BOOKED' || input.result === 'INTERESTED');
 
-        // Use transaction to ensure atomicity
-        return await prisma.$transaction(async (tx) => {
-            // Validate that either contactId or companyId is provided
-            if (!input.contactId && !input.companyId) {
-                throw new Error('Either contactId or companyId must be provided');
+        // Validate that either contactId or companyId is provided
+        if (!input.contactId && !input.companyId) {
+            throw new Error('Either contactId or companyId must be provided');
+        }
+
+        // Callback date: from calendar (callbackDate) or parsed from note
+        let callbackDate: Date | null = null;
+        let noteToStore = input.note;
+        if (triggersCallback) {
+            if (input.callbackDate) {
+                callbackDate = input.callbackDate;
+                const scheduledText = `Rappel programmé: ${callbackDate.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`;
+                noteToStore = (input.note?.trim() ? `${input.note.trim()} (${scheduledText})` : scheduledText).slice(0, 500);
+            } else if (input.note) {
+                callbackDate = parseDateFromNote(input.note);
             }
+        }
 
-            // Callback date: from calendar (callbackDate) or parsed from note
-            let callbackDate: Date | null = null;
-            let noteToStore = input.note;
-            if (triggersCallback) {
-                if (input.callbackDate) {
-                    callbackDate = input.callbackDate;
-                    // Keep note in sync with calendar so note and callbackDate don't diverge
-                    const scheduledText = `Rappel programmé: ${callbackDate.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`;
-                    noteToStore = (input.note?.trim() ? `${input.note.trim()} (${scheduledText})` : scheduledText).slice(0, 500);
-                } else if (input.note) {
-                    callbackDate = parseDateFromNote(input.note);
-                }
-            }
+        // Multiple rappels allowed: everyone can create a second (or further) rappel
+        // even when one is already pending for the same contact/campaign.
 
-            // Duplicate prevention: one pending callback per contact/company per campaign.
-            // "Pending" = callbackDate null or <= now; we only block when such an action exists.
-            if (triggersCallback) {
-                const existingPending = await tx.action.findFirst({
-                    where: {
-                        campaignId: input.campaignId,
-                        result: input.result as any,
-                        ...(input.contactId ? { contactId: input.contactId } : { companyId: input.companyId! }),
-                        OR: [{ callbackDate: null }, { callbackDate: { lte: new Date() } }],
-                    },
-                    orderBy: { createdAt: 'desc' },
-                    select: { id: true, createdAt: true },
-                });
-                if (existingPending) {
-                    // Only block if no newer action supersedes it (same contact/company, later createdAt)
-                    const newerAction = await tx.action.findFirst({
-                        where: {
-                            ...(input.contactId ? { contactId: input.contactId } : { companyId: input.companyId! }),
-                            createdAt: { gt: existingPending.createdAt },
-                        },
-                        select: { id: true },
-                    });
-                    if (!newerAction) {
-                        throw new Error('DUPLICATE_CALLBACK');
-                    }
-                }
-            }
+        // 1. Create the action
+        const action = await prisma.action.create({
+            data: {
+                contactId: input.contactId || null,
+                companyId: input.companyId || null,
+                sdrId: input.sdrId,
+                campaignId: input.campaignId,
+                channel: input.channel,
+                result: input.result,
+                note: noteToStore,
+                callbackDate: callbackDate,
+                duration: input.duration,
+            },
+            include: {
+                contact: input.contactId ? { include: { company: true } } : undefined,
+                company: input.companyId ? true : undefined,
+            },
+        });
 
-            // 1. Create the action
-            const action = await tx.action.create({
-                data: {
-                    contactId: input.contactId || null,
-                    companyId: input.companyId || null,
-                    sdrId: input.sdrId,
-                    campaignId: input.campaignId,
-                    channel: input.channel,
-                    result: input.result,
-                    note: noteToStore,
-                    callbackDate: callbackDate,
-                    duration: input.duration,
-                },
-                include: {
-                    contact: input.contactId ? {
-                        include: { company: true },
-                    } : undefined,
-                    company: input.companyId ? true : undefined,
-                },
-            });
-
-            // 2. Auto-create opportunity for positive outcomes (only for contacts)
-            if (input.contactId && triggersOpportunity && input.note?.trim()) {
-                const existing = await tx.opportunity.findFirst({
+        // 2. Auto-create opportunity for positive outcomes (best-effort)
+        if (input.contactId && triggersOpportunity && input.note?.trim()) {
+            try {
+                const existing = await prisma.opportunity.findFirst({
                     where: { contactId: input.contactId },
                 });
                 if (!existing) {
-                    await this.createOpportunityFromAction(tx, action, input.note!);
+                    await this.createOpportunityFromAction(prisma, action, input.note!);
                 }
+            } catch (err) {
+                console.warn('ActionService: failed to create opportunity', err);
             }
+        }
 
-            // 3. Update contact completeness if enriched (only for contacts)
-            if (input.contactId && input.note && input.result === 'BAD_CONTACT') {
-                await this.handleBadContact(tx, input.contactId, input.note);
+        // 3. Update contact completeness if enriched (best-effort)
+        if (input.contactId && input.note && input.result === 'BAD_CONTACT') {
+            try {
+                await this.handleBadContact(prisma, input.contactId, input.note);
+            } catch (err) {
+                console.warn('ActionService: failed to handle bad contact', err);
             }
+        }
 
-            return action;
-        });
-
-        // 4. Notify client portal (outside transaction)
+        // 4. Notify client portal
         if (action.result === 'MEETING_BOOKED' || action.result === 'INTERESTED') {
             const campaign = await prisma.campaign.findUnique({
                 where: { id: action.campaignId },
@@ -175,18 +149,17 @@ export class ActionService {
     }
 
     private async createOpportunityFromAction(
-        tx: Prisma.TransactionClient,
-        action: any,
+        db: Pick<typeof prisma, 'opportunity' | 'action'>,
+        action: { contactId: string | null; contact: { companyId: string } },
         note: string
     ): Promise<void> {
-        // Check if opportunity already exists
-        const existing = await tx.opportunity.findFirst({
+        if (!action.contactId) return;
+        const existing = await db.opportunity.findFirst({
             where: { contactId: action.contactId },
         });
+        if (existing) return;
 
-        if (existing) return; // Don't create duplicate
-
-        await tx.opportunity.create({
+        await db.opportunity.create({
             data: {
                 contactId: action.contactId,
                 companyId: action.contact.companyId,
@@ -200,18 +173,17 @@ export class ActionService {
     // BAD CONTACT HANDLING
     // ============================================
     private async handleBadContact(
-        tx: Prisma.TransactionClient,
+        db: Pick<typeof prisma, 'contact'>,
         contactId: string,
         note: string
     ): Promise<void> {
-        // If note indicates contact left company, mark as INCOMPLETE
         const leftCompanyKeywords = ['quitté', 'parti', 'left', 'no longer'];
         const shouldMarkIncomplete = leftCompanyKeywords.some(keyword =>
             note.toLowerCase().includes(keyword)
         );
 
         if (shouldMarkIncomplete) {
-            await tx.contact.update({
+            await db.contact.update({
                 where: { id: contactId },
                 data: { status: 'INCOMPLETE' },
             });

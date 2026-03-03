@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { prisma, prismaDirect } from "@/lib/prisma";
 
 // ============================================
 // CSV IMPORT API (streaming + batched for performance)
@@ -210,7 +210,8 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const list = await prisma.list.create({
+        // Use prismaDirect (session mode) to avoid P2003 FK violations with pooler transaction mode
+        const list = await prismaDirect.list.create({
             data: {
                 name: listName,
                 type: "CLIENT",
@@ -259,6 +260,7 @@ export async function POST(req: NextRequest) {
                             const rows = parseBatch(lineBuffer, headers, delimiter, globalRowIndex);
                             globalRowIndex += rows.length;
                             const { companies: batchCompanies, contacts: batchContacts, errs } = await processBatch(
+                                prismaDirect,
                                 list.id,
                                 rows,
                                 mappings,
@@ -280,6 +282,7 @@ export async function POST(req: NextRequest) {
                         const rows = parseBatch(lineBuffer, headers, delimiter, globalRowIndex);
                         globalRowIndex += rows.length;
                         const { companies: batchCompanies, contacts: batchContacts, errs } = await processBatch(
+                            prismaDirect,
                             list.id,
                             rows,
                             mappings,
@@ -326,6 +329,7 @@ export async function POST(req: NextRequest) {
 
 /** Process one batch of rows with batched DB queries (same business rules as before). */
 async function processBatch(
+    db: typeof prisma,
     listId: string,
     rows: { rowIndex: number; row: Record<string, string> }[],
     mappings: { csvColumn: string; targetField: string }[],
@@ -373,7 +377,7 @@ async function processBatch(
     const uniqueNames = [...new Set(validRows.map((r) => r.companyName))];
 
     // 2) Preload existing companies for this list and batch names
-    const existingCompanies = await prisma.company.findMany({
+    const existingCompanies = await db.company.findMany({
         where: { listId, name: { in: uniqueNames } },
         select: { id: true, name: true },
     });
@@ -417,7 +421,7 @@ async function processBatch(
             if (Object.keys(companyCustomData).length > 0) {
                 createData.customData = companyCustomData;
             }
-            const created = await prisma.company.create({
+            const created = await db.company.create({
                 data: createData as Parameters<typeof prisma.company.create>[0]["data"],
                 select: { id: true, name: true },
             });
@@ -428,7 +432,7 @@ async function processBatch(
 
     // 4) Contacts: preload existing for all companies in this batch (same dedup as original: email OR firstName+lastName)
     const companyIds = [...companyMap.values()].map((c) => c.id);
-    const existingContacts = await prisma.contact.findMany({
+    const existingContacts = await db.contact.findMany({
         where: { companyId: { in: companyIds } },
         select: { companyId: true, email: true, firstName: true, lastName: true },
     });
@@ -480,7 +484,7 @@ async function processBatch(
     }
 
     if (contactsToCreate.length > 0) {
-        await prisma.contact.createMany({
+        await db.contact.createMany({
             data: contactsToCreate.map((c) => ({
                 companyId: c.companyId,
                 firstName: c.firstName,
