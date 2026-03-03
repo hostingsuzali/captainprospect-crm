@@ -75,14 +75,15 @@ export class ActionService {
             }
 
             // Duplicate prevention: one pending callback per contact/company per campaign.
-            // "Pending" = callbackDate null or <= now; we only block when such an action exists.
+            // "Pending" = callback not yet due: callbackDate null (open-ended) or > now (scheduled in future).
+            // When callbackDate <= now (rappel already happened / time has passed), allow anyone to place a new rappel.
             if (triggersCallback) {
                 const existingPending = await tx.action.findFirst({
                     where: {
                         campaignId: input.campaignId,
                         result: input.result as any,
                         ...(input.contactId ? { contactId: input.contactId } : { companyId: input.companyId! }),
-                        OR: [{ callbackDate: null }, { callbackDate: { lte: new Date() } }],
+                        OR: [{ callbackDate: null }, { callbackDate: { gt: new Date() } }],
                     },
                     orderBy: { createdAt: 'desc' },
                     select: { id: true, createdAt: true },

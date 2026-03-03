@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
     Calendar, Download, RefreshCw, Target, User, Briefcase, TrendingUp, X, Phone, Clock, Search,
-    Activity, BrainCircuit, Zap, Flame, Trophy, Play, CheckCircle2, LayoutDashboard, Sparkles
+    Activity, BrainCircuit, Zap, Flame, Trophy, Play, CheckCircle2, LayoutDashboard, Sparkles, FileText, Loader2
 } from "lucide-react";
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ACTION_RESULT_LABELS } from "@/lib/types";
 import { DataTable } from "@/components/ui/DataTable";
+import { Modal } from "@/components/ui";
 
 const SDR_COLORS: Record<string, string> = {
     'Mathieu Deville': '#7C5CFC', // updated to violet
@@ -44,6 +45,28 @@ export default function AnalyticsPage() {
 
     // UI State
     const [aiRefreshCount, setAiRefreshCount] = useState(0);
+
+    // Status labels from mission config (or global fallback)
+    const defaultColors: Record<string, string> = {
+        NO_RESPONSE: "#60a5fa", BAD_CONTACT: "#a78bfa", INTERESTED: "#f59e0b",
+        CALLBACK_REQUESTED: "#f59e0b", MEETING_BOOKED: "#10b981",
+        MEETING_CANCELLED: "#94a3b8", DISQUALIFIED: "#ef4444",
+        ENVOIE_MAIL: "#94a3b8", NOT_INTERESTED: "#94a3b8",
+    };
+    const [statusLabelMap, setStatusLabelMap] = useState<Record<string, string>>(ACTION_RESULT_LABELS);
+    const [statusColorMap, setStatusColorMap] = useState<Record<string, string>>(defaultColors);
+
+    // Report modal
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportType, setReportType] = useState<'daily' | 'weekly' | 'custom'>('weekly');
+    const [reportDate, setReportDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [reportDateFrom, setReportDateFrom] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 6);
+        return d.toISOString().split('T')[0];
+    });
+    const [reportDateTo, setReportDateTo] = useState(() => new Date().toISOString().split('T')[0]);
+    const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
     // Fetch Reference Data
     useEffect(() => {
@@ -119,6 +142,97 @@ export default function AnalyticsPage() {
         fetchActions();
     }, [dateRange, selectedSdrs, selectedMissions, selectedClients]);
 
+    // Fetch mission-specific status labels when a single mission is selected
+    useEffect(() => {
+        const missionId = selectedMissions.length === 1 ? selectedMissions[0] : undefined;
+        if (!missionId) {
+            setStatusLabelMap(ACTION_RESULT_LABELS);
+            setStatusColorMap(defaultColors);
+            return;
+        }
+        fetch(`/api/config/action-statuses?missionId=${missionId}`)
+            .then((res) => res.json())
+            .then((json) => {
+                if (json.success && json.data?.statuses) {
+                    const labels: Record<string, string> = { ...ACTION_RESULT_LABELS };
+                    const colors: Record<string, string> = { ...defaultColors };
+                    for (const s of json.data.statuses) {
+                        labels[s.code] = s.label || s.code;
+                        colors[s.code] = s.color || defaultColors[s.code] || "#94a3b8";
+                    }
+                    setStatusLabelMap(labels);
+                    setStatusColorMap(colors);
+                } else {
+                    setStatusLabelMap(ACTION_RESULT_LABELS);
+                }
+            })
+            .catch(() => setStatusLabelMap(ACTION_RESULT_LABELS));
+    }, [selectedMissions]);
+
+    // Auto-select date range when a single mission is selected
+    useEffect(() => {
+        if (selectedMissions.length !== 1) return;
+        const missionId = selectedMissions[0];
+        fetch(`/api/analytics/mission-date-range?missionId=${encodeURIComponent(missionId)}`)
+            .then((res) => res.json())
+            .then((json) => {
+                if (json.success && json.data?.from && json.data?.to) {
+                    setDateRange({ from: json.data.from, to: json.data.to });
+                }
+            })
+            .catch(() => {});
+    }, [selectedMissions]);
+
+    // Generate report (PDF)
+    const handleGenerateReport = useCallback(async () => {
+        let from: string;
+        let to: string;
+        if (reportType === "daily") {
+            from = reportDate;
+            to = reportDate;
+        } else if (reportType === "weekly") {
+            const d = new Date(reportDate);
+            const day = d.getDay();
+            const monday = new Date(d);
+            monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+            from = monday.toISOString().split("T")[0];
+            to = sunday.toISOString().split("T")[0];
+        } else {
+            from = reportDateFrom;
+            to = reportDateTo;
+        }
+        if (!from || !to) return;
+        setIsGeneratingReport(true);
+        try {
+            const params = new URLSearchParams();
+            params.set("from", from);
+            params.set("to", to);
+            selectedMissions.forEach((id) => params.append("missionIds[]", id));
+            selectedSdrs.forEach((id) => params.append("sdrIds[]", id));
+            selectedClients.forEach((id) => params.append("clientIds[]", id));
+            const res = await fetch(`/api/analytics/report/pdf?${params.toString()}`);
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error((j as { error?: string }).error || "Erreur lors de la génération");
+            }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `rapport-analytics-${from}-${to}.pdf`;
+            a.click();
+            URL.revokeObjectURL(url);
+            setShowReportModal(false);
+        } catch (err) {
+            console.error("Report generation failed:", err);
+            alert(err instanceof Error ? err.message : "Erreur lors de la génération du rapport");
+        } finally {
+            setIsGeneratingReport(false);
+        }
+    }, [reportType, reportDate, reportDateFrom, reportDateTo, selectedMissions, selectedSdrs, selectedClients]);
+
     // Data Formatting
     const dailyData = useMemo(() => {
         if (!stats?.charts?.daily) return [];
@@ -155,6 +269,22 @@ export default function AnalyticsPage() {
         return actions;
     }, [actions, journalFilter]);
 
+    // Build dynamic status items from statusBreakdown using mission-specific labels (must be before early return)
+    const statusItems = useMemo(() => {
+        const breakdown = stats?.statusBreakdown || {};
+        const items: { code: string; count: number; label: string; color: string }[] = [];
+        for (const [code, count] of Object.entries(breakdown)) {
+            if (!code || count === 0) continue;
+            items.push({
+                code,
+                count: count as number,
+                label: statusLabelMap[code] || code,
+                color: statusColorMap[code] || "#94a3b8",
+            });
+        }
+        return items.sort((a, b) => b.count - a.count);
+    }, [stats?.statusBreakdown, statusLabelMap, statusColorMap]);
+
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center py-40" style={{ background: "#F4F6FA", minHeight: "100vh" }}>
@@ -173,7 +303,6 @@ export default function AnalyticsPage() {
     const cbackCount = stats?.statusBreakdown?.['CALLBACK_REQUESTED'] || 0;
     const intCount = stats?.statusBreakdown?.['INTERESTED'] || 0;
     const totalCbacks = cbackCount + intCount;
-    const stdCount = totalCalls - noRespCount - disqCount - totalCbacks - (kpis?.meetings || 0);
 
     // Heatmap Config
     const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -213,8 +342,11 @@ export default function AnalyticsPage() {
                         />
                     </div>
 
-                    <button className="flex items-center gap-2 px-3.5 py-2 text-[12px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:border-violet-300 hover:shadow-sm transition-all shadow-sm">
-                        <Download className="w-3.5 h-3.5 text-slate-400" /> Exporter
+                    <button
+                        onClick={() => setShowReportModal(true)}
+                        className="flex items-center gap-2 px-3.5 py-2 text-[12px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:border-violet-300 hover:shadow-sm transition-all shadow-sm"
+                    >
+                        <FileText className="w-3.5 h-3.5 text-slate-400" /> Générer un rapport
                     </button>
                     <button onClick={fetchStats} className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-violet-600 hover:border-violet-300 hover:shadow-sm transition-all shadow-sm">
                         <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
@@ -227,12 +359,18 @@ export default function AnalyticsPage() {
                 <div className="flex-1 min-w-[200px] flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 transition-all hover:border-violet-300 shadow-sm">
                     <div className="flex-1">
                         <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Mission</span>
-                        <select className="w-full bg-transparent border-none text-[13px] font-semibold text-slate-700 outline-none p-0 cursor-pointer" onChange={e => {
-                            if (e.target.value === "all") setSelectedMissions([]);
-                            else if (!selectedMissions.includes(e.target.value)) setSelectedMissions([e.target.value]);
-                        }}>
+                        <select
+                            className="w-full bg-transparent border-none text-[13px] font-semibold text-slate-700 outline-none p-0 cursor-pointer"
+                            value={selectedMissions[0] || "all"}
+                            onChange={(e) => {
+                                if (e.target.value === "all") setSelectedMissions([]);
+                                else setSelectedMissions([e.target.value]);
+                            }}
+                        >
                             <option value="all">Toutes les missions</option>
-                            {(missions || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                            {(missions || []).map((m) => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
                         </select>
                     </div>
                     <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0"><Target className="w-4 h-4 text-indigo-500" /></div>
@@ -485,32 +623,35 @@ export default function AnalyticsPage() {
                         <div className="w-28 h-28 relative shrink-0">
                             <svg viewBox="0 0 52 52" className="w-full h-full -rotate-90 drop-shadow-sm">
                                 <circle cx="26" cy="26" r="20" fill="none" stroke="#f1f5f9" strokeWidth="6" />
-                                <circle cx="26" cy="26" r="20" fill="none" stroke="#60a5fa" strokeWidth="6" strokeDasharray={`${(noRespCount / totalCalls) * 125} 125`} strokeLinecap="round" />
-                                <circle cx="26" cy="26" r="20" fill="none" stroke="#ef4444" strokeWidth="6" strokeDasharray={`${(disqCount / totalCalls) * 125} 125`} strokeDashoffset={-((noRespCount / totalCalls) * 125)} strokeLinecap="round" />
-                                <circle cx="26" cy="26" r="20" fill="none" stroke="#f59e0b" strokeWidth="6" strokeDasharray={`${(totalCbacks / totalCalls) * 125} 125`} strokeDashoffset={-(((noRespCount + disqCount) / totalCalls) * 125)} strokeLinecap="round" />
-                                <circle cx="26" cy="26" r="20" fill="none" stroke="#7C5CFC" strokeWidth="6" strokeDasharray={`${(stdCount / totalCalls) * 125} 125`} strokeDashoffset={-(((noRespCount + disqCount + totalCbacks) / totalCalls) * 125)} strokeLinecap="round" />
+                                {(() => {
+                                    let offset = 0;
+                                    return statusItems.map((item) => {
+                                        const len = (item.count / totalCalls) * 125;
+                                        const dashOffset = -offset;
+                                        offset += len;
+                                        return (
+                                            <circle key={item.code} cx="26" cy="26" r="20" fill="none" stroke={item.color} strokeWidth="6" strokeDasharray={`${len} 125`} strokeDashoffset={dashOffset} strokeLinecap="round" />
+                                        );
+                                    });
+                                })()}
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                                 <span className="text-[17px] font-black text-slate-800 mt-1">{totalCalls}</span>
                             </div>
                         </div>
-                        <div className="flex-1 flex flex-col gap-3">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-[11.5px] font-bold text-slate-600"><div className="w-2.5 h-2.5 rounded-sm bg-blue-400" />Non-réponse</div>
-                                <div className="flex items-center gap-1.5"><span className="text-[11.5px] font-black text-slate-800">{noRespCount}</span><span className="text-[10px] font-bold text-slate-400 w-7 text-right">{Math.round((noRespCount / totalCalls) * 100)}%</span></div>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-[11.5px] font-bold text-slate-600"><div className="w-2.5 h-2.5 rounded-sm bg-red-500" />Disqualifié</div>
-                                <div className="flex items-center gap-1.5"><span className="text-[11.5px] font-black text-slate-800">{disqCount}</span><span className="text-[10px] font-bold text-slate-400 w-7 text-right">{Math.round((disqCount / totalCalls) * 100)}%</span></div>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-[11.5px] font-bold text-slate-600"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500" />Rappels</div>
-                                <div className="flex items-center gap-1.5"><span className="text-[11.5px] font-black text-slate-800">{totalCbacks}</span><span className="text-[10px] font-bold text-slate-400 w-7 text-right">{Math.round((totalCbacks / totalCalls) * 100)}%</span></div>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-[11.5px] font-bold text-slate-600"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500" />Standard</div>
-                                <div className="flex items-center gap-1.5"><span className="text-[11.5px] font-black text-slate-800">{stdCount}</span><span className="text-[10px] font-bold text-slate-400 w-7 text-right">{Math.round((stdCount / totalCalls) * 100)}%</span></div>
-                            </div>
+                        <div className="flex-1 flex flex-col gap-3 max-h-[140px] overflow-y-auto">
+                            {statusItems.map((item) => (
+                                <div key={item.code} className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-[11.5px] font-bold text-slate-600">
+                                        <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: item.color }} />
+                                        <span className="truncate">{item.label}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className="text-[11.5px] font-black text-slate-800">{item.count}</span>
+                                        <span className="text-[10px] font-bold text-slate-400 w-7 text-right">{Math.round((item.count / totalCalls) * 100)}%</span>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -638,6 +779,119 @@ export default function AnalyticsPage() {
                     />
                 </div>
             </div>
+
+            {/* Report Modal */}
+            <Modal
+                isOpen={showReportModal}
+                onClose={() => !isGeneratingReport && setShowReportModal(false)}
+                title="Générer un rapport PDF"
+                description="Choisissez la période et le type de rapport. Le rapport inclura les KPIs et une analyse IA basée sur les notes."
+                size="md"
+            >
+                <div className="space-y-5">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Type de rapport</label>
+                        <div className="flex gap-2">
+                            {(["daily", "weekly", "custom"] as const).map((t) => (
+                                <button
+                                    key={t}
+                                    type="button"
+                                    onClick={() => setReportType(t)}
+                                    className={cn(
+                                        "flex-1 px-3 py-2.5 rounded-xl text-[13px] font-semibold border transition-all",
+                                        reportType === t
+                                            ? "bg-violet-50 border-violet-300 text-violet-700"
+                                            : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                                    )}
+                                >
+                                    {t === "daily" ? "Quotidien" : t === "weekly" ? "Hebdomadaire" : "Personnalisé"}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {reportType === "daily" && (
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Date</label>
+                            <input
+                                type="date"
+                                value={reportDate}
+                                onChange={(e) => setReportDate(e.target.value)}
+                                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                            />
+                        </div>
+                    )}
+
+                    {reportType === "weekly" && (
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Date (dans la semaine)</label>
+                            <input
+                                type="date"
+                                value={reportDate}
+                                onChange={(e) => setReportDate(e.target.value)}
+                                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                            />
+                            <p className="text-[11px] text-slate-400 mt-1">La semaine (lun-dim) contenant cette date sera utilisée.</p>
+                        </div>
+                    )}
+
+                    {reportType === "custom" && (
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Du</label>
+                                <input
+                                    type="date"
+                                    value={reportDateFrom}
+                                    onChange={(e) => setReportDateFrom(e.target.value)}
+                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Au</label>
+                                <input
+                                    type="date"
+                                    value={reportDateTo}
+                                    onChange={(e) => setReportDateTo(e.target.value)}
+                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <p className="text-[12px] text-slate-500">
+                        Mission(s) et filtres actuels : {selectedMissions.length ? selectedMissions.length + " mission(s)" : "Toutes"} · SDR : {selectedSdrs.length || "Tous"}
+                    </p>
+
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setShowReportModal(false)}
+                            disabled={isGeneratingReport}
+                            className="px-4 py-2.5 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                        >
+                            Annuler
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleGenerateReport}
+                            disabled={isGeneratingReport}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-[13px] font-semibold rounded-xl hover:bg-violet-700 disabled:opacity-60 transition-colors"
+                        >
+                            {isGeneratingReport ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Génération…
+                                </>
+                            ) : (
+                                <>
+                                    <FileText className="w-4 h-4" />
+                                    Générer le rapport
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
 
         </div>
     );
