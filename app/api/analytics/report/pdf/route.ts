@@ -4,6 +4,7 @@ import {
     withErrorHandler,
 } from "@/lib/api-utils";
 import puppeteer from "puppeteer";
+import chromium from "@sparticuz/chromium";
 import { getAnalyticsReportData } from "../get-report-data";
 import { getAnalyticsReportHtml } from "../report-template";
 
@@ -115,9 +116,11 @@ ${notesText ? `\nNotes d'appel (échantillon) :\n${notesText}` : ""}
     };
     const html = getAnalyticsReportHtml(templateData);
 
+    const isVercel = process.env.VERCEL === "1";
     const browser = await puppeteer.launch({
         headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        args: isVercel ? chromium.args : ["--no-sandbox", "--disable-setuid-sandbox"],
+        executablePath: isVercel ? await chromium.executablePath() : undefined,
     });
     try {
         const page = await browser.newPage();

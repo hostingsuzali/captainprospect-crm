@@ -5,6 +5,7 @@ import {
     AuthError,
 } from "@/lib/api-utils";
 import puppeteer from "puppeteer";
+import chromium from "@sparticuz/chromium";
 import { getReportHtml } from "./report-template";
 import { getReportData, toReportData } from "../get-report-data";
 
@@ -73,9 +74,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         missions: reportData.missions.map(({ id: _id, ...m }) => m),
     };
     const html = getReportHtml(templateData);
+    const isVercel = process.env.VERCEL === "1";
     const browser = await puppeteer.launch({
         headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        args: isVercel ? chromium.args : ["--no-sandbox", "--disable-setuid-sandbox"],
+        executablePath: isVercel ? await chromium.executablePath() : undefined,
     });
     try {
         const page = await browser.newPage();
