@@ -429,6 +429,12 @@ export const CLIENT_NAV: NavSection[] = [
         permission: "pages.dashboard",
       },
       {
+        href: "/client/portal/database",
+        icon: Database,
+        label: "Base de donnees",
+        permission: "pages.dashboard",
+      },
+      {
         href: "/client/portal/files",
         icon: FileText,
         label: "Fichiers",

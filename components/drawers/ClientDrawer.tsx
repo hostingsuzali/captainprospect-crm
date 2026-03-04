@@ -38,6 +38,8 @@ interface Client {
         missions: number;
         users: number;
     };
+    portalShowCallHistory?: boolean;
+    portalShowDatabase?: boolean;
 }
 
 interface ClientDrawerProps {
@@ -71,6 +73,8 @@ export function ClientDrawer({
         email: "",
         phone: "",
         bookingUrl: "",
+        portalShowCallHistory: false,
+        portalShowDatabase: false,
     });
 
     // Reset form when client changes
@@ -82,6 +86,8 @@ export function ClientDrawer({
                 email: client.email || "",
                 phone: client.phone || "",
                 bookingUrl: (client as any).bookingUrl || "",
+                portalShowCallHistory: (client as any).portalShowCallHistory ?? false,
+                portalShowDatabase: (client as any).portalShowDatabase ?? false,
             });
             setIsEditing(false);
         }
@@ -314,6 +320,44 @@ export function ClientDrawer({
                                 <p className="text-xs text-slate-500 mt-1">
                                     Les SDRs pourront utiliser cette URL pour planifier des rendez-vous lors des appels
                                 </p>
+                            </div>
+
+                            <div className="mt-4 border-t border-slate-200 pt-4 space-y-3">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                    Portail client
+                                </p>
+                                <label className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-slate-700">
+                                        Afficher l&apos;historique d&apos;appels
+                                    </span>
+                                    <input
+                                        type="checkbox"
+                                        className="h-4 w-4"
+                                        checked={formData.portalShowCallHistory}
+                                        onChange={(e) =>
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                portalShowCallHistory: e.target.checked,
+                                            }))
+                                        }
+                                    />
+                                </label>
+                                <label className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-slate-700">
+                                        Afficher la base de données (contacts / entreprises)
+                                    </span>
+                                    <input
+                                        type="checkbox"
+                                        className="h-4 w-4"
+                                        checked={formData.portalShowDatabase}
+                                        onChange={(e) =>
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                portalShowDatabase: e.target.checked,
+                                            }))
+                                        }
+                                    />
+                                </label>
                             </div>
                         </div>
                     ) : (

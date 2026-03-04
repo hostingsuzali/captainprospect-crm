@@ -102,7 +102,15 @@ export function ContactDrawer({
     });
 
     const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
-    const [actions, setActions] = useState<Array<{ id: string; result: string; note: string | null; createdAt: string; campaign?: { name: string }; sdr?: { id: string; name: string } }>>([]);
+    const [actions, setActions] = useState<Array<{
+        id: string;
+        result: string;
+        note: string | null;
+        createdAt: string;
+        callbackDate?: string | null;
+        campaign?: { name: string };
+        sdr?: { id: string; name: string };
+    }>>([]);
     const [actionsLoading, setActionsLoading] = useState(false);
     const lastContactIdRef = useRef<string | null>(null);
     const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; mission?: { channel: string } }>>([]);
@@ -118,6 +126,12 @@ export function ContactDrawer({
     const [showQuickEmailModal, setShowQuickEmailModal] = useState(false);
     const [missionName, setMissionName] = useState<string>("");
     const [statusConfig, setStatusConfig] = useState<{ statuses: Array<{ code: string; label: string; requiresNote: boolean }> } | null>(null);
+
+    // Manager controls for booking / callback dates
+    const [managerMeetingResult, setManagerMeetingResult] = useState<'MEETING_BOOKED' | 'MEETING_CANCELLED'>('MEETING_BOOKED');
+    const [managerMeetingDate, setManagerMeetingDate] = useState('');
+    const [managerCallbackDate, setManagerCallbackDate] = useState('');
+    const [managerSaving, setManagerSaving] = useState(false);
 
     const effectiveMissionId = contact?.missionId ?? resolvedMissionId ?? undefined;
 
@@ -228,16 +242,23 @@ export function ContactDrawer({
             .then((json) => {
                 if (json.success && Array.isArray(json.data)) {
                     setActions(
-                        (json.data as Array<{ id: string; result: string; note: string | null; createdAt: string; campaign?: { name: string }; sdr?: { id: string; name: string } }>).map(
-                            (a) => ({
-                                id: a.id,
-                                result: a.result,
-                                note: a.note ?? null,
-                                createdAt: a.createdAt,
-                                campaign: a.campaign,
-                                sdr: a.sdr,
-                            })
-                        )
+                        (json.data as Array<{
+                            id: string;
+                            result: string;
+                            note: string | null;
+                            createdAt: string;
+                            callbackDate?: string | null;
+                            campaign?: { name: string };
+                            sdr?: { id: string; name: string };
+                        }>).map((a) => ({
+                            id: a.id,
+                            result: a.result,
+                            note: a.note ?? null,
+                            createdAt: a.createdAt,
+                            callbackDate: a.callbackDate ?? null,
+                            campaign: a.campaign,
+                            sdr: a.sdr,
+                        }))
                     );
                 } else {
                     setActions([]);
@@ -473,6 +494,118 @@ export function ContactDrawer({
     const contactStatusConfig = isCreating ? null : STATUS_CONFIG[contact!.status];
     const StatusIcon = contactStatusConfig?.icon;
     const fullName = isCreating ? "Nouveau contact" : `${contact!.firstName || ""} ${contact!.lastName || ""}`.trim() || "Sans nom";
+
+    // Latest meeting / callback actions for manager controls
+    const latestMeetingAction = actions.find(
+        (a) => a.result === "MEETING_BOOKED" || a.result === "MEETING_CANCELLED"
+    );
+    const latestCallbackAction = actions.find((a) => a.result === "CALLBACK_REQUESTED");
+
+    const getDateTimeLocalValue = (iso?: string | null) => {
+        if (!iso) return "";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "";
+        return d.toISOString().slice(0, 16);
+    };
+
+    const defaultMeetingDateInput = latestMeetingAction
+        ? getDateTimeLocalValue(latestMeetingAction.callbackDate || latestMeetingAction.createdAt)
+        : "";
+    const defaultCallbackDateInput = latestCallbackAction
+        ? getDateTimeLocalValue(latestCallbackAction.callbackDate || latestCallbackAction.createdAt)
+        : "";
+
+    const effectiveMeetingInput = managerMeetingDate || defaultMeetingDateInput;
+    const effectiveCallbackInput = managerCallbackDate || defaultCallbackDateInput;
+
+    const handleManagerSave = async () => {
+        if (!contact) return;
+        const meetingAction = latestMeetingAction;
+        const callbackAction = latestCallbackAction;
+        if (!meetingAction && !callbackAction) {
+            return;
+        }
+
+        setManagerSaving(true);
+        try {
+            if (meetingAction) {
+                const payload: any = {};
+                const inputValue = effectiveMeetingInput;
+                if (inputValue) {
+                    payload.callbackDate = new Date(inputValue).toISOString();
+                }
+                payload.result = managerMeetingResult || (meetingAction.result as 'MEETING_BOOKED' | 'MEETING_CANCELLED');
+
+                const res = await fetch(`/api/actions/${meetingAction.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                const json = await res.json();
+                if (!json.success) {
+                    showError("Erreur", json.error || "Impossible de mettre à jour le rendez-vous");
+                }
+            } else if (callbackAction) {
+                const payload: any = {};
+                const inputValue = effectiveCallbackInput;
+                if (inputValue) {
+                    payload.callbackDate = new Date(inputValue).toISOString();
+                }
+                const res = await fetch(`/api/actions/${callbackAction.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                const json = await res.json();
+                if (!json.success) {
+                    showError("Erreur", json.error || "Impossible de mettre à jour le rappel");
+                }
+            }
+
+            // Refresh actions after update
+            if (contact.id) {
+                setActionsLoading(true);
+                fetch(`/api/actions?contactId=${contact.id}&limit=20`)
+                    .then((res) => res.json())
+                    .then((json) => {
+                        if (json.success && Array.isArray(json.data)) {
+                            setActions(
+                                (json.data as Array<{
+                                    id: string;
+                                    result: string;
+                                    note: string | null;
+                                    createdAt: string;
+                                    callbackDate?: string | null;
+                                    campaign?: { name: string };
+                                    sdr?: { id: string; name: string };
+                                }>).map((a) => ({
+                                    id: a.id,
+                                    result: a.result,
+                                    note: a.note ?? null,
+                                    createdAt: a.createdAt,
+                                    callbackDate: a.callbackDate ?? null,
+                                    campaign: a.campaign,
+                                    sdr: a.sdr,
+                                }))
+                            );
+                        } else {
+                            setActions([]);
+                        }
+                    })
+                    .catch(() => setActions([]))
+                    .finally(() => setActionsLoading(false));
+            }
+
+            success(
+                "Mise à jour enregistrée",
+                latestMeetingAction ? "Le statut et la date du rendez-vous ont été mis à jour" : "La date de rappel a été mise à jour"
+            );
+        } catch (err) {
+            showError("Erreur", "Impossible de sauvegarder les modifications");
+        } finally {
+            setManagerSaving(false);
+        }
+    };
 
     return (
         <Drawer
@@ -1029,6 +1162,90 @@ export function ContactDrawer({
                                 )}
                             </div>
                         )}
+                    </DrawerSection>
+                )}
+
+                {/* Manager-only: manage booking status & date directly */}
+                {isManager && !isEditing && !isCreating && contact && (latestMeetingAction || latestCallbackAction) && (
+                    <DrawerSection title="Gestion RDV / rappel (Manager)">
+                        {latestMeetingAction ? (
+                            <div className="space-y-3">
+                                <p className="text-xs text-slate-500">
+                                    Ajustez manuellement le statut et la date du rendez-vous pour ce contact.
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-700 mb-1">
+                                            Statut du rendez-vous
+                                        </label>
+                                        <select
+                                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                                            value={managerMeetingResult}
+                                            onChange={(e) =>
+                                                setManagerMeetingResult(
+                                                    e.target.value === "MEETING_CANCELLED"
+                                                        ? "MEETING_CANCELLED"
+                                                        : "MEETING_BOOKED"
+                                                )
+                                            }
+                                        >
+                                            <option value="MEETING_BOOKED">RDV confirmé</option>
+                                            <option value="MEETING_CANCELLED">RDV annulé</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-700 mb-1">
+                                            Date / heure du rendez-vous
+                                        </label>
+                                        <input
+                                            type="datetime-local"
+                                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                                            value={effectiveMeetingInput}
+                                            onChange={(e) => setManagerMeetingDate(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end">
+                                    <Button
+                                        type="button"
+                                        variant="primary"
+                                        onClick={handleManagerSave}
+                                        isLoading={managerSaving}
+                                        disabled={managerSaving || !effectiveMeetingInput}
+                                    >
+                                        Enregistrer les changements
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : latestCallbackAction ? (
+                            <div className="space-y-3">
+                                <p className="text-xs text-slate-500">
+                                    Ajustez la date du rappel pour ce contact.
+                                </p>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                                        Date / heure du rappel
+                                    </label>
+                                    <input
+                                        type="datetime-local"
+                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg max-w-xs"
+                                        value={effectiveCallbackInput}
+                                        onChange={(e) => setManagerCallbackDate(e.target.value)}
+                                    />
+                                </div>
+                                <div className="flex justify-end">
+                                    <Button
+                                        type="button"
+                                        variant="primary"
+                                        onClick={handleManagerSave}
+                                        isLoading={managerSaving}
+                                        disabled={managerSaving || !effectiveCallbackInput}
+                                    >
+                                        Enregistrer la nouvelle date
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : null}
                     </DrawerSection>
                 )}
 

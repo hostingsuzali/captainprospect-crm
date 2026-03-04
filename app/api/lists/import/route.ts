@@ -582,7 +582,7 @@ async function processBatch(
         options.statusMappings &&
         options.statusMappings.length > 0;
 
-    if (shouldCreateActions && options) {
+        if (shouldCreateActions && options) {
         const { actionColumnMapping, statusMappings, channelMappings, sdrId } = options;
 
         // Reload contacts with IDs so we can link actions
@@ -700,9 +700,9 @@ async function processBatch(
                 if (dateColumn) {
                     const rawDate = info.row[dateColumn];
                     if (rawDate && rawDate.trim()) {
-                        const d = new Date(rawDate);
-                        if (!Number.isNaN(d.getTime())) {
-                            createdAt = d;
+                        const parsed = parseCsvDate(rawDate.trim());
+                        if (parsed) {
+                            createdAt = parsed;
                         }
                     }
                 }
@@ -732,4 +732,52 @@ async function processBatch(
     }
 
     return { companies: companiesCreated, contacts: contactsCreated, actions: actionsCreated, errs };
+}
+
+/**
+ * Parse CSV date values coming from customer files.
+ * - Supporte d'abord les formats français usuels: JJ/MM/AAAA, JJ/MM/AA, JJ/MM/AAAA HH:MM.
+ * - Sinon, retombe sur le parser natif (ISO, RFC, etc.).
+ */
+function parseCsvDate(raw: string): Date | undefined {
+    const value = raw.trim();
+    if (!value) return undefined;
+
+    // Format français classique: 31/12/2025 ou 31-12-2025, avec éventuellement une heure " 14:30"
+    const frMatch = value.match(
+        /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})(?:[ T](\d{1,2}):(\d{2}))?$/
+    );
+    if (frMatch) {
+        const day = parseInt(frMatch[1], 10);
+        const month = parseInt(frMatch[2], 10);
+        let year = parseInt(frMatch[3], 10);
+        const hours = frMatch[4] ? parseInt(frMatch[4], 10) : 0;
+        const minutes = frMatch[5] ? parseInt(frMatch[5], 10) : 0;
+
+        if (year < 100) {
+            // 2 chiffres -> bascule simple sur 2000+
+            year = 2000 + year;
+        }
+
+        if (
+            Number.isNaN(day) ||
+            Number.isNaN(month) ||
+            Number.isNaN(year) ||
+            day < 1 ||
+            day > 31 ||
+            month < 1 ||
+            month > 12
+        ) {
+            return undefined;
+        }
+
+        const d = new Date(year, month - 1, day, hours, minutes, 0, 0);
+        if (Number.isNaN(d.getTime())) return undefined;
+        return d;
+    }
+
+    // Fallback: laisser le moteur JS gérer (ISO, US, etc.)
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return undefined;
+    return d;
 }

@@ -41,6 +41,11 @@ interface Mission {
     isActive: boolean;
 }
 
+interface PortalSettings {
+    portalShowCallHistory: boolean;
+    portalShowDatabase: boolean;
+}
+
 const MONTH_NAMES = [
     "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
     "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
@@ -92,6 +97,7 @@ export default function ClientPortal() {
     const [missionName, setMissionName] = useState<string>("");
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
 
     const clientId = (session?.user as { clientId?: string })?.clientId;
     const userName = session?.user?.name?.split(" ")[0] ?? "Client";
@@ -109,16 +115,18 @@ export default function ClientPortal() {
             const startDate = monthStart.toISOString().split("T")[0];
             const endDate = monthEnd.toISOString().split("T")[0];
 
-            const [statsRes, missionsRes, meetingsRes] = await Promise.all([
+            const [statsRes, missionsRes, meetingsRes, settingsRes] = await Promise.all([
                 fetch(`/api/stats?startDate=${startDate}&endDate=${endDate}`),
                 fetch("/api/missions?isActive=true"),
                 clientId ? fetch(`/api/clients/${clientId}/meetings`) : Promise.resolve(null),
+                fetch("/api/client/portal/settings"),
             ]);
 
-            const [statsJson, missionsJson, meetingsJson] = await Promise.all([
+            const [statsJson, missionsJson, meetingsJson, settingsJson] = await Promise.all([
                 statsRes.json(),
                 missionsRes.json(),
                 meetingsRes?.ok ? meetingsRes.json() : Promise.resolve(null),
+                settingsRes.json(),
             ]);
 
             if (statsJson.success) setStats(statsJson.data);
@@ -140,6 +148,9 @@ export default function ClientPortal() {
                     })
                     .slice(0, 5);
                 setUpcomingMeetings(upcoming);
+            }
+            if (settingsJson?.success) {
+                setPortalSettings(settingsJson.data);
             }
         } catch (error) {
             console.error("Failed to fetch data:", error);
@@ -279,6 +290,42 @@ export default function ClientPortal() {
                 </div>
                 <ArrowRight className="w-4 h-4 text-[#A0A3BD] group-hover:text-[#7C5CFC] group-hover:translate-x-0.5 transition-all shrink-0" />
             </Link>
+
+            {/* ── Optional: Call history & Database shortcuts ── */}
+            {(portalSettings?.portalShowCallHistory || portalSettings?.portalShowDatabase) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "120ms" }}>
+                    {portalSettings?.portalShowCallHistory && (
+                        <Link
+                            href="/client/portal/calls"
+                            className="flex items-center gap-4 p-4 rounded-xl border border-[#E8EBF0] bg-white/80 backdrop-blur-sm hover:border-[#7C5CFC]/30 hover:shadow-md hover:shadow-[#7C5CFC]/5 transition-all duration-200 group"
+                        >
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/10 to-indigo-500/10 flex items-center justify-center shrink-0 group-hover:from-violet-500/20 group-hover:to-indigo-500/20 transition-colors">
+                                <PhoneCall className="w-5 h-5 text-[#7C5CFC]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-[#12122A]">Historique des appels</p>
+                                <p className="text-xs text-[#6B7194] mt-0.5">Consultez tous les appels passés par l&apos;équipe.</p>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-[#A0A3BD] group-hover:text-[#7C5CFC] group-hover:translate-x-0.5 transition-all shrink-0" />
+                        </Link>
+                    )}
+                    {portalSettings?.portalShowDatabase && (
+                        <Link
+                            href="/client/portal/database"
+                            className="flex items-center gap-4 p-4 rounded-xl border border-[#E8EBF0] bg-white/80 backdrop-blur-sm hover:border-[#7C5CFC]/30 hover:shadow-md hover:shadow-[#7C5CFC]/5 transition-all duration-200 group"
+                        >
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center shrink-0 group-hover:from-emerald-500/20 group-hover:to-teal-500/20 transition-colors">
+                                <Users className="w-5 h-5 text-emerald-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-[#12122A]">Base de données</p>
+                                <p className="text-xs text-[#6B7194] mt-0.5">Vue des entreprises et contacts suivis par l&apos;équipe.</p>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-[#A0A3BD] group-hover:text-[#7C5CFC] group-hover:translate-x-0.5 transition-all shrink-0" />
+                        </Link>
+                    )}
+                </div>
+            )}
 
             {/* ── Upcoming Meetings ── */}
             <div className="premium-card overflow-hidden" style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "140ms" }}>

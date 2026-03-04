@@ -496,8 +496,12 @@ const getRdvStatus = (m: Meeting): RdvStatus => {
   return new Date(m.callbackDate || m.createdAt) >= new Date() ? "upcoming" : "past";
 };
 
-const getInitials = (m: Meeting) =>
-  ((m.contact.firstName?.[0] ?? "") + (m.contact.lastName?.[0] ?? "")).toUpperCase() || "?";
+const getInitials = (m: Meeting) => {
+  const first = m.contact?.firstName?.[0] ?? "";
+  const last  = m.contact?.lastName?.[0] ?? "";
+  const ini   = (first + last).toUpperCase();
+  return ini || "?";
+};
 
 const AVT = [
   { bg: "#EEEDFB", fg: "#4238D0" }, { bg: "#E8F8EF", fg: "#0A6E3D" },
@@ -563,14 +567,16 @@ const MTY = {
    EXPORT UTILS
 ═══════════════════════════════════════════════════════════════ */
 function genICS(m: Meeting) {
-  const name = [m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ");
+  const nameParts = [m.contact?.firstName, m.contact?.lastName].filter(Boolean) as string[];
+  const name = nameParts.join(" ") || "Contact inconnu";
   const dt = new Date(m.callbackDate || m.createdAt);
   const p  = (n: number) => n.toString().padStart(2,"0");
   const f  = (d: Date)   => `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`;
   const end = new Date(dt.getTime()+30*60000);
+  const companyName = m.contact?.company?.name || "Client";
   const txt = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CaptainProspect//RDV//FR",
     "BEGIN:VEVENT",`DTSTART:${f(dt)}`,`DTEND:${f(end)}`,
-    `SUMMARY:RDV - ${name} (${m.contact.company.name})`,
+    `SUMMARY:RDV - ${name} (${companyName})`,
     `DESCRIPTION:${(m.note||"").replace(/\n/g,"\\n").slice(0,200)}`,
     "END:VEVENT","END:VCALENDAR"].join("\r\n");
   const a = Object.assign(document.createElement("a"),{
@@ -584,12 +590,14 @@ function genCSV(meetings: Meeting[]) {
   const esc = (v: string) => v.includes('"')||v.includes(",")||v.includes("\n")?`"${v.replace(/"/g,'""')}"`:v;
   const rows = meetings.map(m=>{
     const d=new Date(m.callbackDate||m.createdAt), fb=m.meetingFeedback;
+    const c = m.contact;
+    const co = c?.company;
     return [d.toLocaleDateString("fr-FR"),d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
       S[getRdvStatus(m)].label,m.campaign.mission.name,m.campaign.name,
-      m.contact.firstName??"",m.contact.lastName??"",m.contact.title??"",m.contact.email??"",
-      m.contact.phone??"",m.contact.linkedin??"",m.contact.company.name,
-      m.contact.company.industry??"",m.contact.company.country??"",
-      m.contact.company.size??"",m.contact.company.website??"",m.note??"",
+      c?.firstName??"",c?.lastName??"",c?.title??"",c?.email??"",
+      c?.phone??"",c?.linkedin??"",co?.name??"",
+      co?.industry??"",co?.country??"",
+      co?.size??"",co?.website??"",m.note??"",
       fb?(OM[fb.outcome]?.label??fb.outcome):"",
       fb?.recontactRequested??"",fb?.clientNote??"",
     ].map(String).map(esc);
@@ -619,7 +627,7 @@ function Pill({ label, color, bg, border, dot }: {
 }
 
 function Avt({ m, size=38 }: { m:Meeting; size?:number }) {
-  const s = avt(m.contact.id);
+  const s = avt(m.contact?.id || m.id);
   return (
     <div className="cp-avatar" style={{width:size,height:size,background:s.bg,color:s.fg,fontSize:size*0.34}}
       aria-hidden="true">
@@ -752,7 +760,21 @@ export default function ClientPortalMeetingsPage() {
     let list = tab==="all" ? meetings : meetings.filter(m=>getRdvStatus(m)===tab);
     if (q.trim()) {
       const lq = q.toLowerCase();
-      list = list.filter(m=>[m.contact.firstName,m.contact.lastName,m.contact.company.name].join(" ").toLowerCase().includes(lq));
+      list = list.filter(m=>{
+        const c = m.contact;
+        const co = c?.company;
+        const haystack = [
+          c?.firstName,
+          c?.lastName,
+          co?.name,
+          m.campaign?.name,
+          m.campaign?.mission?.name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(lq);
+      });
     }
     return list.sort((a,b)=>{
       const da=new Date(a.callbackDate||a.createdAt).getTime();
@@ -1024,18 +1046,20 @@ function Card({
             <Avt m={m} />
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",flexWrap:"wrap",alignItems:"baseline",gap:"2px 7px"}}>
-                <span style={{fontSize:14.5,fontWeight:700,color:tk.ink}}>{m.contact.firstName} {m.contact.lastName}</span>
-                {m.contact.title && <span style={{fontSize:12,color:tk.ink3}}>{m.contact.title}</span>}
+                <span style={{fontSize:14.5,fontWeight:700,color:tk.ink}}>
+                  {[m.contact?.firstName, m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu"}
+                </span>
+                {m.contact?.title && <span style={{fontSize:12,color:tk.ink3}}>{m.contact.title}</span>}
               </div>
               <div style={{fontSize:12.5,fontWeight:600,color:tk.ink2,marginTop:2,display:"flex",alignItems:"center",gap:5}}>
                 <Building2 style={{width:12,height:12,color:tk.ink4,flexShrink:0}} aria-hidden="true" />
-                {m.contact.company.name}
-                {m.contact.company.industry && <span style={{fontWeight:400,color:tk.ink3}}>· {m.contact.company.industry}</span>}
+                {m.contact?.company?.name || "Entreprise inconnue"}
+                {m.contact?.company?.industry && <span style={{fontWeight:400,color:tk.ink3}}>· {m.contact.company.industry}</span>}
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:"3px 12px",marginTop:6}}>
-                {m.contact.email   && <a href={`mailto:${m.contact.email}`}  className="cp-link" onClick={e=>e.stopPropagation()}><Mail   style={{width:11,height:11}} />{m.contact.email}</a>}
-                {m.contact.phone   && <a href={`tel:${m.contact.phone}`}     className="cp-link" onClick={e=>e.stopPropagation()}><Phone  style={{width:11,height:11}} />{m.contact.phone}</a>}
-                {m.contact.linkedin&& <a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" className="cp-link" onClick={e=>e.stopPropagation()}><Linkedin style={{width:11,height:11}} />LinkedIn</a>}
+                {m.contact?.email   && <a href={`mailto:${m.contact.email}`}  className="cp-link" onClick={e=>e.stopPropagation()}><Mail   style={{width:11,height:11}} />{m.contact.email}</a>}
+                {m.contact?.phone   && <a href={`tel:${m.contact.phone}`}     className="cp-link" onClick={e=>e.stopPropagation()}><Phone  style={{width:11,height:11}} />{m.contact.phone}</a>}
+                {m.contact?.linkedin&& <a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" className="cp-link" onClick={e=>e.stopPropagation()}><Linkedin style={{width:11,height:11}} />LinkedIn</a>}
               </div>
             </div>
           </div>
@@ -1173,10 +1197,11 @@ function DetailModal({ m, onClose, onFeedback, onICS }: {
   const sm = S[st];
   const fb = m.meetingFeedback;
   const up = st==="upcoming";
-  const cn_name = [m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ");
+  const cn_name = [m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
+  const companyName = m.contact?.company?.name || "Entreprise inconnue";
 
   return (
-    <Modal wide title="Fiche du rendez-vous" subtitle={`${cn_name} · ${m.contact.company.name}`} onClose={onClose}
+    <Modal wide title="Fiche du rendez-vous" subtitle={`${cn_name} · ${companyName}`} onClose={onClose}
       footer={<>
         {up && <Btn variant="secondary" onClick={onICS}><Download style={{width:14,height:14}} />Ajouter au calendrier</Btn>}
         {!up && !fb && <Btn variant="primary" onClick={onFeedback}><MessageSquare style={{width:14,height:14}} />Donner mon avis</Btn>}
@@ -1211,7 +1236,7 @@ function DetailModal({ m, onClose, onFeedback, onICS }: {
               style={{fontSize:12,color:tk.accentText,textDecoration:"none",marginLeft:2}}>Itinéraire →</a>
           </div>
         )}
-        {m.meetingType==="TELEPHONIQUE" && m.contact.phone && (
+        {m.meetingType==="TELEPHONIQUE" && m.contact?.phone && (
           <div style={{marginTop:10}}>
             <a href={`tel:${m.contact.phone}`} className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none"}}>
               <Phone style={{width:14,height:14}} />Appeler {m.contact.phone}
@@ -1228,28 +1253,28 @@ function DetailModal({ m, onClose, onFeedback, onICS }: {
               <Avt m={m} size={44} />
               <div>
                 <div style={{fontSize:15,fontWeight:700,color:tk.ink}}>{cn_name}</div>
-                <div style={{fontSize:12.5,color:tk.ink3,marginTop:2}}>{m.contact.title||<span style={{color:tk.ink4}}>—</span>}</div>
+                <div style={{fontSize:12.5,color:tk.ink3,marginTop:2}}>{m.contact?.title||<span style={{color:tk.ink4}}>—</span>}</div>
               </div>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:11}}>
-              <Fld label="E-mail">{m.contact.email&&<a href={`mailto:${m.contact.email}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.email}</a>}</Fld>
-              <Fld label="Téléphone">{m.contact.phone&&<a href={`tel:${m.contact.phone}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.phone}</a>}</Fld>
-              <Fld label="LinkedIn">{m.contact.linkedin&&<a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>Voir le profil →</a>}</Fld>
+              <Fld label="E-mail">{m.contact?.email&&<a href={`mailto:${m.contact.email}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.email}</a>}</Fld>
+              <Fld label="Téléphone">{m.contact?.phone&&<a href={`tel:${m.contact.phone}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.phone}</a>}</Fld>
+              <Fld label="LinkedIn">{m.contact?.linkedin&&<a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>Voir le profil →</a>}</Fld>
             </div>
           </div>
           <div style={{borderLeft:`1px solid ${tk.border}`,paddingLeft:24}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,fontSize:15,fontWeight:700,color:tk.ink}}>
-              <Building2 style={{width:16,height:16,color:tk.ink4,flexShrink:0}} />{m.contact.company.name}
+              <Building2 style={{width:16,height:16,color:tk.ink4,flexShrink:0}} />{companyName}
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:11}}>
-              <Fld label="Secteur">{m.contact.company.industry}</Fld>
-              <Fld label="Pays">{m.contact.company.country}</Fld>
-              <Fld label="Effectif">{m.contact.company.size}</Fld>
-              <Fld label="Site web">{m.contact.company.website&&<a href={m.contact.company.website} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.company.website.replace(/^https?:\/\//,"")}</a>}</Fld>
+              <Fld label="Secteur">{m.contact?.company?.industry}</Fld>
+              <Fld label="Pays">{m.contact?.company?.country}</Fld>
+              <Fld label="Effectif">{m.contact?.company?.size}</Fld>
+              <Fld label="Site web">{m.contact?.company?.website&&<a href={m.contact.company.website} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.company.website.replace(/^https?:\/\//,"")}</a>}</Fld>
             </div>
           </div>
         </div>
-        {m.contact.customData && Object.keys(m.contact.customData).length>0 && (
+        {m.contact?.customData && Object.keys(m.contact.customData).length>0 && (
           <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${tk.border}`}}>
             <div className="cp-section-label" style={{marginBottom:8}}>Données complémentaires</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -1307,7 +1332,8 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
   out:string; rec:string; note:string; done:boolean; sub:boolean;
   onOut:(v:string)=>void; onRec:(v:string)=>void; onNote:(v:string)=>void; onSubmit:()=>void;
 }) {
-  const name=[m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ");
+  const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
+  const companyName = m.contact?.company?.name || "Entreprise inconnue";
 
   if (done) return (
     <Modal title="Retour enregistré" onClose={onClose}
@@ -1325,7 +1351,7 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
   );
 
   return (
-    <Modal title="Feedback sur le rendez-vous" subtitle={`${name} · ${m.contact.company.name}`} onClose={onClose}
+    <Modal title="Feedback sur le rendez-vous" subtitle={`${name} · ${companyName}`} onClose={onClose}
       footer={<>
         <span style={{fontSize:11,color:tk.ink4,marginRight:"auto"}}>* champs requis</span>
         <Btn onClick={onClose}>Annuler</Btn>
@@ -1381,12 +1407,13 @@ function RsModal({ m, onClose, date, time, reason, sub, onDate, onTime, onReason
   date:string; time:string; reason:string; sub:boolean;
   onDate:(v:string)=>void; onTime:(v:string)=>void; onReason:(v:string)=>void; onSubmit:()=>void;
 }) {
-  const name=[m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ");
+  const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
+  const companyName = m.contact?.company?.name || "Entreprise inconnue";
   const tmrw=new Date(); tmrw.setDate(tmrw.getDate()+1);
   const minDate=tmrw.toISOString().split("T")[0];
 
   return (
-    <Modal title="Demander un report" subtitle={`${name} · ${m.contact.company.name}`} onClose={onClose}
+    <Modal title="Demander un report" subtitle={`${name} · ${companyName}`} onClose={onClose}
       footer={<>
         <Btn onClick={onClose}>Annuler</Btn>
         <Btn variant="primary" onClick={onSubmit} disabled={!date} loading={sub}>
