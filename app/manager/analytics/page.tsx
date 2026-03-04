@@ -47,8 +47,11 @@ export default function AnalyticsPage() {
     const [isLoadingActions, setIsLoadingActions] = useState(true);
     const [journalFilter, setJournalFilter] = useState<string>('all');
 
-    // UI State
-    const [aiRefreshCount, setAiRefreshCount] = useState(0);
+    // AI Recap State
+    const [aiRecap, setAiRecap] = useState<string | null>(null);
+    const [aiRecapExtras, setAiRecapExtras] = useState<Array<{ id: string; label: string; answer: string }>>([]);
+    const [isLoadingAiRecap, setIsLoadingAiRecap] = useState(false);
+    const [isLoadingFollowUp, setIsLoadingFollowUp] = useState<string | null>(null);
 
     // Status labels from mission config (or global fallback)
     const defaultColors: Record<string, string> = {
@@ -317,21 +320,74 @@ export default function AnalyticsPage() {
         }));
     }, [stats]);
 
-    // Derived AI Summary Text
-    const aiSummary = useMemo(() => {
-        if (!stats) return "Analyse en cours...";
-        const calls = stats.kpis?.totalCalls || 0;
-        const meetings = stats.kpis?.meetings || 0;
-        const noRespRate = calls > 0 ? Math.round(((stats.statusBreakdown?.['NO_RESPONSE'] || 0) / calls) * 100) : 0;
-        const topSdr = stats.sdrPerformance?.[0];
-        const topSdrText = topSdr ? `**${topSdr.sdrName}** représente une part majeure du volume.` : '';
+    // AI Recap - fetch from API
+    const fetchAiRecap = useCallback(async () => {
+        setIsLoadingAiRecap(true);
+        setAiRecap(null);
+        setAiRecapExtras([]);
+        try {
+            const res = await fetch("/api/analytics/ai-recap", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    from: dateRange.from,
+                    to: dateRange.to,
+                    missionIds: selectedMissions,
+                    sdrIds: selectedSdrs,
+                    clientIds: selectedClients,
+                    listIds: selectedLists,
+                }),
+            });
+            const json = await res.json();
+            if (json.success && json.data?.recap) {
+                setAiRecap(json.data.recap);
+            }
+        } catch (err) {
+            console.error("AI recap fetch error:", err);
+        } finally {
+            setIsLoadingAiRecap(false);
+        }
+    }, [dateRange, selectedMissions, selectedSdrs, selectedClients, selectedLists]);
 
-        const texts = [
-            `Sur cette période, l'équipe a réalisé **${calls} appels**. Le taux de non-réponse est de **${noRespRate}%**. ${topSdrText} ${meetings} meetings ont été bookés : les **${stats.funnel?.opportunities || 0} rappels en attente** sont des opportunités immédiates à saisir cette semaine.`,
-            `L'analyse révèle un volume d'appels de **${calls}** et un funnel de conversion avec **${meetings} meetings**. Les **${stats.funnel?.opportunities || 0} rappels en attente** sont la priorité immédiate. ${topSdrText} Il est conseillé de réviser le pitch pour maximiser la conversion.`,
-        ];
-        return texts[aiRefreshCount % texts.length];
-    }, [stats, aiRefreshCount]);
+    const fetchAiFollowUp = useCallback(async (followUpId: string, followUpPrompt: string, followUpLabel: string) => {
+        if (!aiRecap) return;
+        setIsLoadingFollowUp(followUpId);
+        try {
+            const res = await fetch("/api/analytics/ai-recap", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    from: dateRange.from,
+                    to: dateRange.to,
+                    missionIds: selectedMissions,
+                    sdrIds: selectedSdrs,
+                    clientIds: selectedClients,
+                    listIds: selectedLists,
+                    followUp: followUpPrompt,
+                    previousRecap: aiRecap,
+                }),
+            });
+            const json = await res.json();
+            if (json.success && json.data?.recap) {
+                setAiRecapExtras((prev) => {
+                    const filtered = prev.filter((e) => e.id !== followUpId);
+                    return [...filtered, { id: followUpId, label: followUpLabel, answer: json.data.recap }];
+                });
+            }
+        } catch (err) {
+            console.error("AI follow-up fetch error:", err);
+        } finally {
+            setIsLoadingFollowUp(null);
+        }
+    }, [aiRecap, dateRange, selectedMissions, selectedSdrs, selectedClients, selectedLists]);
+
+    useEffect(() => {
+        // Quand les filtres changent, on réinitialise simplement l'analyse IA.
+        // L'utilisateur doit cliquer sur le bouton pour relancer manuellement.
+        setAiRecap(null);
+        setAiRecapExtras([]);
+        setIsLoadingFollowUp(null);
+    }, [dateRange.from, dateRange.to, selectedMissions.join(","), selectedSdrs.join(","), selectedClients.join(","), selectedLists.join(",")]);
 
     // Handle Journal Filtering
     const filteredActions = useMemo(() => {
@@ -563,8 +619,12 @@ export default function AnalyticsPage() {
                 <div className="absolute -top-32 -right-32 w-80 h-80 rounded-full blur-3xl opacity-30 pointer-events-none" style={{ background: "radial-gradient(circle, #7C5CFC, transparent 70%)" }} />
                 <div className="absolute -bottom-32 -left-32 w-72 h-72 rounded-full blur-3xl opacity-20 pointer-events-none" style={{ background: "radial-gradient(circle, #A78BFA, transparent 70%)" }} />
 
-                <button className="absolute top-6 right-6 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all text-[11px] font-semibold backdrop-blur-sm z-20" onClick={() => setAiRefreshCount(c => c + 1)}>
-                    <RefreshCw className="w-3.5 h-3.5" /> Ré-analyser
+                <button
+                    className="absolute top-6 right-6 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all text-[11px] font-semibold backdrop-blur-sm z-20 disabled:opacity-60"
+                    onClick={() => fetchAiRecap()}
+                    disabled={isLoadingAiRecap}
+                >
+                    <RefreshCw className={cn("w-3.5 h-3.5", isLoadingAiRecap && "animate-spin")} /> Ré-analyser
                 </button>
 
                 <div className="relative z-10 flex items-center gap-3 mb-5">
@@ -572,10 +632,62 @@ export default function AnalyticsPage() {
                         <Sparkles className="w-3.5 h-3.5 text-violet-400" />
                         ANALYSE IA
                     </div>
-                    <span className="text-[13px] font-medium text-white/50">Résumé de la période</span>
+                    <span className="text-[13px] font-medium text-white/50">Analyse des notes et statuts</span>
                 </div>
 
-                <div className="relative z-10 text-[14.5px] leading-relaxed text-white/80 max-w-4xl font-medium" dangerouslySetInnerHTML={{ __html: aiSummary.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-extrabold">$1</strong>') }} />
+                {isLoadingAiRecap ? (
+                    <div className="relative z-10 flex items-center gap-3 py-8">
+                        <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
+                        <span className="text-white/70 font-medium">Analyse des notes en cours...</span>
+                    </div>
+                ) : aiRecap ? (
+                    <div className="relative z-10 space-y-6">
+                        <div className="text-[14.5px] leading-relaxed text-white/90 max-w-4xl prose prose-invert prose-sm max-w-none [&_strong]:text-white [&_ul]:my-2 [&_li]:my-0.5" dangerouslySetInnerHTML={{ __html: aiRecap.replace(/\n/g, "<br />").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />
+
+                        <div className="flex flex-wrap gap-2">
+                            <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider self-center mr-1">Voir plus :</span>
+                            {[
+                                { id: "objections", label: "Objections détaillées", prompt: "Liste et analyse en détail toutes les objections récurrentes dans les notes (budget, timing, prestataire actuel, etc.). Donne des exemples concrets et des pistes de réponse." },
+                                { id: "causes", label: "Causes des disqualifications", prompt: "Quelles sont les causes racines des disqualifications ? Analyse les notes des contacts disqualifiés et synthétise les motifs récurrents." },
+                                { id: "recommandations", label: "Recommandations", prompt: "Donne des recommandations actionnables et concrètes pour améliorer les résultats (pitch, qualification, timing, etc.)." },
+                                { id: "meetings", label: "Facteurs de succès RDV", prompt: "Quels facteurs ou patterns ressortent dans les notes des contacts qui ont booké un RDV ? Que faire pour reproduire ce succès ?" },
+                                { id: "non_reponse", label: "Réduire la non-réponse", prompt: "Quelles stratégies proposer pour réduire le taux de non-réponse ? Analyse les notes et le contexte pour identifier des leviers." },
+                            ].map(({ id, label, prompt }) => {
+                                const extra = aiRecapExtras.find((e) => e.id === id);
+                                const loading = isLoadingFollowUp === id;
+                                return (
+                                    <button
+                                        key={id}
+                                        onClick={() => !extra && !loading && fetchAiFollowUp(id, prompt, label)}
+                                        disabled={!!extra || loading}
+                                        className={cn(
+                                            "px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border backdrop-blur-sm",
+                                            extra ? "bg-emerald-500/20 border-emerald-400/40 text-emerald-200 cursor-default" : "bg-white/10 hover:bg-white/20 border-white/20 text-white/90"
+                                        )}
+                                    >
+                                        {loading ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null}
+                                        {extra ? `✓ ${label}` : label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {aiRecapExtras.length > 0 && (
+                            <div className="space-y-4 pt-4 border-t border-white/10">
+                                {aiRecapExtras.map((ex) => (
+                                    <div key={ex.id} className="rounded-xl bg-white/5 border border-white/10 p-4">
+                                        <div className="text-[11px] font-bold text-violet-300 uppercase tracking-wider mb-2">{ex.label}</div>
+                                        <div className="text-[13px] leading-relaxed text-white/85 [&_strong]:text-white [&_ul]:my-2 [&_li]:my-0.5" dangerouslySetInnerHTML={{ __html: ex.answer.replace(/\n/g, "<br />").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="relative z-10 text-[14px] text-white/50 py-4">
+                        Aucune donnée pour générer l&apos;analyse. Vérifiez les filtres et la période.
+                    </div>
+                )}
 
                 <div className="relative z-10 flex flex-wrap gap-4 mt-7">
                     <div className="flex items-center gap-3 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl px-5 py-3 hover:bg-white/10 transition-colors">

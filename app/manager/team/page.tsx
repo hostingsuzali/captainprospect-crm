@@ -36,6 +36,7 @@ import {
     Globe,
     LogIn,
 } from "lucide-react";
+import { DatePicker } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 // ============================================
@@ -149,6 +150,33 @@ function getWeekDates(): Date[] {
         d.setDate(monday.getDate() + i);
         return d;
     });
+}
+
+type PeriodMode = "day" | "week" | "custom";
+
+function getDatesForPeriod(
+    period: PeriodMode,
+    customStart?: string,
+    customEnd?: string
+): Date[] {
+    const today = new Date();
+    if (period === "day") {
+        return [today];
+    }
+    if (period === "custom" && customStart && customEnd) {
+        const start = new Date(customStart);
+        const end = new Date(customEnd);
+        if (start > end) return [start]; // invalid range, fallback to start date only
+        const dates: Date[] = [];
+        const d = new Date(start);
+        while (d <= end) {
+            const day = d.getDay();
+            if (day !== 0 && day !== 6) dates.push(new Date(d));
+            d.setDate(d.getDate() + 1);
+        }
+        return dates;
+    }
+    return getWeekDates();
 }
 
 function formatDate(date: Date): string {
@@ -730,10 +758,14 @@ function Leaderboard({
 
 function UtilizationHeatmap({
     members,
+    dateRange,
 }: {
     members: TeamMember[];
+    dateRange: Date[];
 }) {
-    const dayLabels = ["Lun", "Mar", "Mer", "Jeu", "Ven"];
+    const dayLabels = dateRange.length <= 5
+        ? ["Lun", "Mar", "Mer", "Jeu", "Ven"].slice(0, dateRange.length)
+        : dateRange.map(d => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }).replace(".", ""));
 
     return (
         <div className="space-y-2.5">
@@ -876,6 +908,14 @@ export default function TeamDashboardPage() {
     const [viewMode, setViewMode] = useState<"cards" | "list">("cards");
     const [mounted, setMounted] = useState(false);
 
+    const [period, setPeriod] = useState<PeriodMode>("week");
+    const defaultWeek = useMemo(() => {
+        const w = getWeekDates();
+        return { start: formatDate(w[0]), end: formatDate(w[w.length - 1]) };
+    }, []);
+    const [customStart, setCustomStart] = useState(defaultWeek.start);
+    const [customEnd, setCustomEnd] = useState(defaultWeek.end);
+
     const tabFromUrl = (searchParams.get("tab") === "reglages" ? "reglages" : "equipe") as TeamPageTab;
     const [activeTab, setActiveTab] = useState<TeamPageTab>(tabFromUrl);
     useEffect(() => {
@@ -895,7 +935,12 @@ export default function TeamDashboardPage() {
         meetings: { change: number; isPositive: boolean };
     } | null>(null);
 
-    const weekDates = useMemo(() => getWeekDates(), []);
+    const dateRange = useMemo(
+        () => getDatesForPeriod(period, customStart, customEnd),
+        [period, customStart, customEnd]
+    );
+    const startDateStr = dateRange[0] ? formatDate(dateRange[0]) : defaultWeek.start;
+    const endDateStr = dateRange[dateRange.length - 1] ? formatDate(dateRange[dateRange.length - 1]) : defaultWeek.end;
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -906,13 +951,16 @@ export default function TeamDashboardPage() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
+            const actionsParams = period === "custom"
+                ? `startDate=${startDateStr}&endDate=${endDateStr}`
+                : "";
             const [usersRes, blocksRes, actionsRes, activitiesRes, trendsRes, dailyActivityRes] = await Promise.all([
                 fetch("/api/users?role=SDR,BUSINESS_DEVELOPER"),
-                fetch(`/api/planning?startDate=${formatDate(weekDates[0])}&endDate=${formatDate(weekDates[4])}`),
-                fetch("/api/actions/stats"),
+                fetch(`/api/planning?startDate=${startDateStr}&endDate=${endDateStr}`),
+                fetch(actionsParams ? `/api/actions/stats?${actionsParams}` : "/api/actions/stats"),
                 fetch("/api/actions/recent?limit=8"),
                 fetch("/api/analytics/team-trends"),
-                fetch(`/api/analytics/daily-activity?startDate=${formatDate(weekDates[0])}&endDate=${formatDate(weekDates[4])}`),
+                fetch(`/api/analytics/daily-activity?startDate=${startDateStr}&endDate=${endDateStr}`),
             ]);
 
             const usersJson = await usersRes.json();
@@ -972,15 +1020,19 @@ export default function TeamDashboardPage() {
                 const memberBlocks = scheduleBlocks.filter(b => b.sdrId === member.id);
                 const memberStats = actionStats[member.id] || {};
 
-                const dailyHours = weekDates.map((date, dayIndex) => {
+                const dayLabelsShort = ["L", "M", "M", "J", "V", "L", "M", "M", "J", "V"];
+                const dailyHours = dateRange.map((date, dayIndex) => {
                     const dateStr = formatDate(date);
                     const dayBlocks = memberBlocks.filter(b => b.date.split("T")[0] === dateStr);
                     const scheduled = dayBlocks.reduce((sum, b) => sum + calcHours(b.startTime, b.endTime), 0);
                     const memberActivityData = dailyActivityData[member.id] || {};
                     const completed = memberActivityData[dateStr] || 0;
+                    const dayLabel = dateRange.length <= 5
+                        ? dayLabelsShort[dayIndex]
+                        : date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }).replace(".", "");
 
                     return {
-                        day: ["L", "M", "M", "J", "V"][dayIndex],
+                        day: dayLabel,
                         date: dateStr,
                         scheduled,
                         completed,
@@ -1015,11 +1067,15 @@ export default function TeamDashboardPage() {
                     status = hasBlockToday ? "away" : "offline";
                 }
 
-                const callsThisWeek = memberStats.callsThisWeek || member._count?.actions || 0;
-                const meetingsBookedThisWeek = memberStats.meetingsThisWeek || 0;
+                const callsThisWeekRaw = memberStats.callsThisWeek || member._count?.actions || 0;
+                const meetingsBookedThisWeekRaw = memberStats.meetingsThisWeek || 0;
                 const callsToday = memberStats.callsToday || 0;
+                const totalActionsRange = memberStats.totalActions ?? callsThisWeekRaw;
+                const meetingsRange = memberStats.meetingsBooked ?? meetingsBookedThisWeekRaw;
+                const callsForPeriod = period === "day" ? callsToday : period === "custom" ? totalActionsRange : callsThisWeekRaw;
+                const meetingsForPeriod = period === "day" ? (memberStats.meetingsToday ?? 0) : period === "custom" ? meetingsRange : meetingsBookedThisWeekRaw;
                 const conversionRate = memberStats.conversionRate ||
-                    (callsThisWeek > 0 ? Number(((meetingsBookedThisWeek / callsThisWeek) * 100).toFixed(1)) : 0);
+                    (callsForPeriod > 0 ? Number(((meetingsForPeriod / callsForPeriod) * 100).toFixed(1)) : 0);
 
                 return {
                     ...member,
@@ -1029,13 +1085,13 @@ export default function TeamDashboardPage() {
                         completedHoursThisWeek,
                         completedHoursThisMonth: completedHoursThisWeek * 4,
                         callsToday,
-                        callsThisWeek,
-                        callsThisMonth: memberStats.callsThisMonth || callsThisWeek * 4,
+                        callsThisWeek: callsForPeriod,
+                        callsThisMonth: memberStats.callsThisMonth || callsThisWeekRaw * 4,
                         avgCallsPerHour: completedHoursThisWeek > 0
-                            ? Number((callsThisWeek / completedHoursThisWeek).toFixed(1))
+                            ? Number((callsForPeriod / completedHoursThisWeek).toFixed(1))
                             : 0,
-                        meetingsBooked: memberStats.meetingsBooked || meetingsBookedThisWeek,
-                        meetingsBookedThisWeek,
+                        meetingsBooked: memberStats.meetingsBooked || meetingsBookedThisWeekRaw,
+                        meetingsBookedThisWeek: meetingsForPeriod,
                         conversionRate,
                         lastActiveAt: activityEntry?.lastSeenMinutesAgo != null
                             ? new Date(now.getTime() - activityEntry.lastSeenMinutesAgo * 60000).toISOString()
@@ -1047,7 +1103,7 @@ export default function TeamDashboardPage() {
                         dailyHours,
                         currentStreak: 0,
                         weeklyRank: index + 1,
-                        monthlyScore: memberStats.monthlyScore || (callsThisWeek + meetingsBookedThisWeek * 10),
+                        monthlyScore: memberStats.monthlyScore || (callsForPeriod + meetingsForPeriod * 10),
                     },
                 };
             });
@@ -1072,7 +1128,7 @@ export default function TeamDashboardPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [weekDates, showError]);
+    }, [period, startDateStr, endDateStr, showError]);
 
     useEffect(() => {
         fetchData();
@@ -1247,7 +1303,7 @@ export default function TeamDashboardPage() {
                 />
                 <StatCard
                     icon={Clock}
-                    label="Heures cette semaine"
+                    label={period === "day" ? "Heures aujourd'hui" : period === "week" ? "Heures cette semaine" : "Heures (période)"}
                     value={formatHours(teamStats.totalCompletedHours)}
                     subValue={`${teamStats.utilizationRate}% utilisation`}
                     trend={trendData?.hours ? { value: trendData.hours.change, isPositive: trendData.hours.isPositive } : undefined}
@@ -1257,7 +1313,7 @@ export default function TeamDashboardPage() {
                     icon={Phone}
                     label="Appels totaux"
                     value={teamStats.totalCalls}
-                    subValue="cette semaine"
+                    subValue={period === "day" ? "aujourd'hui" : period === "week" ? "cette semaine" : "période"}
                     trend={trendData?.calls ? { value: trendData.calls.change, isPositive: trendData.calls.isPositive } : undefined}
                     accent="from-blue-500 to-blue-600"
                 />
@@ -1324,18 +1380,57 @@ export default function TeamDashboardPage() {
 
                     {/* Utilization Heatmap */}
                     <div className="team-panel">
-                        <div className="flex items-center justify-between mb-5">
+                        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
                             <div className="flex items-center gap-2.5">
                                 <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center">
                                     <BarChart3 className="w-4.5 h-4.5 text-emerald-600" />
                                 </div>
-                                <h2 className="text-[15px] font-bold text-slate-900">Utilisation hebdomadaire</h2>
+                                <h2 className="text-[15px] font-bold text-slate-900">Utilisation</h2>
                             </div>
-                            <span className="text-[13px] text-slate-400 font-medium">
-                                Semaine du {weekDates[0].toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                                    {(["day", "week", "custom"] as const).map((p) => (
+                                        <button
+                                            key={p}
+                                            onClick={() => setPeriod(p)}
+                                            className={cn(
+                                                "text-[12px] px-3 py-1.5 rounded-md font-semibold transition-all",
+                                                period === p
+                                                    ? "bg-white text-slate-900 shadow-sm"
+                                                    : "text-slate-500 hover:text-slate-700"
+                                            )}
+                                        >
+                                            {p === "day" ? "Par jour" : p === "week" ? "Par semaine" : "Personnalisé"}
+                                        </button>
+                                    ))}
+                                </div>
+                                {period === "custom" && (
+                                    <div className="flex items-center gap-2">
+                                        <DatePicker
+                                            value={customStart}
+                                            onChange={(v) => setCustomStart(v)}
+                                            placeholder="Du"
+                                            className="!min-w-[130px]"
+                                        />
+                                        <DatePicker
+                                            value={customEnd}
+                                            onChange={(v) => setCustomEnd(v)}
+                                            placeholder="Au"
+                                            minDate={customStart}
+                                            className="!min-w-[130px]"
+                                        />
+                                    </div>
+                                )}
+                                <span className="text-[13px] text-slate-400 font-medium">
+                                    {period === "day"
+                                        ? new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" })
+                                        : period === "custom"
+                                            ? `${dateRange[0]?.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} – ${dateRange[dateRange.length - 1]?.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}`
+                                            : `Semaine du ${dateRange[0]?.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}`}
+                                </span>
+                            </div>
                         </div>
-                        <UtilizationHeatmap members={members} />
+                        <UtilizationHeatmap members={members} dateRange={dateRange} />
                     </div>
 
                     {/* Search + Filter bar */}

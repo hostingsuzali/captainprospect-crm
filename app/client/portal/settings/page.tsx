@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { User, Bell, Loader2, Check, Calendar } from "lucide-react";
+import { User, Bell, Loader2, Check, Calendar, Lock } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Button, Input, useToast } from "@/components/ui";
@@ -10,7 +10,7 @@ import { Button, Input, useToast } from "@/components/ui";
 // TYPES
 // ============================================
 
-type TabId = "profile" | "notifications";
+type TabId = "profile" | "notifications" | "security";
 
 interface ProfileData {
     name: string;
@@ -70,6 +70,10 @@ export default function ClientPortalSettingsPage() {
 
     const [name, setName] = useState("");
     const [phone, setPhone] = useState("");
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
     const [timezone, setTimezone] = useState("Europe/Paris");
     const [notifications, setNotifications] = useState({
         meetingAlerts: true,
@@ -204,9 +208,47 @@ export default function ClientPortalSettingsPage() {
         }
     };
 
+    const changePassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (newPassword !== confirmPassword) {
+            toast.error("Erreur", "Les mots de passe ne correspondent pas.");
+            return;
+        }
+        if (newPassword.length < 6) {
+            toast.error("Erreur", "Le nouveau mot de passe doit contenir au moins 6 caractères.");
+            return;
+        }
+        setIsChangingPassword(true);
+        try {
+            const res = await fetch("/api/users/me/password", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    currentPassword,
+                    newPassword,
+                }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                toast.success("Mot de passe modifié", "Votre mot de passe a été mis à jour.");
+                setCurrentPassword("");
+                setNewPassword("");
+                setConfirmPassword("");
+            } else {
+                toast.error("Erreur", json.error ?? "Impossible de modifier le mot de passe.");
+            }
+        } catch (e) {
+            console.error("Failed to change password", e);
+            toast.error("Erreur", "Impossible de modifier le mot de passe.");
+        } finally {
+            setIsChangingPassword(false);
+        }
+    };
+
     const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
         { id: "profile", label: "Mon profil", icon: User },
         { id: "notifications", label: "Notifications", icon: Bell },
+        { id: "security", label: "Sécurité", icon: Lock },
     ];
 
     if (isLoading && !profile) {
@@ -459,6 +501,73 @@ export default function ClientPortalSettingsPage() {
                                 )}
                                 Enregistrer les préférences
                             </Button>
+                        </div>
+                    )}
+
+                    {activeTab === "security" && (
+                        <div className="p-6 space-y-6">
+                            <h2 className="text-lg font-semibold text-[#12122A]">
+                                Changer le mot de passe
+                            </h2>
+                            <p className="text-sm text-[#8B8BA7]">
+                                Modifiez votre mot de passe pour sécuriser votre compte.
+                            </p>
+
+                            <form onSubmit={changePassword} className="space-y-5 max-w-md">
+                                <div>
+                                    <label className="block text-sm font-medium text-[#12122A] mb-1.5">
+                                        Mot de passe actuel
+                                    </label>
+                                    <Input
+                                        type="password"
+                                        value={currentPassword}
+                                        onChange={(e) => setCurrentPassword(e.target.value)}
+                                        placeholder="••••••••"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[#12122A] mb-1.5">
+                                        Nouveau mot de passe
+                                    </label>
+                                    <Input
+                                        type="password"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        placeholder="••••••••"
+                                        minLength={6}
+                                    />
+                                    <p className="text-xs text-[#8B8BA7] mt-1">
+                                        Minimum 6 caractères
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[#12122A] mb-1.5">
+                                        Confirmer le nouveau mot de passe
+                                    </label>
+                                    <Input
+                                        type="password"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+
+                                <div className="pt-2">
+                                    <Button
+                                        type="submit"
+                                        disabled={isChangingPassword || !currentPassword || !newPassword || !confirmPassword}
+                                        className="gap-2"
+                                    >
+                                        {isChangingPassword ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Lock className="w-4 h-4" />
+                                        )}
+                                        Modifier le mot de passe
+                                    </Button>
+                                </div>
+                            </form>
                         </div>
                     )}
                 </div>

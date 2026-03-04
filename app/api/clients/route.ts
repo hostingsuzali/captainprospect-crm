@@ -99,6 +99,9 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                     select: { id: true, name: true },
                     take: 5,
                 },
+                onboarding: {
+                    select: { onboardingData: true },
+                },
             },
             orderBy: { name: 'asc' },
             skip,
@@ -107,7 +110,20 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         prisma.client.count({ where }),
     ]);
 
-    return paginatedResponse(clients, total, page, limit);
+    const clientsWithReadiness = clients.map((c) => {
+        const od = c.onboarding?.onboardingData as { icp?: string } | null;
+        const personaSet = !!(od?.icp && String(od.icp).trim());
+        return {
+            ...c,
+            readiness: {
+                calendarConnected: !!(c as { bookingUrl?: string }).bookingUrl?.trim(),
+                personaSet,
+                missionCreated: (c._count?.missions ?? 0) > 0,
+            },
+        };
+    });
+
+    return paginatedResponse(clientsWithReadiness, total, page, limit);
 });
 
 // ============================================

@@ -45,6 +45,14 @@ export const GET = withErrorHandler(async (
                             sdrAssignments: true,
                         },
                     },
+                    lists: {
+                        select: { id: true, name: true, type: true, _count: { select: { companies: true } } },
+                        orderBy: { createdAt: 'desc' },
+                    },
+                    campaigns: {
+                        select: { id: true, name: true, icp: true },
+                        take: 5,
+                    },
                 },
                 orderBy: { createdAt: 'desc' },
             },

@@ -766,6 +766,8 @@ export default function ManagerProspectionPage() {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         {missionsForChannel.map((mission, i) => {
+                            const channelList = mission.channels?.length ? mission.channels : [mission.channel];
+                            const isMultiCanal = channelList.length > 1;
                             const ChannelIconCard = CHANNEL_ICONS[mission.channel] ?? Phone;
                             return (
                                 <button
@@ -783,8 +785,33 @@ export default function ManagerProspectionPage() {
                                     <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-indigo-50 group-hover:bg-indigo-100 transition-colors duration-300" aria-hidden />
 
                                     <div className="flex items-start justify-between mb-5 relative">
-                                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center shadow-sm group-hover:-translate-y-0.5 transition-transform">
-                                            <ChannelIconCard className="w-5 h-5 text-indigo-600" aria-hidden />
+                                        <div className="flex items-center gap-2">
+                                            {isMultiCanal ? (
+                                                channelList.map((ch) => {
+                                                    const Icon = CHANNEL_ICONS[ch] ?? Phone;
+                                                    const badgeStyles: Record<string, string> = {
+                                                        CALL: "bg-blue-100 text-blue-600",
+                                                        EMAIL: "bg-amber-100 text-amber-600",
+                                                        LINKEDIN: "bg-sky-100 text-sky-600",
+                                                    };
+                                                    const style = badgeStyles[ch] ?? "bg-indigo-100 text-indigo-600";
+                                                    return (
+                                                        <div
+                                                            key={ch}
+                                                            className={cn(
+                                                                "w-9 h-9 rounded-xl flex items-center justify-center shadow-sm group-hover:-translate-y-0.5 transition-transform",
+                                                                style
+                                                            )}
+                                                        >
+                                                            <Icon className="w-4 h-4" aria-hidden />
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center shadow-sm group-hover:-translate-y-0.5 transition-transform">
+                                                    <ChannelIconCard className="w-5 h-5 text-indigo-600" aria-hidden />
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="w-7 h-7 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
                                             <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500 transition-colors" aria-hidden />

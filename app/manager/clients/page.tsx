@@ -25,10 +25,17 @@ import {
 import Link from "next/link";
 import { ClientOnboardingModal } from "@/components/manager/ClientOnboardingModal";
 import { ClientDrawer } from "@/components/drawers";
+import { OnboardingReadinessGauge } from "@/components/common/OnboardingReadinessGauge";
 
 // ============================================
 // TYPES
 // ============================================
+
+interface OnboardingReadiness {
+    calendarConnected: boolean;
+    personaSet: boolean;
+    missionCreated: boolean;
+}
 
 interface Client {
     id: string;
@@ -41,6 +48,7 @@ interface Client {
         missions: number;
         users: number;
     };
+    readiness?: OnboardingReadiness;
 }
 
 interface LeexiRecapItem {
@@ -523,22 +531,33 @@ export default function ClientsPage() {
                                     </div>
                                 </div>
 
+                                {(client.readiness || recapCount > 0) && (
+                                    <div className="mb-5 space-y-4">
+                                {client.readiness && (
+                                    <OnboardingReadinessGauge
+                                        readiness={client.readiness}
+                                        size="md"
+                                        showLabels={true}
+                                    />
+                                )}
                                 {recapCount > 0 && (
-                                    <div className="mb-5">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                                                <Mic className="w-3.5 h-3.5 text-violet-500" /> Récaps Leexi
-                                            </span>
-                                            <span className="text-[11px] font-medium text-violet-600 bg-violet-50 px-2.5 py-0.5 rounded-full border border-violet-100">
-                                                {recapCount}
-                                            </span>
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                                    <Mic className="w-3.5 h-3.5 text-violet-500" /> Récaps Leexi
+                                                </span>
+                                                <span className="text-[11px] font-medium text-violet-600 bg-violet-50 px-2.5 py-0.5 rounded-full border border-violet-100">
+                                                    {recapCount}
+                                                </span>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-violet-400 to-indigo-500 rounded-full"
+                                                    style={{ width: `${recapPercent}%`, transition: "width 1s ease-in-out" }}
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-gradient-to-r from-violet-400 to-indigo-500 rounded-full"
-                                                style={{ width: `${recapPercent}%`, transition: "width 1s ease-in-out" }}
-                                            />
-                                        </div>
+                                )}
                                     </div>
                                 )}
 
