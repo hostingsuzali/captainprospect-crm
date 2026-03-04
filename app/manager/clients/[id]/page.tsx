@@ -656,18 +656,30 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                         </Badge>
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
-                                        {missionGroup.meetings.slice(0, 4).map((meeting) => (
-                                            <span
-                                                key={meeting.id}
-                                                className="inline-flex items-center gap-1 text-xs bg-white px-2 py-1 rounded border border-slate-200 text-slate-700"
-                                                title={`${meeting.contact.firstName} ${meeting.contact.lastName} - ${meeting.contact.company.name}`}
-                                            >
-                                                <User className="w-3 h-3 text-slate-400" />
-                                                <span className="truncate max-w-[120px]">
-                                                    {meeting.contact.firstName} {meeting.contact.lastName}
+                                        {missionGroup.meetings.slice(0, 4).map((meeting) => {
+                                            const hasContact = !!meeting.contact;
+                                            const contactFirst = meeting.contact?.firstName ?? "";
+                                            const contactLast = meeting.contact?.lastName ?? "";
+                                            const contactName = `${contactFirst} ${contactLast}`.trim() || "Contact inconnu";
+                                            const companyName = meeting.contact?.company?.name ?? "";
+                                            const title = companyName ? `${contactName} - ${companyName}` : contactName;
+
+                                            return (
+                                                <span
+                                                    key={meeting.id}
+                                                    className="inline-flex items-center gap-1 text-xs bg-white px-2 py-1 rounded border border-slate-200 text-slate-700"
+                                                    title={title}
+                                                >
+                                                    <User className="w-3 h-3 text-slate-400" />
+                                                    <span className="truncate max-w-[120px]">
+                                                        {contactName}
+                                                        {!hasContact && (
+                                                            <span className="text-slate-400 ml-1">(données manquantes)</span>
+                                                        )}
+                                                    </span>
                                                 </span>
-                                            </span>
-                                        ))}
+                                            );
+                                        })}
                                         {missionGroup.meetings.length > 4 && (
                                             <span className="inline-flex items-center text-xs text-slate-500 px-2 py-1">
                                                 +{missionGroup.meetings.length - 4}
@@ -687,71 +699,81 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 </h3>
                             </div>
                             <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-                                {meetingsData.allMeetings.map((meeting) => (
-                                    <div
-                                        key={meeting.id}
-                                        className="px-4 py-3 hover:bg-slate-50 transition-colors"
-                                    >
-                                        <div className="flex items-center justify-between gap-4">
-                                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0">
-                                                    <User className="w-4 h-4 text-rose-600" />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="font-semibold text-slate-900 text-sm">
-                                                            {meeting.contact.firstName} {meeting.contact.lastName}
-                                                        </span>
-                                                        {meeting.contact.title && (
-                                                            <>
-                                                                <span className="text-slate-300">•</span>
-                                                                <span className="text-xs text-slate-500">{meeting.contact.title}</span>
-                                                            </>
-                                                        )}
+                                {meetingsData.allMeetings.map((meeting) => {
+                                    const contactFirst = meeting.contact?.firstName ?? "";
+                                    const contactLast = meeting.contact?.lastName ?? "";
+                                    const contactName = `${contactFirst} ${contactLast}`.trim() || "Contact inconnu";
+                                    const companyName = meeting.contact?.company?.name ?? "";
+                                    const industry = meeting.contact?.company?.industry ?? "";
+
+                                    return (
+                                        <div
+                                            key={meeting.id}
+                                            className="px-4 py-3 hover:bg-slate-50 transition-colors"
+                                        >
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                    <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0">
+                                                        <User className="w-4 h-4 text-rose-600" />
                                                     </div>
-                                                    <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-slate-600">
-                                                        <span className="flex items-center gap-1">
-                                                            <Briefcase className="w-3 h-3 text-slate-400" />
-                                                            {meeting.contact.company.name}
-                                                        </span>
-                                                        {meeting.contact.company.industry && (
-                                                            <>
-                                                                <span className="text-slate-300">•</span>
-                                                                <span>{meeting.contact.company.industry}</span>
-                                                            </>
-                                                        )}
-                                                        <span className="text-slate-300">•</span>
-                                                        <span className="flex items-center gap-1">
-                                                            <Target className="w-3 h-3 text-slate-400" />
-                                                            {meeting.campaign.mission.name}
-                                                        </span>
-                                                        <span className="text-slate-300">•</span>
-                                                        <span>{meeting.campaign.name}</span>
-                                                        <span className="text-slate-300">•</span>
-                                                        <span className="flex items-center gap-1">
-                                                            <Users className="w-3 h-3 text-slate-400" />
-                                                            {meeting.sdr.name}
-                                                        </span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="font-semibold text-slate-900 text-sm">
+                                                                {contactName}
+                                                            </span>
+                                                            {meeting.contact?.title && (
+                                                                <>
+                                                                    <span className="text-slate-300">•</span>
+                                                                    <span className="text-xs text-slate-500">{meeting.contact.title}</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-slate-600">
+                                                            {companyName && (
+                                                                <span className="flex items-center gap-1">
+                                                                    <Briefcase className="w-3 h-3 text-slate-400" />
+                                                                    {companyName}
+                                                                </span>
+                                                            )}
+                                                            {industry && (
+                                                                <>
+                                                                    <span className="text-slate-300">•</span>
+                                                                    <span>{industry}</span>
+                                                                </>
+                                                            )}
+                                                            <span className="text-slate-300">•</span>
+                                                            <span className="flex items-center gap-1">
+                                                                <Target className="w-3 h-3 text-slate-400" />
+                                                                {meeting.campaign.mission.name}
+                                                            </span>
+                                                            <span className="text-slate-300">•</span>
+                                                            <span>{meeting.campaign.name}</span>
+                                                            <span className="text-slate-300">•</span>
+                                                            <span className="flex items-center gap-1">
+                                                                <Users className="w-3 h-3 text-slate-400" />
+                                                                {meeting.sdr.name}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div className="text-right flex-shrink-0">
-                                                <p className="text-xs font-medium text-slate-900">
-                                                    {new Date(meeting.createdAt).toLocaleDateString("fr-FR", {
-                                                        day: "numeric",
-                                                        month: "short",
-                                                    })}
-                                                </p>
-                                                <p className="text-xs text-slate-500 mt-0.5">
-                                                    {new Date(meeting.createdAt).toLocaleTimeString("fr-FR", {
-                                                        hour: "2-digit",
-                                                        minute: "2-digit",
-                                                    })}
-                                                </p>
+                                                <div className="text-right flex-shrink-0">
+                                                    <p className="text-xs font-medium text-slate-900">
+                                                        {new Date(meeting.createdAt).toLocaleDateString("fr-FR", {
+                                                            day: "numeric",
+                                                            month: "short",
+                                                        })}
+                                                    </p>
+                                                    <p className="text-xs text-slate-500 mt-0.5">
+                                                        {new Date(meeting.createdAt).toLocaleTimeString("fr-FR", {
+                                                            hour: "2-digit",
+                                                            minute: "2-digit",
+                                                        })}
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
