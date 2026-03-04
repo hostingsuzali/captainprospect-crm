@@ -834,7 +834,10 @@ export default function ClientPortalMeetingsPage() {
       const r=await fetch(`/api/client/meetings/${mid}/feedback`,{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          outcome:sigType==="NO_SHOW"?"NO_SHOW":"CANCELLED_BY_CLIENT",
+          // Map to allowed outcome codes for API:
+          // - NO_SHOW  -> "NO_SHOW"
+          // - CANCEL   -> "NEGATIVE" (annulé par le client)
+          outcome:sigType==="NO_SHOW"?"NO_SHOW":"NEGATIVE",
           recontactRequested:sigType==="NO_SHOW"?sigRec:"NO",
           clientNote:sigNote||null,
         }),
