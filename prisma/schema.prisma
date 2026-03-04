@@ -351,6 +351,12 @@ model User {
   timezone             String?   @default("Europe/Paris")
   preferences          Json?     // notifications, appearance, workingHours
 
+  // Sign-in / connection tracking (for team performance)
+  lastSignInAt         DateTime?
+  lastSignInIp         String?
+  lastSignInCountry    String?
+  lastConnectedAt      DateTime? // Updated by SDR heartbeat
+
   // Business Developer portfolio
   bdPortfolio          BusinessDeveloperClient[]
   
@@ -554,6 +560,9 @@ model Mission {
   // Client Portal: shareable report links
   sharedReportLinks SharedReportLink[]
 
+  // Webhook call records (WithAllo, etc.)
+  callRecords   CallRecord[]
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -621,6 +630,7 @@ model Company {
   contacts      Contact[]
   opportunities Opportunity[]
   actions       Action[]  // Actions can be on companies too
+  callRecords   CallRecord[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -650,6 +660,8 @@ model Contact {
   // Email consent: when true, contact has unsubscribed from emails
   unsubscribed          Boolean   @default(false)
 
+  callRecords   CallRecord[]
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -670,6 +682,8 @@ model Action {
   callbackDate  DateTime?    // Auto-detected from note for CALLBACK_REQUESTED; for MEETING_BOOKED = scheduled meeting date
   duration      Int?         // Duration in seconds
   cancellationReason String? // When result = MEETING_CANCELLED: by_mistake, wrong_contact, client_cancelled, double_booking, other
+  meetingType     String?    // 'VISIO' | 'PHYSIQUE' | 'TELEPHONIQUE' — type of meeting for MEETING_BOOKED
+  meetingAddress  String?    // Physical address (for PHYSIQUE meetings only)
   createdAt     DateTime     @default(now())
 
   // Call workflow: IN_PROGRESS when call started, PENDING_VALIDATION when webhook received
@@ -692,6 +706,31 @@ model Action {
   @@index([contactId])
   @@index([callbackDate])
   @@unique([voipProvider, voipCallId])
+}
+
+// Webhook call records (WithAllo, etc.) - linked to mission for automated validation
+model CallRecord {
+  id             String    @id @default(cuid())
+  missionId      String
+  mission        Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  contactId      String?
+  contact        Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  companyId      String?
+  company        Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  externalCallId String    // WithAllo call id (idempotency)
+  source         String    @default("withallo")
+  fromNumber     String?
+  toNumber       String?
+  duration       Int?      // seconds
+  direction      String?   // INBOUND | OUTBOUND
+  summary        String?   @db.Text
+  recordingUrl   String?
+  timestamp      DateTime
+  createdAt      DateTime  @default(now())
+
+  @@unique([source, externalCallId])
+  @@index([missionId])
+  @@index([timestamp])
 }
 
 // VoIP: one provider per SDR; provider-specific ids/numbers stored here

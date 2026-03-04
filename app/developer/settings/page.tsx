@@ -4,6 +4,114 @@ import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { User, Bell, Moon, Lock, Loader2, Camera, Check, Shield, Palette } from "lucide-react";
 
+// ============================================
+// CHANGE PASSWORD FORM
+// ============================================
+
+function ChangePasswordForm() {
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [success, setSuccess] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError("");
+        setSuccess(false);
+        if (newPassword !== confirmPassword) {
+            setError("Les mots de passe ne correspondent pas.");
+            return;
+        }
+        if (newPassword.length < 6) {
+            setError("Le nouveau mot de passe doit contenir au moins 6 caractères.");
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const res = await fetch("/api/users/me/password", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ currentPassword, newPassword }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                setSuccess(true);
+                setCurrentPassword("");
+                setNewPassword("");
+                setConfirmPassword("");
+                setTimeout(() => setSuccess(false), 3000);
+            } else {
+                setError(json.error ?? "Impossible de modifier le mot de passe.");
+            }
+        } catch {
+            setError("Erreur lors de la modification.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Mot de passe actuel</label>
+                <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    className="dev-input"
+                />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Nouveau mot de passe</label>
+                <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    minLength={6}
+                    className="dev-input"
+                />
+                <p className="text-xs text-slate-400 mt-1">Minimum 6 caractères</p>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Confirmer le nouveau mot de passe</label>
+                <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="dev-input"
+                />
+            </div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            {success && (
+                <div className="p-4 bg-emerald-50 border border-emerald-100 text-emerald-700 text-sm rounded-xl flex items-center gap-3">
+                    <Check className="w-5 h-5" />
+                    Mot de passe modifié avec succès.
+                </div>
+            )}
+            <button
+                type="submit"
+                disabled={isLoading}
+                className="dev-btn-primary h-11 px-6 text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+            >
+                {isLoading ? (
+                    <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Modification...
+                    </>
+                ) : (
+                    "Modifier le mot de passe"
+                )}
+            </button>
+        </form>
+    );
+}
+
 export default function SettingsPage() {
     const { data: session } = useSession();
     const [isLoading, setIsLoading] = useState(false);
@@ -229,7 +337,7 @@ export default function SettingsPage() {
                             <h2 className="text-lg font-semibold text-slate-900 mb-2">Sécurité</h2>
                             <p className="text-sm text-slate-500 mb-6">Gérez la sécurité de votre compte</p>
 
-                            <div className="space-y-4">
+                            <div className="space-y-6">
                                 <div className="p-4 rounded-xl border border-slate-200">
                                     <div className="flex items-center gap-4 mb-4">
                                         <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -237,12 +345,10 @@ export default function SettingsPage() {
                                         </div>
                                         <div>
                                             <p className="text-sm font-medium text-slate-900">Mot de passe</p>
-                                            <p className="text-xs text-slate-500">Dernière modification il y a 30 jours</p>
+                                            <p className="text-xs text-slate-500">Modifiez votre mot de passe pour sécuriser votre compte</p>
                                         </div>
                                     </div>
-                                    <button className="w-full h-10 px-4 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
-                                        Changer le mot de passe
-                                    </button>
+                                    <ChangePasswordForm />
                                 </div>
 
                                 <div className="p-4 rounded-xl border border-slate-200">
@@ -252,11 +358,11 @@ export default function SettingsPage() {
                                         </div>
                                         <div>
                                             <p className="text-sm font-medium text-slate-900">Authentification à deux facteurs</p>
-                                            <p className="text-xs text-slate-500">Ajoutez une couche de sécurité supplémentaire</p>
+                                            <p className="text-xs text-slate-500">Ajoutez une couche de sécurité supplémentaire (à venir)</p>
                                         </div>
                                     </div>
-                                    <button className="w-full h-10 px-4 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg transition-colors shadow-sm">
-                                        Activer la 2FA
+                                    <button disabled className="w-full h-10 px-4 text-sm font-medium text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed">
+                                        Activer la 2FA (bientôt disponible)
                                     </button>
                                 </div>
                             </div>

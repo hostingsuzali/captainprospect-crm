@@ -21,6 +21,10 @@ interface DrawerProps {
     closeOnEscape?: boolean;
     className?: string;
     footer?: React.ReactNode;
+    /** Helper link shown above footer (e.g. "Learn more about...") */
+    footerHelperLink?: { href: string; label: string };
+    /** Center title in header (reference style) */
+    headerCentered?: boolean;
 }
 
 const SIZES = {
@@ -44,6 +48,8 @@ export function Drawer({
     closeOnEscape = true,
     className,
     footer,
+    footerHelperLink,
+    headerCentered = false,
 }: DrawerProps) {
     const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -111,10 +117,27 @@ export function Drawer({
             >
                 {/* Header */}
                 {(title || showCloseButton) && (
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white sticky top-0 z-10">
-                        <div className="flex-1 min-w-0 pr-4">
+                    <div className={cn(
+                        "flex items-center px-6 py-4 border-b border-slate-100 bg-white sticky top-0 z-10",
+                        headerCentered ? "justify-center" : "justify-between"
+                    )}>
+                        {showCloseButton && !headerCentered && (
+                            <div className="flex-1 min-w-0 pr-4" />
+                        )}
+                        {showCloseButton && headerCentered && (
+                            <button
+                                onClick={onClose}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 -m-1 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-150 flex-shrink-0"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        )}
+                        <div className={cn(
+                            "flex-1 min-w-0",
+                            headerCentered ? "text-center pr-10" : "pr-4"
+                        )}>
                             {title && (
-                                <h2 className="text-lg font-bold text-slate-900 truncate leading-tight">
+                                <h2 className="text-lg font-semibold text-slate-900 truncate leading-tight">
                                     {title}
                                 </h2>
                             )}
@@ -124,10 +147,10 @@ export function Drawer({
                                 </p>
                             )}
                         </div>
-                        {showCloseButton && (
+                        {showCloseButton && !headerCentered && (
                             <button
                                 onClick={onClose}
-                                className="p-2 -m-1 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-150 flex-shrink-0"
+                                className="p-2 -m-1 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-150 flex-shrink-0"
                             >
                                 <X className="w-5 h-5" />
                             </button>
@@ -139,6 +162,20 @@ export function Drawer({
                 <div className="flex-1 overflow-y-auto p-6 drawer-scrollbar">
                     {children}
                 </div>
+
+                {/* Footer helper link */}
+                {footerHelperLink && (
+                    <div className="px-6 pt-2 pb-1 border-t border-slate-100 bg-slate-50/30">
+                        <a
+                            href={footerHelperLink.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-indigo-600 hover:text-indigo-700 hover:underline"
+                        >
+                            {footerHelperLink.label}
+                        </a>
+                    </div>
+                )}
 
                 {/* Footer */}
                 {footer && (
@@ -163,9 +200,9 @@ interface DrawerSectionProps {
 
 export function DrawerSection({ title, children, className }: DrawerSectionProps) {
     return (
-        <div className={cn("space-y-4", className)}>
+        <div className={cn("space-y-3", className)}>
             {title && (
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
                     {title}
                 </h3>
             )}

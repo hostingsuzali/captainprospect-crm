@@ -90,14 +90,22 @@ async function leexiFetch<T>(path: string, params?: Record<string, string>): Pro
  * Returns up to `limit` items (max 100 per Leexi docs).
  */
 export async function fetchLeexiCalls(page = 1, items = 50): Promise<LeexiCall[]> {
-  const data = await leexiFetch<LeexiCall[] | { data?: LeexiCall[] }>('/calls', {
-    page: String(page),
-    items: String(Math.min(items, 100)),
-  });
+  try {
+    const data = await leexiFetch<LeexiCall[] | { data?: LeexiCall[] }>('/calls', {
+      page: String(page),
+      items: String(Math.min(items, 100)),
+    });
 
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.data)) return data.data;
-  return [];
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.data)) return data.data;
+    return [];
+  } catch (err: any) {
+    if (err?.message?.includes('403') || err?.message?.includes('401')) {
+      console.warn('Leexi access denied (401/403): API key might lack permissions.', err.message);
+      return [];
+    }
+    throw err;
+  }
 }
 
 /**

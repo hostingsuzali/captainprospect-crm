@@ -40,6 +40,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# chromium pack (generated at build by postinstall)
+/public/chromium-pack.tar
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

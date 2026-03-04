@@ -11,6 +11,8 @@ export interface VoipCallCompletedEvent {
   contactName: string;
   enrichmentPending: boolean;
   recordingUrl?: string;
+  /** When true (Allo auto-validation), notes/status already updated from AI — no modal */
+  autoValidated?: boolean;
 }
 
 export interface VoipEnrichmentEvent {
@@ -59,6 +61,7 @@ export function useVoipListener({
             contactName: String(payload.contactName ?? ""),
             enrichmentPending: Boolean(payload.enrichmentPending),
             recordingUrl: payload.recordingUrl as string | undefined,
+            autoValidated: Boolean(payload.autoValidated),
           });
         } else if (payload.type === "voip:enrichment-ready") {
           onEnrichmentReadyRef.current?.({

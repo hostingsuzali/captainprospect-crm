@@ -19,10 +19,17 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Card, Button, Badge, LoadingState, EmptyState, PageHeader } from "@/components/ui";
+import { OnboardingReadinessGauge } from "@/components/common/OnboardingReadinessGauge";
 
 // ============================================
 // TYPES
 // ============================================
+
+interface OnboardingReadiness {
+    calendarConnected: boolean;
+    personaSet: boolean;
+    missionCreated: boolean;
+}
 
 interface Client {
     id: string;
@@ -39,6 +46,7 @@ interface Client {
         missions: number;
         users: number;
     };
+    readiness?: OnboardingReadiness;
 }
 
 const ONBOARDING_STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -264,6 +272,16 @@ export default function BDClientsPage() {
                                             {statusConfig.label}
                                         </span>
                                     </div>
+
+                                    {client.readiness && (
+                                        <div className="mb-4 pt-3 border-t border-slate-100">
+                                            <OnboardingReadinessGauge
+                                                readiness={client.readiness}
+                                                size="sm"
+                                                showLabels={true}
+                                            />
+                                        </div>
+                                    )}
 
                                     <div className="flex items-center gap-6 pt-4 border-t border-slate-100">
                                         <div>

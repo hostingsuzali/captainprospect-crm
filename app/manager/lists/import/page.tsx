@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Button, Select, FileUpload, useToast, Modal, Input } from "@/components/ui";
+import { Card, Button, Select, FileUpload, useToast, Modal, Input, Badge, Tooltip } from "@/components/ui";
 import {
     ArrowLeft,
     ArrowRight,
@@ -16,8 +16,26 @@ import {
     Building2,
     User,
     XCircle,
+    Sparkles,
+    Search,
+    RotateCcw,
+    Save,
+    ChevronDown,
+    ChevronRight,
+    Info,
+    TrendingUp,
+    Database,
+    Mail,
+    Phone,
+    Globe,
+    MapPin,
+    Briefcase,
+    Users,
+    Calendar,
+    History,
 } from "lucide-react";
 import Link from "next/link";
+import { ACTION_RESULT_LABELS } from "@/lib/types";
 
 // ============================================
 // TYPES
@@ -31,6 +49,36 @@ interface Mission {
 interface ColumnMapping {
     csvColumn: string;
     targetField: string;
+    confidence?: number;
+    autoDetected?: boolean;
+}
+
+interface ColumnStats {
+    column: string;
+    totalRows: number;
+    filledRows: number;
+    uniqueValues: number;
+    dataType: 'text' | 'email' | 'phone' | 'url' | 'number' | 'date';
+    sampleValues: string[];
+}
+
+interface StatusMapping {
+    csvValue: string;
+    actionResult: string;
+    count: number;
+}
+
+interface ChannelMapping {
+    csvValue: string;
+    channel: 'CALL' | 'EMAIL' | 'LINKEDIN';
+    count: number;
+}
+
+interface ActionColumnMapping {
+    statusColumn: string;
+    dateColumn: string;
+    noteColumn: string;
+    channelColumn: string;
 }
 
 interface PreviewRow {
@@ -108,7 +156,26 @@ export default function ImportListPage() {
     const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
     const [mappings, setMappings] = useState<ColumnMapping[]>([]);
     const [previewData, setPreviewData] = useState<PreviewRow[]>([]);
-    const [totalRows, setTotalRows] = useState(0); // Track actual row count
+    const [totalRows, setTotalRows] = useState(0);
+    const [columnStats, setColumnStats] = useState<ColumnStats[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['company', 'contact']));
+    const [showQualityReport, setShowQualityReport] = useState(false);
+    
+    // Action history import
+    const [importActions, setImportActions] = useState(false);
+    const [actionColumnMapping, setActionColumnMapping] = useState<ActionColumnMapping>({
+        statusColumn: "",
+        dateColumn: "",
+        noteColumn: "",
+        channelColumn: "",
+    });
+    const [statusMappings, setStatusMappings] = useState<StatusMapping[]>([]);
+    const [detectedStatuses, setDetectedStatuses] = useState<string[]>([]);
+    const [detectedChannels, setDetectedChannels] = useState<string[]>([]);
+    const [channelMappings, setChannelMappings] = useState<ChannelMapping[]>([]);
+    /** Per-column unique values and counts from ALL rows (used for status/channel mapping) */
+    const [fullColumnUniqueValues, setFullColumnUniqueValues] = useState<Record<string, { values: string[]; counts: Record<string, number> }>>({});
 
     // Step 4: Validation
     const [validationResult, setValidationResult] = useState<{
@@ -121,6 +188,7 @@ export default function ImportListPage() {
     const [importResult, setImportResult] = useState<{
         companies: number;
         contacts: number;
+        actions?: number;
         errors: number;
     } | null>(null);
 
@@ -154,6 +222,50 @@ export default function ImportListPage() {
         };
         fetchMissions();
     }, []);
+
+    // Detect unique status values when status column is selected (uses ALL rows, not just preview)
+    useEffect(() => {
+        const col = actionColumnMapping.statusColumn;
+        if (!col) {
+            setDetectedStatuses([]);
+            setStatusMappings([]);
+            return;
+        }
+        const data = fullColumnUniqueValues[col];
+        if (data && data.values.length > 0) {
+            setDetectedStatuses(data.values);
+            setStatusMappings(data.values.map(csvValue => ({
+                csvValue,
+                actionResult: "",
+                count: data.counts[csvValue] || 0
+            })));
+        } else {
+            setDetectedStatuses([]);
+            setStatusMappings([]);
+        }
+    }, [actionColumnMapping.statusColumn, fullColumnUniqueValues]);
+
+    // Detect unique channel values when channel column is selected (uses ALL rows, not just preview)
+    useEffect(() => {
+        const col = actionColumnMapping.channelColumn;
+        if (!col) {
+            setDetectedChannels([]);
+            setChannelMappings([]);
+            return;
+        }
+        const data = fullColumnUniqueValues[col];
+        if (data && data.values.length > 0) {
+            setDetectedChannels(data.values);
+            setChannelMappings(data.values.map(csvValue => ({
+                csvValue,
+                channel: 'CALL',
+                count: data.counts[csvValue] || 0
+            })));
+        } else {
+            setDetectedChannels([]);
+            setChannelMappings([]);
+        }
+    }, [actionColumnMapping.channelColumn, fullColumnUniqueValues]);
 
     // ============================================
     // ADVANCED CSV PARSING
@@ -291,6 +403,26 @@ export default function ImportListPage() {
 
             setPreviewData(dataRows);
 
+            // Scan ALL rows to build unique values + counts per column (for status/channel mapping)
+            const colUnique: Record<string, { values: string[]; counts: Record<string, number> }> = {};
+            headers.forEach(h => { colUnique[h] = { values: [], counts: {} }; });
+            for (let r = 1; r < lines.length; r++) {
+                const values = parseCSVLine(lines[r], delimiter).map(v => v.replace(/^"|"$/g, '').trim());
+                headers.forEach((header, i) => {
+                    const val = values[i] || "";
+                    if (!val) return;
+                    const existing = colUnique[header].counts[val];
+                    if (existing === undefined) {
+                        colUnique[header].values.push(val);
+                        colUnique[header].counts[val] = 1;
+                    } else {
+                        colUnique[header].counts[val]++;
+                    }
+                });
+            }
+            headers.forEach(h => { colUnique[h].values.sort(); });
+            setFullColumnUniqueValues(colUnique);
+
             // Set total row count for validation
             setTotalRows(lines.length - 1);
 
@@ -361,6 +493,15 @@ export default function ImportListPage() {
             }
         }
 
+        // Validation for action history import: require full mapping of detected statuses
+        if (importActions) {
+            if (!actionColumnMapping.statusColumn) {
+                errors.push("Vous avez activé l'historique d'actions mais aucune colonne de statut n'est sélectionnée");
+            } else if (statusMappings.length > 0 && statusMappings.some(m => !m.actionResult)) {
+                errors.push("Tous les statuts trouvés dans la colonne d'historique doivent être mappés à un résultat CRM");
+            }
+        }
+
         setValidationResult({
             valid: errors.length === 0 ? totalRows : 0, // FIXED: Use totalRows instead of previewData.length
             errors,
@@ -390,6 +531,10 @@ export default function ImportListPage() {
             formData.append("listName", listName);
             formData.append("mappings", JSON.stringify(mappings));
             formData.append("importType", importType);
+            formData.append("importActions", String(importActions));
+            formData.append("actionColumnMapping", JSON.stringify(actionColumnMapping));
+            formData.append("statusMappings", JSON.stringify(statusMappings));
+            formData.append("channelMappings", JSON.stringify(channelMappings));
             if (totalRows > 0) formData.append("totalRows", String(totalRows));
 
             const res = await fetch("/api/lists/import", {
@@ -406,7 +551,7 @@ export default function ImportListPage() {
             const reader = res.body.getReader();
             const dec = new TextDecoder();
             let buffer = "";
-            let doneData: { companiesCreated: number; contactsCreated: number; errors: number } | null = null;
+            let doneData: { companiesCreated: number; contactsCreated: number; actionsCreated?: number; errors: number } | null = null;
             let errorMsg: string | null = null;
 
             while (true) {
@@ -422,7 +567,7 @@ export default function ImportListPage() {
                         const msg = JSON.parse(trimmed) as {
                             type: string;
                             percent?: number;
-                            data?: { companiesCreated: number; contactsCreated: number; errors: number };
+                            data?: { companiesCreated: number; contactsCreated: number; actionsCreated?: number; errors: number };
                             error?: string;
                         };
                         if (msg.type === "progress" && msg.percent != null) setImportProgress(msg.percent);
@@ -441,6 +586,7 @@ export default function ImportListPage() {
                 setImportResult({
                     companies: doneData.companiesCreated,
                     contacts: doneData.contactsCreated,
+                    actions: doneData.actionsCreated,
                     errors: doneData.errors,
                 });
                 setStep(5);
@@ -462,11 +608,11 @@ export default function ImportListPage() {
     // ============================================
 
     const steps = [
-        { num: 1, label: "Fichier" },
-        { num: 2, label: "Type" },
-        { num: 3, label: "Mapping" },
-        { num: 4, label: "Validation" },
-        { num: 5, label: "Import" },
+        { num: 1, label: "Fichier", icon: Upload },
+        { num: 2, label: "Type", icon: Building2 },
+        { num: 3, label: "Mapping", icon: ArrowRight },
+        { num: 4, label: "Validation", icon: CheckCircle2 },
+        { num: 5, label: "Import", icon: Database },
     ];
 
     // ============================================
@@ -651,25 +797,83 @@ export default function ImportListPage() {
             {step === 3 && (
                 <Card>
                     <div className="space-y-6">
-                        <div className="flex items-center justify-between">
+                        {/* Header with Stats */}
+                        <div className="flex items-start justify-between">
                             <div>
-                                <h2 className="text-lg font-semibold text-slate-900">Mapper les colonnes</h2>
-                                <p className="text-sm text-slate-500">
+                                <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                                    Mapper les colonnes
+                                    <Badge variant="primary" className="text-xs">
+                                        {mappings.filter(m => m.targetField && m.targetField !== "").length}/{csvHeaders.length} mappées
+                                    </Badge>
+                                </h2>
+                                <p className="text-sm text-slate-500 mt-1">
                                     Associez chaque colonne CSV à un champ de données
                                 </p>
                             </div>
-                            <div className="text-sm text-slate-500">
-                                {csvHeaders.length} colonnes détectées
+                            <div className="flex items-center gap-2">
+                                <Tooltip content="Détection automatique basée sur les noms de colonnes">
+                                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 rounded-lg">
+                                        <Sparkles className="w-4 h-4 text-indigo-500" />
+                                        <span className="text-sm font-medium text-indigo-700">Auto-détecté</span>
+                                    </div>
+                                </Tooltip>
+                            </div>
+                        </div>
+
+                        {/* Bulk Actions Toolbar */}
+                        <div className="flex flex-col gap-3">
+                            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <div className="flex-1 relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Rechercher une colonne..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                                    />
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        setMappings(mappings.map(m => ({ ...m, targetField: "" })));
+                                    }}
+                                    className="gap-2"
+                                >
+                                    <RotateCcw className="w-4 h-4" />
+                                    Réinitialiser
+                                </Button>
+                            </div>
+
+                            {/* Action history toggle */}
+                            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <div className="space-y-0.5">
+                                    <div className="flex items-center gap-2">
+                                        <History className="w-4 h-4 text-slate-500" />
+                                        <p className="text-sm font-medium text-slate-900">Prospects déjà travaillés ?</p>
+                                    </div>
+                                    <p className="text-xs text-slate-500">
+                                        Activez cette option pour importer l&apos;historique des statuts (appels, emails, LinkedIn) depuis votre CSV.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setImportActions(!importActions)}
+                                    className={`relative w-11 h-6 rounded-full transition-colors ${importActions ? "bg-indigo-600" : "bg-slate-300"}`}
+                                >
+                                    <span
+                                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${importActions ? "translate-x-5" : ""}`}
+                                    />
+                                </button>
                             </div>
                         </div>
 
                         <div className="space-y-3">
-                            {mappings.map((mapping, i) => {
-                                // Filter fields based on import type
-                                const availableFields = importType === "companies-only"
-                                    ? [...COMPANY_FIELDS]
-                                    : [...ALL_FIELDS];
-
+                            {mappings
+                                .filter(m => !searchQuery || m.csvColumn.toLowerCase().includes(searchQuery.toLowerCase()))
+                                .map((mapping, i) => {
+                                const availableFields = importType === "companies-only" ? [...COMPANY_FIELDS] : [...ALL_FIELDS];
                                 const currentTarget = mapping.targetField;
                                 const isCustomCompany = currentTarget.startsWith("company.") && !COMPANY_FIELDS.some(f => f.value === currentTarget);
                                 const isCustomContact = currentTarget.startsWith("contact.") && !CONTACT_FIELDS.some(f => f.value === currentTarget);
@@ -681,39 +885,223 @@ export default function ImportListPage() {
                                     availableFields.push({ value: currentTarget, label: `Contact (Perso): ${currentTarget.replace('contact.', '')}` });
                                 }
 
+                                const getFieldIcon = () => {
+                                    if (currentTarget.startsWith("company.")) return <Building2 className="w-4 h-4 text-blue-500" />;
+                                    if (currentTarget.startsWith("contact.")) return <User className="w-4 h-4 text-purple-500" />;
+                                    return null;
+                                };
+
                                 return (
-                                    <div key={mapping.csvColumn} className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl">
-                                        <div className="flex-1">
-                                            <p className="text-sm font-medium text-slate-900">{mapping.csvColumn}</p>
+                                    <div key={mapping.csvColumn} className="flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 transition-colors">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <p className="text-sm font-semibold text-slate-900">{mapping.csvColumn}</p>
+                                                {currentTarget && getFieldIcon()}
+                                            </div>
                                             <p className="text-xs text-slate-500 truncate">
-                                                Ex: {previewData[0]?.[mapping.csvColumn] || "—"}
+                                                Exemple: {previewData[0]?.[mapping.csvColumn] || "—"}
                                             </p>
                                         </div>
-                                        <ArrowRight className="w-4 h-4 text-slate-400" />
+                                        <ArrowRight className="w-4 h-4 text-slate-300 flex-shrink-0" />
                                         <Select
                                             options={availableFields}
                                             value={mapping.targetField}
                                             onChange={(value) => {
                                                 const newMappings = [...mappings];
-
-                                                // Handle custom field selection
+                                                const actualIndex = mappings.findIndex(m => m.csvColumn === mapping.csvColumn);
                                                 if (value === "__custom_company__") {
-                                                    setCustomFieldPrompt({ index: i, type: 'company' });
+                                                    setCustomFieldPrompt({ index: actualIndex, type: 'company' });
                                                     setCustomFieldValue("");
                                                 } else if (value === "__custom_contact__") {
-                                                    setCustomFieldPrompt({ index: i, type: 'contact' });
+                                                    setCustomFieldPrompt({ index: actualIndex, type: 'contact' });
                                                     setCustomFieldValue("");
                                                 } else {
-                                                    newMappings[i].targetField = value;
+                                                    newMappings[actualIndex].targetField = value;
                                                     setMappings(newMappings);
                                                 }
                                             }}
-                                            className="w-48"
+                                            className="w-56 flex-shrink-0"
                                         />
                                     </div>
                                 );
                             })}
                         </div>
+
+                        {/* Action history configuration */}
+                        {importActions && (
+                            <div className="space-y-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                        Historique des actions
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        Configurez les colonnes pour reconstruire l&apos;historique des statuts et des notes de vos prospects.
+                                    </p>
+                                </div>
+
+                                {/* Column selectors */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-slate-700">Colonne statut</p>
+                                        <Select
+                                            options={[
+                                                { value: "", label: "Ignorer" },
+                                                ...csvHeaders.map(h => ({ value: h, label: h })),
+                                            ]}
+                                            value={actionColumnMapping.statusColumn}
+                                            onChange={(value) =>
+                                                setActionColumnMapping(prev => ({ ...prev, statusColumn: value }))
+                                            }
+                                        />
+                                        <p className="text-xs text-slate-500">
+                                            Valeurs comme &quot;Tentative&quot;, &quot;Meeting booké&quot;, etc.
+                                        </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-slate-700">Colonne date</p>
+                                        <Select
+                                            options={[
+                                                { value: "", label: "Ignorer" },
+                                                ...csvHeaders.map(h => ({ value: h, label: h })),
+                                            ]}
+                                            value={actionColumnMapping.dateColumn}
+                                            onChange={(value) =>
+                                                setActionColumnMapping(prev => ({ ...prev, dateColumn: value }))
+                                            }
+                                        />
+                                        <p className="text-xs text-slate-500">
+                                            Date à laquelle l&apos;action a eu lieu (optionnel).
+                                        </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-slate-700">Colonne note</p>
+                                        <Select
+                                            options={[
+                                                { value: "", label: "Ignorer" },
+                                                ...csvHeaders.map(h => ({ value: h, label: h })),
+                                            ]}
+                                            value={actionColumnMapping.noteColumn}
+                                            onChange={(value) =>
+                                                setActionColumnMapping(prev => ({ ...prev, noteColumn: value }))
+                                            }
+                                        />
+                                        <p className="text-xs text-slate-500">
+                                            Notes d&apos;appel ou commentaires (optionnel).
+                                        </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-slate-700">Colonne canal</p>
+                                        <Select
+                                            options={[
+                                                { value: "", label: "Ignorer" },
+                                                ...csvHeaders.map(h => ({ value: h, label: h })),
+                                            ]}
+                                            value={actionColumnMapping.channelColumn}
+                                            onChange={(value) =>
+                                                setActionColumnMapping(prev => ({ ...prev, channelColumn: value }))
+                                            }
+                                        />
+                                        <p className="text-xs text-slate-500">
+                                            Canal utilisé (téléphone, email, LinkedIn). Par défaut: Appel.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Status mappings */}
+                                {detectedStatuses.length > 0 && (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-xs font-medium text-slate-700">
+                                                Mapping des statuts CSV vers les résultats CRM
+                                            </p>
+                                            {statusMappings.some(m => !m.actionResult) && (
+                                                <span className="text-[11px] text-amber-600">
+                                                    Certains statuts ne sont pas encore mappés
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                                            <table className="w-full text-xs">
+                                                <thead className="bg-slate-50">
+                                                    <tr>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Statut CSV</th>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Occurrences</th>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Résultat CRM</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {statusMappings.map((m, idx) => (
+                                                        <tr key={m.csvValue} className="border-t border-slate-100">
+                                                            <td className="px-3 py-1.5 text-slate-900">{m.csvValue}</td>
+                                                            <td className="px-3 py-1.5 text-slate-500">{m.count}</td>
+                                                            <td className="px-3 py-1.5">
+                                                                <Select
+                                                                    options={Object.entries(ACTION_RESULT_LABELS).map(([value, label]) => ({
+                                                                        value,
+                                                                        label,
+                                                                    }))}
+                                                                    value={m.actionResult}
+                                                                    onChange={(value) => {
+                                                                        const next = [...statusMappings];
+                                                                        next[idx] = { ...next[idx], actionResult: value };
+                                                                        setStatusMappings(next);
+                                                                    }}
+                                                                    className="w-52"
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Channel mappings (optional) */}
+                                {actionColumnMapping.channelColumn && detectedChannels.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-xs font-medium text-slate-700">
+                                            Mapping des valeurs de canal vers les canaux CRM
+                                        </p>
+                                        <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                                            <table className="w-full text-xs">
+                                                <thead className="bg-slate-50">
+                                                    <tr>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Canal CSV</th>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Occurrences</th>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Canal CRM</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {channelMappings.map((m, idx) => (
+                                                        <tr key={m.csvValue} className="border-t border-slate-100">
+                                                            <td className="px-3 py-1.5 text-slate-900">{m.csvValue}</td>
+                                                            <td className="px-3 py-1.5 text-slate-500">{m.count}</td>
+                                                            <td className="px-3 py-1.5">
+                                                                <Select
+                                                                    options={[
+                                                                        { value: 'CALL', label: 'Appel' },
+                                                                        { value: 'EMAIL', label: 'Email' },
+                                                                        { value: 'LINKEDIN', label: 'LinkedIn' },
+                                                                    ]}
+                                                                    value={m.channel}
+                                                                    onChange={(value) => {
+                                                                        const next = [...channelMappings];
+                                                                        next[idx] = { ...next[idx], channel: value as 'CALL' | 'EMAIL' | 'LINKEDIN' };
+                                                                        setChannelMappings(next);
+                                                                    }}
+                                                                    className="w-40"
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Preview */}
                         <div>

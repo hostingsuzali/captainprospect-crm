@@ -4,11 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui";
-import { RefreshCw, ArrowRight, Calendar, Sparkles, PhoneCall, Users, Clock } from "lucide-react";
+import { RefreshCw, ArrowRight, Calendar, Sparkles, PhoneCall, Users, Clock, TrendingUp, CalendarCheck, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ClientOnboardingModal } from "@/components/client/ClientOnboardingModal";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
-import { ProgressRing } from "@/components/ui/ProgressRing";
 import { DashboardSkeleton } from "@/components/client/skeletons";
 
 interface DashboardStats {
@@ -44,14 +42,14 @@ interface Mission {
 }
 
 const MONTH_NAMES = [
-    "Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Aout", "Septembre", "Octobre", "Novembre", "Decembre",
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
 ];
 
 function getGreeting(): string {
     const hour = new Date().getHours();
     if (hour < 12) return "Bonjour";
-    if (hour < 18) return "Bon apres-midi";
+    if (hour < 18) return "Bon après-midi";
     return "Bonsoir";
 }
 
@@ -76,26 +74,24 @@ function formatMeetingDate(dateString: string): string {
     });
 }
 
+function formatMeetingTime(dateString: string): string {
+    const d = new Date(dateString);
+    return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatShortMonth(dateString: string): string {
+    const d = new Date(dateString);
+    return d.toLocaleDateString("fr-FR", { month: "short" }).toUpperCase().replace(".", "");
+}
+
 export default function ClientPortal() {
-    const { data: session, update } = useSession();
+    const { data: session } = useSession();
     const toast = useToast();
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [upcomingMeetings, setUpcomingMeetings] = useState<ClientMeeting[]>([]);
     const [missionName, setMissionName] = useState<string>("");
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
-
-    const [dismissedForThisVisit, setDismissedForThisVisit] = useState(false);
-    const showOnboarding =
-        session?.user?.role === "CLIENT" &&
-        !(session.user as { clientOnboardingDismissedPermanently?: boolean })?.clientOnboardingDismissedPermanently &&
-        !dismissedForThisVisit;
-
-    const handleDismissOnboardingPermanently = async () => {
-        const res = await fetch("/api/client/onboarding-dismissed", { method: "PATCH" });
-        if (!res.ok) throw new Error("Failed to dismiss");
-        await update();
-    };
 
     const clientId = (session?.user as { clientId?: string })?.clientId;
     const userName = session?.user?.name?.split(" ")[0] ?? "Client";
@@ -147,12 +143,12 @@ export default function ClientPortal() {
             }
         } catch (error) {
             console.error("Failed to fetch data:", error);
-            toast.error("Erreur de chargement", "Impossible de charger les donnees");
+            toast.error("Erreur de chargement", "Impossible de charger les données");
         } finally {
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [clientId]);
 
     useEffect(() => {
@@ -164,191 +160,223 @@ export default function ClientPortal() {
     }
 
     const meetingsBooked = stats?.meetingsBooked ?? 0;
-    const objective = stats?.monthlyObjective ?? 10;
-    const pctComplete = objective > 0 ? Math.round((meetingsBooked / objective) * 100) : 0;
 
     return (
-        <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-8">
-            {/* Greeting bar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 animate-fade-up">
+        <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-6">
+            {/* ── Greeting bar ── */}
+            <div className="flex flex-wrap items-center justify-between gap-4" style={{ animation: "dashFadeUp 0.4s ease both" }}>
                 <div>
-                    <h1 className="text-2xl font-bold text-[#12122A] tracking-tight">
+                    <h1 className="text-2xl md:text-[28px] font-bold text-[#12122A] tracking-tight leading-tight">
                         {getGreeting()}, <span className="gradient-text">{userName}</span>
                     </h1>
-                    <p className="text-sm text-[#6B7194] mt-1">
-                        {currentMonth} {currentYear}
-                        {missionName && <> &middot; <span className="font-medium text-[#4A4B6A]">{missionName}</span></>}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1.5">
+                        <p className="text-sm text-[#6B7194]">
+                            {currentMonth} {currentYear}
+                        </p>
+                        {missionName && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-[2px] rounded-full">
+                                <TrendingUp className="w-3 h-3" />{missionName}
+                            </span>
+                        )}
+                    </div>
                 </div>
                 <button
                     onClick={() => fetchData(true)}
                     disabled={isRefreshing}
-                    className="w-10 h-10 rounded-xl border border-[#E8EBF0] flex items-center justify-center text-[#6B7194] hover:text-[#7C5CFC] hover:border-[#7C5CFC]/30 transition-all duration-300 disabled:opacity-50 bg-white/80 backdrop-blur-sm hover:shadow-md hover:shadow-[#7C5CFC]/10"
-                    title="Rafraichir"
-                    aria-label="Actualiser les donnees"
+                    className="w-10 h-10 rounded-xl border border-[#E8EBF0] flex items-center justify-center text-[#6B7194] hover:text-[#7C5CFC] hover:border-[#7C5CFC]/30 transition-all duration-200 disabled:opacity-50 bg-white/80 backdrop-blur-sm hover:shadow-md hover:shadow-[#7C5CFC]/10"
+                    title="Rafraîchir"
+                    aria-label="Actualiser les données"
                 >
-                    <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
+                    <RefreshCw className={cn("w-4 h-4 transition-transform duration-200", isRefreshing && "animate-spin")} />
                 </button>
             </div>
 
-            {/* Hero Card -- Gradient */}
+            {/* ── Hero Card ── */}
             <div
-                className="relative overflow-hidden rounded-2xl p-6 md:p-8 shadow-xl animate-fade-up"
-                style={{
-                    animationDelay: "80ms",
-                    background: "linear-gradient(135deg, #1E1B4B 0%, #312E81 35%, #4338CA 70%, #6366F1 100%)",
-                }}
+                className="relative overflow-hidden rounded-2xl shadow-xl"
+                style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "60ms", background: "linear-gradient(135deg, #1E1B4B 0%, #312E81 35%, #4338CA 70%, #6366F1 100%)" }}
             >
-                {/* Decorative elements */}
-                <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/3" />
-                <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full bg-white/5 translate-y-1/2 -translate-x-1/4" />
-                <div className="absolute top-6 right-8 opacity-20">
-                    <Sparkles className="w-6 h-6 text-white animate-float" />
+                {/* Decorative orbs */}
+                <div className="absolute top-0 right-0 w-72 h-72 rounded-full bg-white/[0.04] -translate-y-1/2 translate-x-1/3" />
+                <div className="absolute bottom-0 left-0 w-52 h-52 rounded-full bg-white/[0.04] translate-y-1/2 -translate-x-1/4" />
+                <div className="absolute top-8 right-10 opacity-20">
+                    <Sparkles className="w-5 h-5 text-white animate-float" />
                 </div>
 
-                <div className="relative flex flex-col md:flex-row gap-8">
-                    {/* Left: RDV counter + ring */}
-                    <div className="flex-1 flex flex-col items-center md:items-start">
-                        <p className="text-xs font-semibold text-indigo-200 uppercase tracking-[0.15em]">
+                <div className="relative p-6 md:p-8">
+                    {/* Large RDV count */}
+                    <div className="flex flex-col items-center md:items-start mb-8">
+                        <p className="text-[11px] font-semibold text-indigo-200/80 uppercase tracking-[0.2em]">
                             Rendez-vous ce mois
                         </p>
-                        <div className="mt-4 flex items-end gap-3">
+                        <div className="mt-3 flex items-baseline gap-1">
                             <AnimatedNumber
                                 value={meetingsBooked}
-                                className="text-7xl font-black text-white drop-shadow-lg"
+                                className="text-[72px] md:text-[80px] font-black text-white leading-none drop-shadow-lg"
                             />
-                            <span className="text-lg text-indigo-200/80 mb-3 font-medium">
-                                sur {objective}
-                            </span>
-                        </div>
-                        <p className="text-sm text-indigo-200/70 mt-1">
-                            {pctComplete}% de l&apos;objectif atteint
-                        </p>
-                        <div className="mt-6 animate-pulse-glow rounded-full">
-                            <ProgressRing
-                                value={meetingsBooked}
-                                max={objective}
-                                size={130}
-                                strokeWidth={12}
-                                variant="glow"
-                            />
+                            <span className="text-2xl font-bold text-indigo-300/60 mb-2">RDV</span>
                         </div>
                     </div>
 
-                    {/* Divider */}
-                    <div className="hidden md:block w-px bg-white/10" />
-                    <div className="md:hidden border-t border-white/10" />
-
-                    {/* Right: Pace stats */}
-                    <div className="flex-1">
-                        <p className="text-xs font-semibold text-indigo-200 uppercase tracking-[0.15em] mb-6">
-                            En cours de mission
-                        </p>
-                        <div className="space-y-5">
-                            <div className="flex items-center justify-between group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center group-hover:bg-white/15 transition-colors">
-                                        <PhoneCall className="w-4 h-4 text-indigo-200" />
-                                    </div>
-                                    <span className="text-sm text-indigo-200/80">Appels realises</span>
-                                </div>
+                    {/* KPI pills row */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* Appels réalisés */}
+                        <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.12] transition-all duration-200 group">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400/30 to-indigo-400/30 flex items-center justify-center shrink-0 group-hover:from-violet-400/40 group-hover:to-indigo-400/40 transition-all duration-200">
+                                <PhoneCall className="w-[18px] h-[18px] text-indigo-200" />
+                            </div>
+                            <div>
                                 <AnimatedNumber
                                     value={stats?.totalActions ?? 0}
-                                    className="text-xl font-bold text-white"
+                                    className="text-xl font-extrabold text-white leading-none"
                                 />
+                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Appels réalisés</p>
                             </div>
-                            <div className="flex items-center justify-between group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center group-hover:bg-white/15 transition-colors">
-                                        <Users className="w-4 h-4 text-indigo-200" />
-                                    </div>
-                                    <span className="text-sm text-indigo-200/80">Contacts joints</span>
-                                </div>
+                        </div>
+
+                        {/* Contacts joints */}
+                        <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.12] transition-all duration-200 group">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400/30 to-indigo-400/30 flex items-center justify-center shrink-0 group-hover:from-violet-400/40 group-hover:to-indigo-400/40 transition-all duration-200">
+                                <Users className="w-[18px] h-[18px] text-indigo-200" />
+                            </div>
+                            <div>
                                 <AnimatedNumber
                                     value={stats?.contactsReached ?? 0}
-                                    className="text-xl font-bold text-white"
+                                    className="text-xl font-extrabold text-white leading-none"
                                 />
+                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Contacts joints</p>
                             </div>
-                            <div className="flex items-center justify-between group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center group-hover:bg-white/15 transition-colors">
-                                        <Clock className="w-4 h-4 text-indigo-200" />
-                                    </div>
-                                    <span className="text-sm text-indigo-200/80">Derniere activite</span>
-                                </div>
-                                <span className="text-xl font-bold text-white">
+                        </div>
+
+                        {/* Dernière activité */}
+                        <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.12] transition-all duration-200 group">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400/30 to-indigo-400/30 flex items-center justify-center shrink-0 group-hover:from-violet-400/40 group-hover:to-indigo-400/40 transition-all duration-200">
+                                <Clock className="w-[18px] h-[18px] text-indigo-200" />
+                            </div>
+                            <div>
+                                <span className="text-xl font-extrabold text-white leading-none">
                                     {formatRelativeDate(stats?.lastActivityDate ?? null)}
                                 </span>
+                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Dernière activité</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Upcoming Meetings */}
-            <div className="premium-card p-6 animate-fade-up" style={{ animationDelay: "160ms" }}>
-                <div className="flex items-center justify-between mb-5">
+            {/* ── Mailbox connection card ── */}
+            <Link
+                href="/client/portal/email"
+                className="flex items-center gap-4 p-4 rounded-xl border border-[#E8EBF0] bg-white/80 backdrop-blur-sm hover:border-[#7C5CFC]/30 hover:shadow-md hover:shadow-[#7C5CFC]/5 transition-all duration-200 group"
+                style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "100ms" }}
+            >
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/10 to-violet-500/10 flex items-center justify-center shrink-0 group-hover:from-indigo-500/20 group-hover:to-violet-500/20 transition-colors">
+                    <Mail className="w-5 h-5 text-[#7C5CFC]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#12122A]">Connectez votre boîte email</p>
+                    <p className="text-xs text-[#6B7194] mt-0.5">Gmail, Outlook ou IMAP — l&apos;équipe envoie les emails de prospection depuis votre adresse</p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-[#A0A3BD] group-hover:text-[#7C5CFC] group-hover:translate-x-0.5 transition-all shrink-0" />
+            </Link>
+
+            {/* ── Upcoming Meetings ── */}
+            <div className="premium-card overflow-hidden" style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "140ms" }}>
+                <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-[#E8EBF0]">
                     <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#7C5CFC] to-[#A78BFA] flex items-center justify-center shadow-sm shadow-[#7C5CFC]/20">
-                            <Calendar className="w-4 h-4 text-white" />
+                            <CalendarCheck className="w-4 h-4 text-white" />
                         </div>
                         <h2 className="text-sm font-semibold text-[#12122A] uppercase tracking-wider">
-                            Prochains RDV
+                            Prochains rendez-vous
                         </h2>
                     </div>
                     <Link
                         href="/client/portal/meetings"
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#7C5CFC] hover:text-[#6C3AFF] transition-colors group"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#7C5CFC] hover:text-[#6C3AFF] transition-colors duration-200 group"
                     >
-                        Voir tout <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        Voir tout <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-200" />
                     </Link>
                 </div>
+
                 {upcomingMeetings.length === 0 ? (
-                    <div className="text-center py-10">
+                    <div className="text-center py-12 px-6">
                         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F4F6F9] to-[#E8EBF0] flex items-center justify-center mx-auto mb-4">
                             <Calendar className="w-6 h-6 text-[#A0A3BD]" />
                         </div>
-                        <p className="text-sm font-medium text-[#6B7194]">Aucun RDV a venir</p>
+                        <p className="text-sm font-medium text-[#6B7194]">Aucun RDV à venir</p>
                         <p className="text-xs text-[#A0A3BD] mt-1 max-w-xs mx-auto">
-                            Les prochains RDV planifies par votre equipe apparaitront ici.
+                            Les prochains RDV planifiés par votre équipe apparaîtront ici.
                         </p>
                     </div>
                 ) : (
-                    <div className="stagger-children space-y-1">
+                    <div className="divide-y divide-[#F0F1F5]">
                         {upcomingMeetings.map((m, idx) => {
                             const contactName = [m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ") || "Contact";
                             const companyName = m.contact.company.name;
-                            const dateStr = formatMeetingDate(m.callbackDate || m.createdAt);
+                            const dateKey = m.callbackDate || m.createdAt;
+                            const d = new Date(dateKey);
                             return (
                                 <Link
                                     key={m.id}
                                     href="/client/portal/meetings"
-                                    className="flex items-center gap-3 p-3.5 rounded-xl hover:bg-gradient-to-r hover:from-[#F8F7FF] hover:to-transparent transition-all duration-300 group border border-transparent hover:border-[#7C5CFC]/10"
+                                    className="flex items-center gap-4 px-6 py-3.5 hover:bg-gradient-to-r hover:from-[#F8F7FF] hover:to-transparent transition-all duration-200 group relative"
+                                    style={{ animation: "dashFadeUp 0.35s ease both", animationDelay: `${180 + idx * 50}ms` }}
                                 >
-                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#EEF2FF] to-[#E0E7FF] flex items-center justify-center flex-shrink-0 group-hover:from-[#7C5CFC] group-hover:to-[#A78BFA] transition-all duration-300">
-                                        <ArrowRight className="w-3.5 h-3.5 text-[#7C5CFC] group-hover:text-white group-hover:translate-x-0.5 transition-all duration-300" />
+                                    {/* Hover accent bar */}
+                                    <div className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-[#7C5CFC] opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+
+                                    {/* Date pill */}
+                                    <div className="w-[52px] shrink-0 flex flex-col items-center py-1.5 px-1 rounded-lg bg-[#F4F5FA] border border-[#E8EBF0] group-hover:border-[#7C5CFC]/20 group-hover:bg-indigo-50/50 transition-all duration-200">
+                                        <span className="text-[17px] font-extrabold text-[#12122A] leading-none">{d.getDate()}</span>
+                                        <span className="text-[9px] font-bold text-[#8B8DAF] uppercase tracking-wide mt-0.5">{formatShortMonth(dateKey)}</span>
                                     </div>
+
+                                    {/* Content */}
                                     <div className="flex-1 min-w-0">
-                                        <span className="text-sm font-semibold text-[#12122A] capitalize">
-                                            {dateStr}
-                                        </span>
-                                        <span className="text-sm text-[#6B7194]">
-                                            {" — "}{contactName}, <span className="text-[#4A4B6A]">{companyName}</span>
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[13.5px] font-bold text-[#12122A] truncate">{contactName}</span>
+                                            <span className="text-[11px] text-[#8B8DAF]">·</span>
+                                            <span className="text-[12.5px] text-[#5C5E7E] font-medium truncate">{companyName}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-[11.5px] text-[#7C5CFC] font-semibold capitalize">{formatMeetingDate(dateKey)}</span>
+                                            <span className="text-[10.5px] text-[#A0A3BD] font-medium">{formatMeetingTime(dateKey)}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Mission badge */}
+                                    <span className="hidden sm:inline-flex text-[10.5px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-[2px] rounded-full shrink-0 group-hover:bg-indigo-100/80 transition-colors duration-200">
+                                        {m.campaign.mission.name}
+                                    </span>
+
+                                    {/* Arrow */}
+                                    <div className="w-7 h-7 rounded-lg bg-[#F4F5FA] flex items-center justify-center shrink-0 group-hover:bg-gradient-to-br group-hover:from-[#7C5CFC] group-hover:to-[#A78BFA] transition-all duration-200">
+                                        <ArrowRight className="w-3.5 h-3.5 text-[#A0A3BD] group-hover:text-white group-hover:translate-x-0.5 transition-all duration-200" />
                                     </div>
                                 </Link>
                             );
                         })}
+
+                        {/* Footer link */}
+                        <div className="px-6 py-3">
+                            <Link
+                                href="/client/portal/meetings"
+                                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#7C5CFC] hover:text-[#6C3AFF] transition-colors duration-200 group"
+                            >
+                                Voir tous mes rendez-vous <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-200" />
+                            </Link>
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* Client onboarding modal */}
-            <ClientOnboardingModal
-                isOpen={showOnboarding}
-                onClose={() => setDismissedForThisVisit(true)}
-                onDismissPermanently={handleDismissOnboardingPermanently}
-            />
+            <style jsx global>{`
+                @keyframes dashFadeUp {
+                    from { opacity: 0; transform: translateY(12px); }
+                    to { opacity: 1; transform: none; }
+                }
+            `}</style>
         </div>
     );
 }

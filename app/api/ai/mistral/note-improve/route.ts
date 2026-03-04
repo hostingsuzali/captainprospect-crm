@@ -14,6 +14,9 @@ import { z } from 'zod';
 
 const noteImproveSchema = z.object({
     text: z.string().max(500, 'Note trop longue'),
+    channel: z.enum(['CALL', 'EMAIL', 'LINKEDIN']).optional(),
+    resultCode: z.string().optional(),
+    resultLabel: z.string().optional(),
 });
 
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
@@ -27,22 +30,31 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         return errorResponse('MISTRAL_API_KEY non configurée', 503);
     }
 
-    const { text } = await validateRequest(request, noteImproveSchema);
+    const { text, channel, resultCode, resultLabel } = await validateRequest(request, noteImproveSchema);
 
     if (!text?.trim()) {
         return errorResponse('Texte requis', 400);
     }
 
-    const systemPrompt = `Tu améliores des notes internes rédigées par un commercial (SDR) après un échange (appel, email, etc.) avec un contact ou une entreprise.
+    const systemPrompt = `Tu travailles dans CaptainProspect, un CRM de prospection B2B.
 
-Contexte : la note décrit ce qui s'est passé pendant l'échange — ce que le contact a dit, ce qu'il veut (rappel, démo, etc.), les prochaines étapes. Ce n'est PAS un message envoyé au contact, c'est une note pour l'équipe / pour plus tard.
+Tu améliores des notes internes rédigées par un commercial (SDR / business developer) après un échange (appel, email, LinkedIn) avec un contact ou une entreprise.
 
-Ta tâche : corriger l'orthographe et la grammaire, puis reformuler pour que la note soit claire et professionnelle en tant que compte-rendu d'échange (style note interne / compte-rendu).
+Contexte :
+- La note décrit ce qui s'est passé pendant l'échange : ce que le prospect a dit, son intérêt, les objections, le niveau de qualification, les prochaines étapes (rappel, démo, envoi d'email, etc.).
+- Ce n'est PAS un message envoyé au prospect, mais un compte-rendu interne qui sera relu plus tard par le SDR, son manager ou un collègue.
+${channel ? `- Canal de l'action: ${channel}` : ''}
+${(resultCode || resultLabel) ? `- Résultat CRM (statut sélectionné) : ${resultLabel || resultCode}` : ''}
+
+Ta tâche :
+- Corriger l'orthographe et la grammaire.
+- Reformuler pour que la note soit claire, concise et professionnelle, tout en restant une note interne (pas un email).
+
 Contraintes :
 - Réponds UNIQUEMENT par le texte amélioré, sans préambule ni explication.
 - Garde exactement le même sens et les mêmes infos (dates, noms, décisions, "rappeler à...", "intéressé par...", etc.).
 - Maximum 500 caractères.
-- Style : note interne sur la conversation, pas un message au contact.`;
+- Style : note interne de compte-rendu d'échange, pas un message adressé au prospect.`;
 
     try {
         const response = await fetch(MISTRAL_API_URL, {
@@ -55,7 +67,12 @@ Contraintes :
                 model: MISTRAL_MODEL,
                 messages: [
                     { role: 'system', content: systemPrompt },
-                    { role: 'user', content: text.trim() },
+                    {
+                        role: 'user',
+                        content:
+                            `Voici la note brute à améliorer (ne change pas le fond, seulement la forme) :\n\n` +
+                            text.trim(),
+                    },
                 ],
                 temperature: 0.3,
                 max_tokens: 400,

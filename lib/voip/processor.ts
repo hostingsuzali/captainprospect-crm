@@ -165,6 +165,10 @@ export async function processNormalizedCall({
     enrichmentPending,
   } = normalizedCall;
 
+  // Allo: auto-validate — notes/status from AI summary; SDR can go to next contact immediately
+  const isAlloAutoValidate = provider === "allo" && !enrichmentPending;
+  const finalActionStatus = isAlloAutoValidate ? null : ("PENDING_VALIDATION" as const);
+
   let action: Action;
 
   if (existing) {
@@ -177,7 +181,7 @@ export async function processNormalizedCall({
         voipSummary: aiSummary ?? undefined,
         voipTranscript: (aiTranscript ?? undefined) as object | undefined,
         note: aiSummary ?? existing.note,
-        actionStatus: "PENDING_VALIDATION",
+        actionStatus: finalActionStatus,
       },
     });
   } else {
@@ -197,7 +201,7 @@ export async function processNormalizedCall({
         campaignId,
         channel: "CALL",
         result: "NO_RESPONSE",
-        actionStatus: "PENDING_VALIDATION",
+        actionStatus: finalActionStatus,
         voipProvider: provider,
         voipCallId: providerCallId,
         duration: durationSeconds,
@@ -224,6 +228,7 @@ export async function processNormalizedCall({
         : normalizedCall.toNumber,
       enrichmentPending,
       recordingUrl: recordingUrl ?? undefined,
+      autoValidated: isAlloAutoValidate,
     } as Parameters<typeof publishToUser>[1]);
   }
 

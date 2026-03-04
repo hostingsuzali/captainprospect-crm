@@ -59,7 +59,7 @@ export const GET = withErrorHandler(async (
     const endDateParam = searchParams.get('endDate')?.trim() || null;
 
     const meetingWhere: Record<string, unknown> = {
-        result: 'MEETING_BOOKED',
+        result: { in: ['MEETING_BOOKED', 'MEETING_CANCELLED'] },
         campaign: {
             missionId: { in: missionIds },
         },
@@ -99,6 +99,9 @@ export const GET = withErrorHandler(async (
                             id: true,
                             name: true,
                             industry: true,
+                            country: true,
+                            website: true,
+                            size: true,
                             customData: true,
                         },
                     },

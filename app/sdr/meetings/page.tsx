@@ -1,53 +1,32 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { Card, Badge, Button, Select, Modal, ConfirmModal, ContextMenu, useContextMenu, useToast } from "@/components/ui";
-import {
-    DateRangeFilter,
-    getPresetRange,
-    toISO,
-    type DateRangeValue,
-    type DateRangePreset,
-} from "@/components/dashboard/DateRangeFilter";
+import { useState, useEffect, useMemo } from "react";
+import { Button, Select, Drawer, Modal, ConfirmModal, ContextMenu, useContextMenu, useToast } from "@/components/ui";
+import { getPresetRange, toISO } from "@/components/dashboard/DateRangeFilter";
 import {
     Calendar,
-    Clock,
     User,
     Building2,
     Video,
     Loader2,
-    Filter,
-    X,
     Mail,
     Phone,
     Linkedin,
     ArrowRight,
     Save,
     RotateCcw,
-    ChevronDown,
     Eye,
     CalendarClock,
     XCircle,
     Trash2,
+    Download,
+    Circle,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
     MEETING_CANCELLATION_REASONS,
     getMeetingCancellationLabel,
 } from "@/lib/constants/meetingCancellationReasons";
-
-const PRESET_LABELS: Record<DateRangePreset, string> = {
-    last7: "7 derniers jours",
-    last4weeks: "4 dernières semaines",
-    lastMonth: "Mois dernier",
-    last6months: "6 derniers mois",
-    last12months: "12 derniers mois",
-    monthToDate: "Mois en cours",
-    quarterToDate: "Trimestre en cours",
-    yearToDate: "Année en cours",
-    allTime: "Tout",
-};
+import { cn } from "@/lib/utils";
 
 // ============================================
 // TYPES
@@ -62,15 +41,23 @@ interface Meeting {
     note?: string;
     callbackDate?: string | null;
     cancellationReason?: string;
+    meetingType?: "VISIO" | "PHYSIQUE" | "TELEPHONIQUE" | null;
+    meetingAddress?: string | null;
     contact: {
         id: string;
         firstName: string | null;
         lastName: string | null;
         title: string | null;
         email: string | null;
+        phone?: string | null;
+        linkedin?: string | null;
         company: {
             id: string;
             name: string;
+            country?: string | null;
+            industry?: string | null;
+            website?: string | null;
+            size?: string | null;
             list?: {
                 id: string;
                 name: string;
@@ -108,71 +95,51 @@ interface List {
     };
 }
 
+type RdvStatus = "upcoming" | "past" | "rescheduled" | "cancelled";
+
+function getRdvStatus(m: Meeting): RdvStatus {
+    if (m.result === "MEETING_CANCELLED") return "cancelled";
+    const meetingDate = m.callbackDate ? new Date(m.callbackDate) : new Date(m.createdAt);
+    return meetingDate > new Date() ? "upcoming" : "past";
+}
+
+function getMeetingDisplayDate(m: Meeting): Date {
+    return m.callbackDate ? new Date(m.callbackDate) : new Date(m.createdAt);
+}
+
+function getInitials(m: Meeting): string {
+    const f = m.contact.firstName?.[0] ?? "";
+    const l = m.contact.lastName?.[0] ?? "";
+    return (f + l).toUpperCase() || "?";
+}
+
+const AVATAR_COLORS = ["#6366f1", "#8b5cf6", "#059669", "#d97706", "#0ea5e9", "#ec4899", "#64748b"];
+
+function getAvatarColor(m: Meeting): string {
+    let h = 0;
+    for (let i = 0; i < m.id.length; i++) h = ((h << 5) - h) + m.id.charCodeAt(i);
+    return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
 // ============================================
 // SDR MEETINGS PAGE
 // ============================================
 
 export default function SDRMeetingsPage() {
-    const router = useRouter();
-    const searchParams = useSearchParams();
     const [meetings, setMeetings] = useState<Meeting[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [missions, setMissions] = useState<Mission[]>([]);
-    const [lists, setLists] = useState<List[]>([]);
+    const [statusFilter, setStatusFilter] = useState<RdvStatus | "all">("all");
 
-    // Get filters from URL
-    const missionId = searchParams.get("missionId") || "";
-    const listId = searchParams.get("listId") || "";
-
-    const [dateRange, setDateRange] = useState<DateRangeValue>(() => {
-        const { start, end } = getPresetRange("last12months");
-        return { preset: "last12months", startDate: toISO(start), endDate: toISO(end) };
-    });
-    const [dateFilterOpen, setDateFilterOpen] = useState(false);
-    const dateFilterRef = useRef<HTMLDivElement>(null);
-
-    // Fetch missions and lists for filters
-    useEffect(() => {
-        const fetchFilters = async () => {
-            try {
-                const [missionsRes, listsRes] = await Promise.all([
-                    fetch("/api/sdr/missions"),
-                    fetch("/api/sdr/lists"),
-                ]);
-                const missionsJson = await missionsRes.json();
-                const listsJson = await listsRes.json();
-
-                if (missionsJson.success) {
-                    setMissions(missionsJson.data);
-                }
-                if (listsJson.success) {
-                    setLists(listsJson.data);
-                }
-            } catch (err) {
-                console.error("Failed to fetch filters:", err);
-            }
-        };
-        fetchFilters();
-    }, []);
-
-    // Fetch meetings with filters
+    // Fetch meetings
     useEffect(() => {
         const fetchMeetings = async () => {
             setIsLoading(true);
             try {
-                let start = dateRange.startDate;
-                let end = dateRange.endDate;
-                if (!start || !end) {
-                    const r = getPresetRange((dateRange.preset as DateRangePreset) || "last12months");
-                    start = toISO(r.start);
-                    end = toISO(r.end);
-                }
-                const params = new URLSearchParams();
-                if (missionId) params.set("missionId", missionId);
-                if (listId) params.set("listId", listId);
-                if (start) params.set("startDate", start);
-                if (end) params.set("endDate", end);
-
+                const { start, end } = getPresetRange("last12months");
+                const params = new URLSearchParams({
+                    startDate: toISO(start),
+                    endDate: toISO(end),
+                });
                 const res = await fetch(`/api/sdr/meetings?${params.toString()}`);
                 const json = await res.json();
                 if (json.success) {
@@ -184,44 +151,23 @@ export default function SDRMeetingsPage() {
                 setIsLoading(false);
             }
         };
-
         fetchMeetings();
-    }, [missionId, listId, dateRange]);
+    }, []);
 
-    // Update URL when filters change
-    const handleMissionChange = (value: string) => {
-        const params = new URLSearchParams(searchParams.toString());
-        if (value) {
-            params.set("missionId", value);
-        } else {
-            params.delete("missionId");
-        }
-        // Reset list filter when mission changes
-        params.delete("listId");
-        router.push(`/sdr/meetings?${params.toString()}`);
-    };
+    // Stats by status
+    const stats = useMemo(() => {
+        const upcoming = meetings.filter((m) => getRdvStatus(m) === "upcoming").length;
+        const past = meetings.filter((m) => getRdvStatus(m) === "past").length;
+        const rescheduled = meetings.filter((m) => getRdvStatus(m) === "rescheduled").length;
+        const cancelled = meetings.filter((m) => getRdvStatus(m) === "cancelled").length;
+        return { upcoming, past, rescheduled, cancelled, all: meetings.length };
+    }, [meetings]);
 
-    const handleListChange = (value: string) => {
-        const params = new URLSearchParams(searchParams.toString());
-        if (value) {
-            params.set("listId", value);
-        } else {
-            params.delete("listId");
-        }
-        router.push(`/sdr/meetings?${params.toString()}`);
-    };
-
-    const clearFilters = () => {
-        router.push("/sdr/meetings");
-    };
-
-    // Filter lists by selected mission
-    const filteredLists = useMemo(() => {
-        if (!missionId) return lists;
-        return lists.filter((list) => list.mission.id === missionId);
-    }, [lists, missionId]);
-
-    const hasActiveFilters = missionId || listId;
+    // Filtered meetings by status tab
+    const filteredMeetings = useMemo(() => {
+        if (statusFilter === "all") return meetings;
+        return meetings.filter((m) => getRdvStatus(m) === statusFilter);
+    }, [meetings, statusFilter]);
     const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
     const [editNote, setEditNote] = useState("");
     const [editResult, setEditResult] = useState<MeetingResult>("MEETING_BOOKED");
@@ -427,17 +373,17 @@ export default function SDRMeetingsPage() {
         },
         ...(meeting.result === "MEETING_BOOKED"
             ? [
-                  {
-                      label: "Reprogrammer le RDV",
-                      icon: <CalendarClock className="w-4 h-4" />,
-                      onClick: () => openRescheduleModal(meeting),
-                  },
-                  {
-                      label: "Annuler le RDV",
-                      icon: <XCircle className="w-4 h-4" />,
-                      onClick: () => openCancelModal(meeting),
-                  },
-              ]
+                {
+                    label: "Reprogrammer le RDV",
+                    icon: <CalendarClock className="w-4 h-4" />,
+                    onClick: () => openRescheduleModal(meeting),
+                },
+                {
+                    label: "Annuler le RDV",
+                    icon: <XCircle className="w-4 h-4" />,
+                    onClick: () => openCancelModal(meeting),
+                },
+            ]
             : []),
         {
             label: "Supprimer",
@@ -459,248 +405,396 @@ export default function SDRMeetingsPage() {
         );
     }
 
+    const statusBadge = (status: RdvStatus) => {
+        const config = {
+            upcoming: { label: "À venir", cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <Circle className="w-2.5 h-2.5 fill-emerald-600 text-emerald-600 shrink-0" /> },
+            past: { label: "Passé", cls: "bg-slate-100 text-slate-600 border-slate-200", icon: <Circle className="w-2.5 h-2.5 fill-slate-400 text-slate-400 shrink-0" /> },
+            rescheduled: { label: "Reporté", cls: "bg-amber-50 text-amber-700 border-amber-200", icon: <Circle className="w-2.5 h-2.5 fill-amber-500 text-amber-500 shrink-0" /> },
+            cancelled: { label: "Annulé", cls: "bg-red-50 text-red-700 border-red-200", icon: <Circle className="w-2.5 h-2.5 fill-red-500 text-red-500 shrink-0" /> },
+        };
+        const c = config[status] ?? config.past;
+        return (
+            <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full border", c.cls)}>
+                {c.icon}
+                {c.label}
+            </span>
+        );
+    };
+
+    const formatCardTime = (d: Date) =>
+        d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+    const formatCardMonth = (d: Date) =>
+        d.toLocaleDateString("fr-FR", { month: "short" }).toUpperCase().replace(".", "");
+
     return (
-        <div className="space-y-8 animate-fade-in p-2 pb-20">
+        <div className="space-y-6 animate-fade-in p-2 pb-20">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-900 to-violet-900">
+                    <h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-900 to-violet-900">
                         Mes Rendez-vous
                     </h1>
-                    <p className="text-slate-500 mt-2 font-medium">
-                        Planning et historique de vos opportunités qualifiées
+                    <p className="text-slate-500 mt-1 text-sm">
+                        Consultez, qualifiez et gérez vos rendez-vous
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <div className="bg-indigo-50 px-4 py-2 rounded-2xl border border-indigo-100 flex flex-col items-center">
-                        <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Total</span>
-                        <span className="text-xl font-bold text-indigo-700">{meetings.length}</span>
-                    </div>
-                </div>
+                <Button variant="outline" size="sm" className="gap-2 shrink-0">
+                    <Download className="w-4 h-4" />
+                    Exporter
+                </Button>
             </div>
 
-            {/* Filters - Glass Bar */}
-            <div className="sticky top-4 z-30">
-                <div className="bg-white/90 backdrop-blur-md border border-white/20 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-full p-2 pl-6 flex flex-col md:flex-row items-center gap-4 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 whitespace-nowrap">
-                        <Filter className="w-4 h-4 text-indigo-500" />
-                        <span>Filtrer par :</span>
-                    </div>
-
-                    <div className="flex-1 w-full flex flex-wrap md:flex-nowrap items-center gap-2 py-1">
-                        <div className="relative" ref={dateFilterRef}>
-                            <button
-                                type="button"
-                                onClick={() => setDateFilterOpen((o) => !o)}
-                                className="flex items-center gap-2 min-w-[180px] h-10 px-3 text-sm font-medium text-slate-900 bg-white/80 border border-slate-200 rounded-full hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                            >
-                                <Calendar className="w-4 h-4 text-indigo-500" />
-                                <span className="truncate">{dateRange.preset ? PRESET_LABELS[dateRange.preset] : "Plage de dates"}</span>
-                                <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 ml-auto shrink-0", dateFilterOpen && "rotate-180")} />
-                            </button>
-                            {dateFilterOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-40" aria-hidden onClick={() => setDateFilterOpen(false)} />
-                                    <div className="absolute left-0 top-full mt-1 z-50 max-w-[calc(100vw-2rem)]">
-                                        <DateRangeFilter
-                                            value={dateRange}
-                                            onChange={setDateRange}
-                                            onClose={() => setDateFilterOpen(false)}
-                                            isOpen={true}
-                                        />
-                                    </div>
-                                </>
+            {/* Summary stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                    { key: "upcoming", label: "À venir", val: stats.upcoming, icon: "calendar", color: "emerald" },
+                    { key: "past", label: "Passés", val: stats.past, icon: "clock", color: "slate" },
+                    { key: "rescheduled", label: "Reportés", val: stats.rescheduled, icon: "calendar-clock", color: "amber" },
+                    { key: "cancelled", label: "Annulés", val: stats.cancelled, icon: "x-circle", color: "red" },
+                ].map((s) => (
+                    <div
+                        key={s.key}
+                        className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-all flex items-center gap-3"
+                    >
+                        <div
+                            className={cn(
+                                "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                                s.color === "emerald" && "bg-emerald-50",
+                                s.color === "slate" && "bg-slate-100",
+                                s.color === "amber" && "bg-amber-50",
+                                s.color === "red" && "bg-red-50"
                             )}
+                        >
+                            <Calendar className={cn("w-4 h-4", s.color === "emerald" && "text-emerald-600", s.color === "slate" && "text-slate-600", s.color === "amber" && "text-amber-600", s.color === "red" && "text-red-600")} />
                         </div>
-                        <div className="h-6 w-px bg-slate-200 mx-2" />
-                        <div className="min-w-[200px]">
-                            <Select
-                                placeholder="Toutes les missions"
-                                options={[
-                                    { value: "", label: "Toutes les missions" },
-                                    ...missions.map((m) => ({
-                                        value: m.id,
-                                        label: `${m.name} (${m.client.name})`,
-                                    })),
-                                ]}
-                                value={missionId}
-                                onChange={handleMissionChange}
-                                className="border-0 bg-transparent hover:bg-slate-100/50 rounded-full transition-colors focus:ring-0"
-                            />
-                        </div>
-                        <div className="h-6 w-px bg-slate-200 mx-2" />
-                        <div className="min-w-[200px]">
-                            <Select
-                                placeholder="Toutes les listes"
-                                options={[
-                                    { value: "", label: "Toutes les listes" },
-                                    ...filteredLists.map((l) => ({
-                                        value: l.id,
-                                        label: l.name,
-                                    })),
-                                ]}
-                                value={listId}
-                                onChange={handleListChange}
-                                disabled={!missionId && filteredLists.length === 0}
-                                className="border-0 bg-transparent hover:bg-slate-100/50 rounded-full transition-colors focus:ring-0"
-                            />
+                        <div>
+                            <div className={cn("text-xl font-extrabold tracking-tight", s.color === "emerald" && "text-emerald-700", s.color === "slate" && "text-slate-700", s.color === "amber" && "text-amber-700", s.color === "red" && "text-red-700")}>
+                                {s.val}
+                            </div>
+                            <div className="text-xs text-slate-500">{s.label}</div>
                         </div>
                     </div>
+                ))}
+            </div>
 
-                    {hasActiveFilters && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={clearFilters}
-                            className="rounded-full hover:bg-red-50 hover:text-red-600 px-4 mr-1"
-                        >
-                            <X className="w-4 h-4 mr-2" />
-                            Effacer
-                        </Button>
-                    )}
-                </div>
+            {/* Filter tabs */}
+            <div className="flex flex-wrap gap-1 p-1.5 bg-white rounded-xl border border-slate-200 shadow-sm w-fit">
+                {(["all", "upcoming", "past", "rescheduled", "cancelled"] as const).map((f) => (
+                    <button
+                        key={f}
+                        type="button"
+                        onClick={() => setStatusFilter(f)}
+                        className={cn(
+                            "px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2",
+                            statusFilter === f
+                                ? "bg-indigo-600 text-white shadow-md"
+                                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                        )}
+                    >
+                        {f === "all" ? "Tous" : f === "upcoming" ? "À venir" : f === "past" ? "Passés" : f === "rescheduled" ? "Reportés" : "Annulés"}
+                        <span className={cn("text-xs px-1.5 py-0.5 rounded-full", statusFilter === f ? "bg-white/20" : "bg-slate-200 text-slate-600")}>
+                            {f === "all" ? stats.all : f === "upcoming" ? stats.upcoming : f === "past" ? stats.past : f === "rescheduled" ? stats.rescheduled : stats.cancelled}
+                        </span>
+                    </button>
+                ))}
             </div>
 
             {/* List */}
-            {meetings.length === 0 ? (
-                <div className="text-center py-20 bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
-                    <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl shadow-slate-100 ring-1 ring-slate-100">
-                        <Calendar className="w-10 h-10 text-indigo-300" />
-                    </div>
-                    <h3 className="text-xl font-bold text-slate-900">Aucun rendez-vous</h3>
-                    <p className="text-slate-500 mt-2 max-w-sm mx-auto">
-                        Vos rendez-vous validés apparaîtront ici. Continuez à prospecter pour remplir votre agenda !
+            {filteredMeetings.length === 0 ? (
+                <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
+                    <Calendar className="w-14 h-14 mx-auto mb-3 text-slate-300" strokeWidth={1.5} />
+                    <h3 className="text-lg font-semibold text-slate-800">Aucun rendez-vous</h3>
+                    <p className="text-slate-500 mt-1 max-w-sm mx-auto text-sm">
+                        {statusFilter === "all"
+                            ? "Vos rendez-vous validés apparaîtront ici."
+                            : statusFilter === "upcoming"
+                                ? "Aucun rendez-vous à venir."
+                                : statusFilter === "past"
+                                    ? "Aucun rendez-vous passé."
+                                    : statusFilter === "rescheduled"
+                                        ? "Aucun rendez-vous reporté."
+                                        : "Aucun rendez-vous annulé."}
                     </p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 gap-5">
-                    {meetings.map((meeting) => (
-                        <div
-                            key={meeting.id}
-                            className="group relative bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] transition-all duration-300 hover:-translate-y-1 cursor-pointer"
-                            onClick={() => setSelectedMeeting(meeting)}
-                            onContextMenu={(e) => handleContextMenu(e, meeting)}
-                        >
-                            <div className="flex flex-col md:flex-row">
-                                {/* Date Ticket Stub */}
-                                <div className="md:w-32 bg-indigo-600 p-6 flex flex-col items-center justify-center text-white relative overflow-hidden">
-                                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 to-violet-600 opacity-100" />
-                                    <div className="relative z-10 text-center">
-                                        <span className="text-xs font-bold uppercase tracking-widest opacity-80">
-                                            {new Date(meeting.createdAt).toLocaleDateString('fr-FR', { month: 'short' })}
-                                        </span>
-                                        <span className="block text-4xl font-black my-1">
-                                            {new Date(meeting.createdAt).getDate()}
-                                        </span>
-                                        <span className="text-xs font-medium opacity-80 bg-white/20 px-2 py-0.5 rounded-full">
-                                            {new Date(meeting.createdAt).getFullYear()}
-                                        </span>
+                <div className="flex flex-col gap-3">
+                    {filteredMeetings.map((meeting) => {
+                        const d = getMeetingDisplayDate(meeting);
+                        const status = getRdvStatus(meeting);
+                        return (
+                            <div
+                                key={meeting.id}
+                                className="group bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer"
+                                onClick={() => setSelectedMeeting(meeting)}
+                                onContextMenu={(e) => handleContextMenu(e, meeting)}
+                            >
+                                <div className="flex flex-col sm:flex-row">
+                                    {/* Date col - ticket style */}
+                                    <div className="relative sm:w-20 shrink-0 p-4 flex flex-col items-center justify-center bg-gradient-to-br from-violet-500 to-violet-600 text-white border-b sm:border-b-0 sm:border-r-0 border-violet-400/30 shadow-[2px_0_8px_rgba(139,92,246,0.25)] after:absolute after:right-0 after:top-1/2 after:-translate-y-1/2 after:w-4 after:h-4 after:rounded-full after:bg-white after:content-[''] sm:rounded-l-xl">
+                                        <div className="text-2xl font-extrabold tracking-tight text-white drop-shadow-sm">{d.getDate()}</div>
+                                        <div className="text-[11px] font-semibold text-violet-100 uppercase tracking-wide mt-0.5">{formatCardMonth(d)}</div>
+                                        <div className="text-xs font-semibold text-violet-200 mt-1">{formatCardTime(d)}</div>
                                     </div>
-                                    {/* Perforation effect */}
-                                    <div className="hidden md:block absolute right-0 top-0 bottom-0 w-4 translate-x-1/2">
-                                        <div className="h-full w-full flex flex-col justify-between py-2">
-                                            {[...Array(8)].map((_, i) => (
-                                                <div key={i} className="w-3 h-3 rounded-full bg-white" />
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
 
-                                {/* Content */}
-                                <div className="flex-1 p-6 pl-8">
-                                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                                        <div className="flex items-start gap-4">
-                                            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0 text-slate-500 font-bold border border-slate-200">
-                                                {meeting.contact.firstName?.charAt(0) || <User className="w-5 h-5" />}
-                                            </div>
-                                            <div>
-                                                <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
-                                                    {meeting.contact.firstName} {meeting.contact.lastName}
-                                                </h3>
-                                                <div className="flex items-center gap-2 text-slate-500 text-sm mt-1">
-                                                    <Building2 className="w-3.5 h-3.5" />
-                                                    <span className="font-medium">{meeting.contact.company.name}</span>
-                                                    {meeting.contact.title && (
-                                                        <>
-                                                            <span className="w-1 h-1 rounded-full bg-slate-300" />
-                                                            <span>{meeting.contact.title}</span>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-
+                                    {/* Main */}
+                                    <div className="flex-1 p-4 sm:p-5 flex flex-col gap-3">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            {meeting.result === "MEETING_CANCELLED" ? (
-                                                <>
-                                                    <Badge className="bg-red-50 text-red-700 border-red-200">Annulé</Badge>
-                                                    {meeting.cancellationReason && (
-                                                        <span className="text-xs text-slate-500">
-                                                            {getMeetingCancellationLabel(meeting.cancellationReason)}
-                                                        </span>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Confirmé</Badge>
+                                            {statusBadge(status)}
+                                            {meeting.meetingType && (
+                                                <span className="text-xs font-semibold text-slate-700 bg-slate-50 px-2 py-1 rounded border border-slate-200 flex items-center gap-1">
+                                                    {meeting.meetingType === "VISIO" && "📹 Visio"}
+                                                    {meeting.meetingType === "PHYSIQUE" && "📍 Physique"}
+                                                    {meeting.meetingType === "TELEPHONIQUE" && "📞 Téléphonique"}
+                                                </span>
                                             )}
                                             {meeting.mission && (
-                                                <Badge className="bg-gradient-to-r from-emerald-50 to-teal-50 text-teal-700 border-teal-100 hover:from-emerald-100 hover:to-teal-100">
-                                                    Mission: {meeting.mission.name}
-                                                </Badge>
+                                                <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">
+                                                    {meeting.mission.name}
+                                                </span>
+                                            )}
+                                            {meeting.list && (
+                                                <span className="text-xs text-slate-500">{meeting.list.name}</span>
                                             )}
                                         </div>
+
+                                        <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
+                                            <div className="flex items-center gap-3">
+                                                <div
+                                                    className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
+                                                    style={{ backgroundColor: getAvatarColor(meeting) }}
+                                                >
+                                                    {getInitials(meeting)}
+                                                </div>
+                                                <div>
+                                                    <div className="font-bold text-slate-900">{meeting.contact.firstName} {meeting.contact.lastName}</div>
+                                                    <div className="text-xs text-slate-500">{meeting.contact.title ?? ""}</div>
+                                                    <div className="flex flex-wrap gap-1.5 mt-1">
+                                                        {meeting.contact.email && (
+                                                            <a href={`mailto:${meeting.contact.email}`} className="text-xs text-indigo-600 hover:underline bg-indigo-50 px-2 py-0.5 rounded inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                                <Mail className="w-3 h-3" />{meeting.contact.email}
+                                                            </a>
+                                                        )}
+                                                        {meeting.contact.phone && (
+                                                            <a href={`tel:${meeting.contact.phone}`} className="text-xs text-indigo-600 hover:underline bg-indigo-50 px-2 py-0.5 rounded inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                                <Phone className="w-3 h-3" />{meeting.contact.phone}
+                                                            </a>
+                                                        )}
+                                                        {meeting.contact.linkedin && (
+                                                            <a href={meeting.contact.linkedin} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline bg-indigo-50 px-2 py-0.5 rounded inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                                <Linkedin className="w-3 h-3" />LinkedIn
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="sm:border-l sm:border-slate-200 sm:pl-6 flex flex-col gap-0.5">
+                                                <div className="font-semibold text-slate-900">{meeting.contact.company.name}</div>
+                                                <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 gap-y-0">
+                                                    {meeting.contact.company.industry && <span>{meeting.contact.company.industry}</span>}
+                                                    {meeting.contact.company.country && <span className="inline-flex items-center gap-1"><Circle className="w-1 h-1 fill-current shrink-0" />{meeting.contact.company.country}</span>}
+                                                    {meeting.contact.company.size && <span className="inline-flex items-center gap-1"><Circle className="w-1 h-1 fill-current shrink-0" />{meeting.contact.company.size}</span>}
+                                                    {meeting.contact.company.website && (
+                                                        <a href={meeting.contact.company.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline" onClick={(e) => e.stopPropagation()}>
+                                                            {meeting.contact.company.website.replace(/^https?:\/\//, "")}
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {meeting.note && (
+                                            <div className="text-sm text-slate-600 bg-slate-50 border-l-2 border-slate-300 pl-3 py-2 rounded-r italic">
+                                                &ldquo;{meeting.note}&rdquo;
+                                            </div>
+                                        )}
                                     </div>
 
-                                    <div className="mt-6 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-50">
-                                        <div className="flex items-center gap-6 text-sm">
-                                            <div className="flex items-center gap-2 text-slate-500 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
-                                                <Video className="w-4 h-4 text-indigo-500" />
-                                                <span className="font-medium">Visio Conférence</span>
-                                            </div>
-
-                                            {meeting.note && (
-                                                <div className="flex items-center gap-2 text-slate-500 max-w-xs truncate">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                                                    <span className="italic">"{meeting.note}"</span>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-center gap-2 text-indigo-600 text-sm font-semibold group-hover:translate-x-1 transition-transform">
-                                            Voir les détails <ArrowRight className="w-4 h-4" />
-                                        </div>
+                                    {/* Actions */}
+                                    <div className="sm:w-40 shrink-0 p-4 border-t sm:border-t-0 sm:border-l border-slate-200 flex flex-col justify-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full justify-center gap-1.5 text-xs"
+                                            onClick={(e) => { e.stopPropagation(); setSelectedMeeting(meeting); }}
+                                        >
+                                            <Eye className="w-3.5 h-3.5" />
+                                            Voir le détail
+                                        </Button>
+                                        {meeting.result === "MEETING_BOOKED" && (
+                                            <>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="w-full justify-center gap-1.5 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                                                    onClick={(e) => { e.stopPropagation(); openRescheduleModal(meeting); }}
+                                                >
+                                                    <CalendarClock className="w-3.5 h-3.5" />
+                                                    Reprogrammer
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="w-full justify-center gap-1.5 text-xs text-amber-700 hover:bg-amber-50"
+                                                    onClick={(e) => { e.stopPropagation(); openCancelModal(meeting); }}
+                                                >
+                                                    <XCircle className="w-3.5 h-3.5" />
+                                                    Annuler
+                                                </Button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
-            {/* Meeting Detail Modal */}
+            {/* Meeting Detail Drawer - Reference style (two-column, clean sections) */}
             {selectedMeeting && (
-                <Modal
+                <Drawer
                     isOpen={!!selectedMeeting}
                     onClose={() => setSelectedMeeting(null)}
-                    title="Détails du rendez-vous"
-                    size="lg"
+                    title="Fiche du rendez-vous"
+                    description={selectedMeeting ? formatScheduledDate(selectedMeeting) : undefined}
+                    size="xl"
+                    headerCentered
+                    footer={
+                        <div className="flex items-center justify-between gap-4 w-full">
+                            <Button variant="ghost" onClick={() => setSelectedMeeting(null)}>
+                                Annuler
+                            </Button>
+                            {savingError && (
+                                <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg flex-1">{savingError}</p>
+                            )}
+                            <Button onClick={handleSaveMeeting} disabled={saving} className="gap-2 ml-auto">
+                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                Enregistrer
+                            </Button>
+                        </div>
+                    }
                 >
-                    <div className="space-y-8">
-                        {/* Top Card: Date & Context */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="md:col-span-1 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl p-5 text-white flex flex-col justify-between shadow-lg shadow-indigo-200">
-                                <div>
-                                    <p className="text-indigo-100 text-sm font-medium uppercase tracking-wide">Date & Heure du RDV</p>
-                                    <p className="text-lg font-semibold mt-2">
-                                        {formatScheduledDate(selectedMeeting)}
+                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+                        {/* Left column: Main content */}
+                        <div className="space-y-6">
+                            {/* Contact */}
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Contact</h3>
+                                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                                    <p className="text-lg font-semibold text-slate-900">
+                                        {selectedMeeting.contact.firstName} {selectedMeeting.contact.lastName}
                                     </p>
+                                    {selectedMeeting.contact.title && (
+                                        <p className="text-slate-500 text-sm mb-4">
+                                            <span className="font-semibold uppercase text-xs tracking-wide text-slate-400 mr-1">
+                                                Fonction
+                                            </span>
+                                            <span className="text-slate-600 normal-case text-sm">
+                                                {selectedMeeting.contact.title}
+                                            </span>
+                                        </p>
+                                    )}
+                                    <div className="space-y-2">
+                                        {selectedMeeting.contact.email && (
+                                            <a href={`mailto:${selectedMeeting.contact.email}`} className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors group">
+                                                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center group-hover:bg-indigo-50 transition-colors">
+                                                    <Mail className="w-4 h-4 text-slate-500 group-hover:text-indigo-600" />
+                                                </div>
+                                                <span className="text-sm text-slate-700 group-hover:text-indigo-700">{selectedMeeting.contact.email}</span>
+                                            </a>
+                                        )}
+                                        {selectedMeeting.contact.phone && (
+                                            <a href={`tel:${selectedMeeting.contact.phone}`} className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors group">
+                                                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center group-hover:bg-indigo-50 transition-colors">
+                                                    <Phone className="w-4 h-4 text-slate-500 group-hover:text-indigo-600" />
+                                                </div>
+                                                <span className="text-sm text-slate-700 group-hover:text-indigo-700">{selectedMeeting.contact.phone}</span>
+                                            </a>
+                                        )}
+                                        {(selectedMeeting.contact.linkedin ? (
+                                            <a href={selectedMeeting.contact.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors group">
+                                                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
+                                                    <Linkedin className="w-4 h-4 text-slate-500 group-hover:text-blue-600" />
+                                                </div>
+                                                <span className="text-sm text-slate-700 group-hover:text-blue-700">Voir le profil LinkedIn</span>
+                                            </a>
+                                        ) : (
+                                            <div className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-200 text-slate-400">
+                                                <Linkedin className="w-4 h-4" />
+                                                <span className="text-sm">Non renseigné</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="md:col-span-2 bg-slate-50 rounded-2xl p-5 border border-slate-100 flex flex-col justify-between">
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between flex-wrap gap-2">
-                                        <p className="text-slate-500 text-sm font-bold uppercase tracking-wide">Statut du RDV</p>
+                            {/* Société */}
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Société</h3>
+                                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+                                            <Building2 className="w-6 h-6 text-slate-400" />
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-slate-900 text-lg">{selectedMeeting.contact.company.name}</p>
+                                            {selectedMeeting.contact.company.website && (
+                                                <a href={selectedMeeting.contact.company.website} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 hover:underline flex items-center gap-1">
+                                                    {selectedMeeting.contact.company.website.replace(/^https?:\/\//, "")} <ArrowRight className="w-3 h-3" />
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {selectedMeeting.contact.company.industry && (
+                                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                                <p className="text-xs text-slate-500 uppercase font-medium">Secteur</p>
+                                                <p className="font-medium text-slate-900 text-sm mt-0.5">{selectedMeeting.contact.company.industry}</p>
+                                            </div>
+                                        )}
+                                        {selectedMeeting.contact.company.country && (
+                                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                                <p className="text-xs text-slate-500 uppercase font-medium">Pays</p>
+                                                <p className="font-medium text-slate-900 text-sm mt-0.5">{selectedMeeting.contact.company.country}</p>
+                                            </div>
+                                        )}
+                                        {selectedMeeting.contact.company.size && (
+                                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                                <p className="text-xs text-slate-500 uppercase font-medium">Effectif</p>
+                                                <p className="font-medium text-slate-900 text-sm mt-0.5">{selectedMeeting.contact.company.size}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Note de prise de RDV */}
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Note de prise de RDV</h3>
+                                <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4">
+                                    <textarea
+                                        value={editNote}
+                                        onChange={(e) => setEditNote(e.target.value)}
+                                        placeholder="Ajouter ou modifier une note..."
+                                        className="w-full min-h-[100px] bg-white border border-slate-200 rounded-lg px-4 py-3 text-slate-700 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 resize-y"
+                                        rows={3}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right column: Summary */}
+                        <div className="space-y-5">
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Récapitulatif</h3>
+                                <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 space-y-4">
+                                    <div>
+                                        <p className="text-xs text-slate-500 uppercase font-medium mb-0.5">Date & Heure</p>
+                                        <p className="font-semibold text-slate-900">{formatScheduledDate(selectedMeeting)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 uppercase font-medium mb-2">Statut</p>
                                         <Select
                                             value={editResult}
                                             onChange={(v) => {
@@ -711,172 +805,79 @@ export default function SDRMeetingsPage() {
                                                 { value: "MEETING_BOOKED", label: "Confirmé" },
                                                 { value: "MEETING_CANCELLED", label: "Annulé" },
                                             ]}
-                                            className="min-w-[140px] border border-slate-200 rounded-xl bg-white"
+                                            className="w-full border border-slate-200 rounded-lg bg-white px-3 py-2"
                                         />
                                     </div>
                                     {editResult === "MEETING_CANCELLED" && (
-                                        <>
+                                        <div className="space-y-2">
                                             {selectedMeeting.cancellationReason && (
-                                                <p className="text-sm text-slate-600 bg-slate-100 rounded-lg px-3 py-2">
+                                                <p className="text-xs text-slate-600 bg-slate-100 rounded-lg px-3 py-2">
                                                     Raison : {getMeetingCancellationLabel(selectedMeeting.cancellationReason)}
                                                 </p>
                                             )}
-                                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
-                                                Le contact redevient disponible dans la file de prospection (Actions).
+                                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                                Le contact redevient disponible dans la file de prospection.
                                             </p>
-                                        </>
-                                    )}
-                                    {editResult === "MEETING_BOOKED" && (
-                                        <div className="flex flex-wrap gap-2 mt-3">
-                                            <Button
-                                                type="button"
-                                                variant="secondary"
-                                                size="sm"
-                                                onClick={() => openRescheduleModal(selectedMeeting)}
-                                                className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                                            >
-                                                <CalendarClock className="w-4 h-4" />
-                                                Reprogrammer le RDV
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                variant="secondary"
-                                                size="sm"
-                                                onClick={() => openCancelModal(selectedMeeting)}
-                                                disabled={saving || cancelSubmitting}
-                                                className="gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
-                                            >
-                                                {cancelSubmitting ? (
-                                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                                ) : (
-                                                    <RotateCcw className="w-4 h-4" />
-                                                )}
-                                                Annuler le RDV
-                                            </Button>
                                         </div>
                                     )}
-                                    <div className="flex flex-wrap gap-2">
-                                        {selectedMeeting.mission && (
-                                            <div className="px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                                                <span className="text-sm font-medium text-slate-700">{selectedMeeting.mission.name}</span>
-                                            </div>
-                                        )}
-                                        {selectedMeeting.mission?.client && (
-                                            <div className="px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">
-                                                <User className="w-3 h-3 text-slate-400" />
+                                    <div className="pt-3 border-t border-slate-200 space-y-2">
+                                        <p className="text-xs text-slate-500 uppercase font-medium">Lieu</p>
+                                        <div className="flex items-center gap-2 text-sm text-slate-700">
+                                            {selectedMeeting.meetingType === "VISIO" && <><Video className="w-4 h-4 text-indigo-500 shrink-0" /><span>Visio Conférence</span></>}
+                                            {selectedMeeting.meetingType === "PHYSIQUE" && <><User className="w-4 h-4 text-indigo-500 shrink-0" /><span>Physique {selectedMeeting.meetingAddress ? `(${selectedMeeting.meetingAddress})` : ""}</span></>}
+                                            {selectedMeeting.meetingType === "TELEPHONIQUE" && <><Phone className="w-4 h-4 text-indigo-500 shrink-0" /><span>Appel téléphonique</span></>}
+                                            {!selectedMeeting.meetingType && <><Video className="w-4 h-4 text-indigo-500 shrink-0" /><span>Visio Conférence</span></>}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {selectedMeeting.mission && (
+                                <div className="space-y-3">
+                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Mission</h3>
+                                    <div className="space-y-2">
+                                        <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+                                            <span className="text-sm font-medium text-slate-700">{selectedMeeting.mission.name}</span>
+                                        </div>
+                                        {selectedMeeting.mission.client && (
+                                            <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-2">
+                                                <User className="w-3 h-3 text-slate-400 shrink-0" />
                                                 <span className="text-sm font-medium text-slate-700">{selectedMeeting.mission.client.name}</span>
                                             </div>
                                         )}
                                     </div>
                                 </div>
-                                <div className="mt-4 pt-4 border-t border-slate-200 flex items-center gap-2 text-sm text-slate-500">
-                                    <Video className="w-4 h-4 text-indigo-500" />
-                                    <span>Lieu : Visio Conférence</span>
+                            )}
+
+                            {editResult === "MEETING_BOOKED" && (
+                                <div className="space-y-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => openRescheduleModal(selectedMeeting)}
+                                        className="w-full justify-center gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 rounded-lg"
+                                    >
+                                        <CalendarClock className="w-4 h-4" />
+                                        Reprogrammer le RDV
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => openCancelModal(selectedMeeting)}
+                                        disabled={saving || cancelSubmitting}
+                                        className="w-full justify-center gap-2 text-amber-700 hover:bg-amber-50 rounded-lg"
+                                    >
+                                        {cancelSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                                        Annuler le RDV
+                                    </Button>
                                 </div>
-                            </div>
-                        </div>
-
-                        {/* Middle: Contact & Company */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
-                                    <User className="w-4 h-4 text-indigo-500" />
-                                    Contact
-                                </h3>
-                                <div className="bg-white border ring-1 ring-slate-100/50 border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
-                                    <p className="text-lg font-bold text-slate-900">
-                                        {selectedMeeting.contact.firstName} {selectedMeeting.contact.lastName}
-                                    </p>
-                                    <p className="text-slate-500 font-medium mb-4">{selectedMeeting.contact.title}</p>
-
-                                    <div className="space-y-2">
-                                        {selectedMeeting.contact.email && (
-                                            <a href={`mailto:${selectedMeeting.contact.email}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors group">
-                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                                                    <Mail className="w-4 h-4 text-slate-500 group-hover:text-indigo-600" />
-                                                </div>
-                                                <span className="text-sm text-slate-600 group-hover:text-indigo-700">{selectedMeeting.contact.email}</span>
-                                            </a>
-                                        )}
-                                        {selectedMeeting.contact.phone && (
-                                            <a href={`tel:${selectedMeeting.contact.phone}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors group">
-                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                                                    <Phone className="w-4 h-4 text-slate-500 group-hover:text-indigo-600" />
-                                                </div>
-                                                <span className="text-sm text-slate-600 group-hover:text-indigo-700">{selectedMeeting.contact.phone}</span>
-                                            </a>
-                                        )}
-                                        <a href="#" className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors group">
-                                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                                                <Linkedin className="w-4 h-4 text-slate-500 group-hover:text-blue-600" />
-                                            </div>
-                                            <span className="text-sm text-slate-600 group-hover:text-blue-700">Voir le profil LinkedIn</span>
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-3">
-                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
-                                    <Building2 className="w-4 h-4 text-indigo-500" />
-                                    Société
-                                </h3>
-                                <div className="bg-white border ring-1 ring-slate-100/50 border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow h-full">
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center">
-                                            <Building2 className="w-6 h-6 text-slate-400" />
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-slate-900 text-lg">{selectedMeeting.contact.company.name}</p>
-                                            <a href="#" className="text-sm text-indigo-600 hover:underline flex items-center gap-1">
-                                                Voir la fiche entreprise <ArrowRight className="w-3 h-3" />
-                                            </a>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-3 mt-6">
-                                        <div className="p-3 bg-slate-50 rounded-lg text-center">
-                                            <p className="text-xs text-slate-500 uppercase">Secteur</p>
-                                            <p className="font-medium text-slate-900 text-sm">Tech / SaaS</p>
-                                        </div>
-                                        <div className="p-3 bg-slate-50 rounded-lg text-center">
-                                            <p className="text-xs text-slate-500 uppercase">Effectif</p>
-                                            <p className="font-medium text-slate-900 text-sm">50-200</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Bottom: Notes (inline editable) */}
-                        <div className="space-y-3">
-                            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Note de prise de RDV</h3>
-                            <div className="bg-amber-50/50 border border-amber-100 rounded-xl p-5 relative overflow-hidden">
-                                <textarea
-                                    value={editNote}
-                                    onChange={(e) => setEditNote(e.target.value)}
-                                    placeholder="Ajouter ou modifier une note..."
-                                    className="w-full min-h-[100px] bg-transparent border-0 focus:ring-0 focus:outline-none resize-y text-slate-700 italic leading-relaxed text-lg placeholder:text-slate-400"
-                                    rows={3}
-                                />
-                            </div>
-                        </div>
-
-                        {savingError && (
-                            <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-xl">{savingError}</p>
-                        )}
-                        <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                            <Button variant="ghost" onClick={() => setSelectedMeeting(null)}>
-                                Fermer
-                            </Button>
-                            <Button onClick={handleSaveMeeting} disabled={saving} className="gap-2">
-                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                Enregistrer
-                            </Button>
+                            )}
                         </div>
                     </div>
-                </Modal>
+                </Drawer>
             )}
 
             {/* Cancel meeting modal (reason required) */}
