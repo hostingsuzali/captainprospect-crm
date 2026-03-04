@@ -100,6 +100,7 @@ export default function ClientPortal() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
     const [totalMeetingsCount, setTotalMeetingsCount] = useState<number>(0);
+    const [totalCallsCount, setTotalCallsCount] = useState<number>(0);
 
     const clientId = (session?.user as { clientId?: string })?.clientId;
     const userName = session?.user?.name?.split(" ")[0] ?? "Client";
@@ -117,18 +118,19 @@ export default function ClientPortal() {
             const startDate = monthStart.toISOString().split("T")[0];
             const endDate = monthEnd.toISOString().split("T")[0];
 
-            const [statsRes, missionsRes, meetingsRes, settingsRes] = await Promise.all([
+            const [statsRes, missionsRes, meetingsRes, settingsRes, callsRes] = await Promise.all([
                 fetch(`/api/stats?startDate=${startDate}&endDate=${endDate}`),
                 fetch("/api/missions?isActive=true"),
                 clientId ? fetch(`/api/clients/${clientId}/meetings`) : Promise.resolve(null),
                 fetch("/api/client/portal/settings"),
             ]);
 
-            const [statsJson, missionsJson, meetingsJson, settingsJson] = await Promise.all([
+            const [statsJson, missionsJson, meetingsJson, settingsJson, callsJson] = await Promise.all([
                 statsRes.json(),
                 missionsRes.json(),
                 meetingsRes?.ok ? meetingsRes.json() : Promise.resolve(null),
                 settingsRes.json(),
+                fetch("/api/client/calls").then((r) => r.json()).catch(() => ({ success: false })),
             ]);
 
             if (statsJson.success) setStats(statsJson.data);
@@ -157,6 +159,9 @@ export default function ClientPortal() {
             }
             if (settingsJson?.success) {
                 setPortalSettings(settingsJson.data);
+            }
+            if (callsJson?.success) {
+                setTotalCallsCount(callsJson.data?.total ?? 0);
             }
         } catch (error) {
             console.error("Failed to fetch data:", error);
@@ -244,7 +249,7 @@ export default function ClientPortal() {
                             </div>
                             <div>
                                 <AnimatedNumber
-                                    value={stats?.totalActions ?? 0}
+                                    value={totalCallsCount || stats?.totalActions || 0}
                                     className="text-xl font-extrabold text-white leading-none"
                                 />
                                 <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Appels réalisés</p>
