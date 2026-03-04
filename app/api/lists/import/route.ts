@@ -504,23 +504,8 @@ async function processBatch(
         }
     }
 
-    // 4) Contacts: preload existing for all companies in this batch (same dedup as original: email OR firstName+lastName)
+    // 4) Contacts: create all contacts found in the file (no dedup by email/name)
     const companyIds = [...companyMap.values()].map((c) => c.id);
-    const existingContacts = await prisma.contact.findMany({
-        where: { companyId: { in: companyIds } },
-        select: { companyId: true, email: true, firstName: true, lastName: true },
-    });
-    const existingContactKeys = new Set<string>();
-    for (const c of existingContacts) {
-        if (c.email) existingContactKeys.add(`${c.companyId}:email:${c.email}`);
-        if (c.firstName != null || c.lastName != null) {
-            existingContactKeys.add(`${c.companyId}:name:${c.firstName ?? ""}:${c.lastName ?? ""}`);
-        }
-    }
-
-    const contactExists = (companyId: string, email: string | null, firstName: string | null, lastName: string | null) =>
-        (email && existingContactKeys.has(`${companyId}:email:${email}`)) ||
-        existingContactKeys.has(`${companyId}:name:${firstName ?? ""}:${lastName ?? ""}`);
 
     const contactsToCreate: {
         companyId: string;
@@ -540,10 +525,6 @@ async function processBatch(
         const email = cd.email || null;
         const firstName = cd.firstName || null;
         const lastName = cd.lastName || null;
-        if (contactExists(company.id, email, firstName, lastName)) continue;
-        // Mark as seen for this batch (avoid duplicate contacts within batch)
-        if (email) existingContactKeys.add(`${company.id}:email:${email}`);
-        existingContactKeys.add(`${company.id}:name:${firstName ?? ""}:${lastName ?? ""}`);
         contactsToCreate.push({
             companyId: company.id,
             firstName,
