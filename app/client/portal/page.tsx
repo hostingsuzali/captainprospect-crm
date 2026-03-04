@@ -23,6 +23,7 @@ interface ClientMeeting {
     createdAt: string;
     callbackDate?: string | null;
     note?: string | null;
+    result?: string;
     contact: {
         firstName?: string | null;
         lastName?: string | null;
@@ -98,6 +99,7 @@ export default function ClientPortal() {
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
+    const [totalMeetingsCount, setTotalMeetingsCount] = useState<number>(0);
 
     const clientId = (session?.user as { clientId?: string })?.clientId;
     const userName = session?.user?.name?.split(" ")[0] ?? "Client";
@@ -148,6 +150,10 @@ export default function ClientPortal() {
                     })
                     .slice(0, 5);
                 setUpcomingMeetings(upcoming);
+                const nonCancelledCount = allMeetings.filter(
+                    (m) => m.result !== "MEETING_CANCELLED"
+                ).length;
+                setTotalMeetingsCount(nonCancelledCount);
             }
             if (settingsJson?.success) {
                 setPortalSettings(settingsJson.data);
@@ -170,7 +176,7 @@ export default function ClientPortal() {
         return <DashboardSkeleton />;
     }
 
-    const meetingsBooked = stats?.meetingsBooked ?? 0;
+    const meetingsBooked = totalMeetingsCount || stats?.meetingsBooked || 0;
 
     return (
         <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-6">
