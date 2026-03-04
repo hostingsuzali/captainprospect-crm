@@ -728,11 +728,10 @@ export default function ClientPortalMeetingsPage() {
 
   const [rsDate, setRsDate]       = useState("");
   const [rsTime, setRsTime]       = useState("10:00");
-  const [rsReason, setRsReason]   = useState("");
   const [rsSub, setRsSub]         = useState(false);
 
   const [sigId, setSigId]         = useState<string|null>(null);
-  const [sigType, setSigType]     = useState<"NO_SHOW"|"CANCEL"|null>(null);
+  const [sigType, setSigType]     = useState<"NO_SHOW"|null>(null);
   const [sigRec, setSigRec]       = useState("");
   const [sigNote, setSigNote]     = useState("");
   const [sigSub, setSigSub]       = useState(false);
@@ -790,7 +789,7 @@ export default function ClientPortalMeetingsPage() {
   const openModal = (m:Meeting, t:ModalType) => {
     setSel(m);
     if (t==="feedback"){ setFbOut(m.meetingFeedback?.outcome??""); setFbRec(m.meetingFeedback?.recontactRequested??""); setFbNote(m.meetingFeedback?.clientNote??""); setFbDone(false); }
-    if (t==="reschedule"){ setRsDate(""); setRsTime("10:00"); setRsReason(""); }
+    if (t==="reschedule"){ setRsDate(""); setRsTime("10:00"); }
     setModal(t);
   };
   const closeModal = useCallback(()=>setModal(null),[]);
@@ -816,7 +815,7 @@ export default function ClientPortalMeetingsPage() {
     try {
       const r=await fetch(`/api/client/meetings/${sel.id}/reschedule`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({newDate:`${rsDate}T${rsTime}:00`,reason:rsReason||null}),
+        body:JSON.stringify({newDate:`${rsDate}T${rsTime}:00`}),
       });
       const j=await r.json();
       if (j.success){ toast.success("Demande envoyée","L'équipe vous recontactera pour confirmer."); closeModal(); }
@@ -828,7 +827,6 @@ export default function ClientPortalMeetingsPage() {
   const submitSignal = async (mid:string)=>{
     if (!sigType) return;
     if (sigType==="NO_SHOW"&&!sigRec) return;
-    if (sigType==="CANCEL"&&!sigNote) return;
     setSigSub(true);
     try {
       const r=await fetch(`/api/client/meetings/${mid}/feedback`,{
@@ -836,16 +834,15 @@ export default function ClientPortalMeetingsPage() {
         body:JSON.stringify({
           // Map to allowed outcome codes for API:
           // - NO_SHOW  -> "NO_SHOW"
-          // - CANCEL   -> "NEGATIVE" (annulé par le client)
-          outcome:sigType==="NO_SHOW"?"NO_SHOW":"NEGATIVE",
-          recontactRequested:sigType==="NO_SHOW"?sigRec:"NO",
+          outcome:"NO_SHOW",
+          recontactRequested:sigRec,
           clientNote:sigNote||null,
         }),
       });
       const j=await r.json();
       if (j.success){
-        setMeetings(p=>p.map(m=>m.id===mid?{...m,meetingFeedback:j.data,...(sigType==="CANCEL"?{result:"MEETING_CANCELLED",cancellationReason:"CLIENT_REQUEST"}:{})}:m));
-        toast.success("Signalement envoyé",sigType==="NO_SHOW"?"Marqué comme absent.":"Annulation signalée.");
+        setMeetings(p=>p.map(m=>m.id===mid?{...m,meetingFeedback:j.data}:m));
+        toast.success("Signalement envoyé","Le rendez-vous est marqué comme absent.");
         setSigId(null);
       } else toast.error("Erreur",j.error??"Une erreur est survenue.");
     } catch { toast.error("Erreur","Impossible de soumettre."); }
@@ -961,6 +958,7 @@ export default function ClientPortalMeetingsPage() {
               onFeedback={()=>openModal(meeting,"feedback")}
               onICS={()=>genICS(meeting)}
               onToggleSig={()=>toggleSig(meeting.id)}
+              onReschedule={()=>openModal(meeting,"reschedule")}
               onSigType={setSigType} onSigRec={setSigRec} onSigNote={setSigNote}
               onSigSubmit={()=>submitSignal(meeting.id)}
             />
@@ -983,8 +981,8 @@ export default function ClientPortalMeetingsPage() {
       )}
       {modal==="reschedule" && sel && (
         <RsModal m={sel} onClose={closeModal}
-          date={rsDate} time={rsTime} reason={rsReason} sub={rsSub}
-          onDate={setRsDate} onTime={setRsTime} onReason={setRsReason} onSubmit={submitReschedule}
+          date={rsDate} time={rsTime} sub={rsSub}
+          onDate={setRsDate} onTime={setRsTime} onSubmit={submitReschedule}
         />
       )}
     </div>
@@ -996,13 +994,13 @@ export default function ClientPortalMeetingsPage() {
 ═══════════════════════════════════════════════════════════════ */
 function Card({
   m, idx, sigOpen, sigType, sigRec, sigNote, sigSub,
-  onDetail, onFeedback, onICS, onToggleSig,
+  onDetail, onFeedback, onICS, onToggleSig, onReschedule,
   onSigType, onSigRec, onSigNote, onSigSubmit,
 }: {
-  m:Meeting; idx:number; sigOpen:boolean; sigType:"NO_SHOW"|"CANCEL"|null;
+  m:Meeting; idx:number; sigOpen:boolean; sigType:"NO_SHOW"|null;
   sigRec:string; sigNote:string; sigSub:boolean;
-  onDetail:()=>void; onFeedback:()=>void; onICS:()=>void; onToggleSig:()=>void;
-  onSigType:(t:"NO_SHOW"|"CANCEL"|null)=>void;
+  onDetail:()=>void; onFeedback:()=>void; onICS:()=>void; onToggleSig:()=>void; onReschedule:()=>void;
+  onSigType:(t:"NO_SHOW"|null)=>void;
   onSigRec:(v:string)=>void; onSigNote:(v:string)=>void; onSigSubmit:()=>void;
 }) {
   const st     = getRdvStatus(m);
@@ -1010,7 +1008,7 @@ function Card({
   const fb     = m.meetingFeedback;
   const up     = st==="upcoming";
   const dt     = fmtCard(m.callbackDate||m.createdAt);
-  const sigDis = sigSub||(sigType==="NO_SHOW"&&!sigRec)||(sigType==="CANCEL"&&!sigNote);
+  const sigDis = sigSub||(sigType==="NO_SHOW"&&!sigRec);
 
   return (
     <li className={cn("cp-card cp-enter", up&&"cp-card-upcoming")}
@@ -1134,11 +1132,10 @@ function Card({
               </button>
             </div>
 
-            {/* Type */}
+            {/* Type + quick replanification side by side */}
             <div style={{display:"flex",gap:10,marginBottom:sigType?16:0}}>
               {([
-                {id:"NO_SHOW" as const, label:"Contact absent",         Icon:XCircle},
-                {id:"CANCEL"  as const, label:"Annuler définitivement", Icon:X},
+                {id:"NO_SHOW" as const, label:"Contact absent", Icon:XCircle},
               ] as const).map(({id,label,Icon})=>(
                 <button key={id} type="button" aria-pressed={sigType===id}
                   onClick={()=>onSigType(id)}
@@ -1147,31 +1144,40 @@ function Card({
                   {label}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={onReschedule}
+                className="cp-choice"
+                style={{display:"flex",alignItems:"center",gap:6}}
+              >
+                <div className="cp-choice-ico">
+                  <CalendarClock style={{width:16,height:16}} />
+                </div>
+                Replanifier avec le prospect
+              </button>
             </div>
 
             {sigType && (
               <div className="cp-signal-form" style={{display:"flex",flexDirection:"column",gap:12}}>
                 {sigType==="NO_SHOW" && (
-                  <div>
+                  <>
                     <div style={{fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:tk.ink4,marginBottom:8}}>
-                      Recontacter ce prospect ? <span style={{color:tk.red}}>*</span>
+                      Souhaitez-vous que l&apos;on recontacte ce prospect ? <span style={{color:tk.red}}>*</span>
                     </div>
                     <div style={{display:"flex",gap:8}}>
-                      {[{v:"YES",l:"Oui, recontacter"},{v:"NO",l:"Non, clôturer"}].map(({v,l})=>(
+                      {[{v:"YES",l:"Oui, à recontacter"},{v:"NO",l:"Non, clôturer"}].map(({v,l})=>(
                         <button key={v} type="button" aria-pressed={sigRec===v} onClick={()=>onSigRec(v)}
                           className={cn("cp-toggle",sigRec===v&&"sel")} style={{flex:1}}>
                           {l}
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </>
                 )}
                 <div>
                   <div style={{fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:tk.ink4,marginBottom:8}}>
                     Commentaire
-                    {sigType==="CANCEL"
-                      ? <span style={{color:tk.red}}> *</span>
-                      : <span style={{color:tk.ink4,textTransform:"none",fontWeight:400}}> (optionnel)</span>}
+                    <span style={{color:tk.ink4,textTransform:"none",fontWeight:400}}> (optionnel)</span>
                   </div>
                   <input className="cp-input" type="text" value={sigNote} onChange={e=>onSigNote(e.target.value)} placeholder="Précisez la raison…" />
                 </div>
@@ -1405,10 +1411,10 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
 /* ═══════════════════════════════════════════════════════════════
    RESCHEDULE MODAL
 ═══════════════════════════════════════════════════════════════ */
-function RsModal({ m, onClose, date, time, reason, sub, onDate, onTime, onReason, onSubmit }: {
+function RsModal({ m, onClose, date, time, sub, onDate, onTime, onSubmit }: {
   m:Meeting; onClose:()=>void;
-  date:string; time:string; reason:string; sub:boolean;
-  onDate:(v:string)=>void; onTime:(v:string)=>void; onReason:(v:string)=>void; onSubmit:()=>void;
+  date:string; time:string; sub:boolean;
+  onDate:(v:string)=>void; onTime:(v:string)=>void; onSubmit:()=>void;
 }) {
   const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
   const companyName = m.contact?.company?.name || "Entreprise inconnue";
@@ -1448,11 +1454,8 @@ function RsModal({ m, onClose, date, time, reason, sub, onDate, onTime, onReason
         </div>
       </Sec>
 
-      <Sec label="Motif" last>
-        <textarea className="cp-textarea" value={reason} onChange={e=>onReason(e.target.value)} rows={3}
-          placeholder="Indisponibilité, changement de priorité…"
-          style={{minHeight:80}} />
-        <p style={{fontSize:11,color:tk.ink4,marginTop:8}}>L&apos;équipe vous recontactera pour confirmer le nouveau créneau.</p>
+      <Sec last>
+        <p style={{fontSize:11,color:tk.ink4,marginTop:4}}>L&apos;équipe vous recontactera pour confirmer le nouveau créneau.</p>
       </Sec>
     </Modal>
   );

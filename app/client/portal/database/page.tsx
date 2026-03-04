@@ -33,6 +33,7 @@ export default function ClientPortalDatabasePage() {
     const [data, setData] = useState<DatabaseResponse>({ companies: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState("");
+    const [viewMode, setViewMode] = useState<"cards" | "table">("table");
 
     useEffect(() => {
         (async () => {
@@ -80,7 +81,7 @@ export default function ClientPortalDatabasePage() {
 
     return (
         <div className="min-h-full bg-[#F3F4F8] p-4 md:p-6 space-y-6">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-semibold text-slate-900 tracking-tight flex items-center gap-2">
                         <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
@@ -91,6 +92,31 @@ export default function ClientPortalDatabasePage() {
                     <p className="text-sm text-slate-500 mt-1">
                         Liste des entreprises et contacts travaillés dans vos campagnes.
                     </p>
+                </div>
+
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                    <button
+                        type="button"
+                        onClick={() => setViewMode("cards")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                            viewMode === "cards"
+                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                        }`}
+                    >
+                        Vue cartes
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setViewMode("table")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                            viewMode === "table"
+                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                        }`}
+                    >
+                        Vue tableau
+                    </button>
                 </div>
             </div>
 
@@ -130,6 +156,122 @@ export default function ClientPortalDatabasePage() {
                     <p className="mt-1 text-xs text-slate-500">
                         Ajustez votre recherche ou réessayez plus tard.
                     </p>
+                </div>
+            ) : viewMode === "table" ? (
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                                    <th className="px-4 py-3 text-left">Entreprise</th>
+                                    <th className="px-4 py-3 text-left">Secteur</th>
+                                    <th className="px-4 py-3 text-left">Taille</th>
+                                    <th className="px-4 py-3 text-left">Pays</th>
+                                    <th className="px-4 py-3 text-left">Téléphone</th>
+                                    <th className="px-4 py-3 text-left">Site web</th>
+                                    <th className="px-4 py-3 text-left">Contacts</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredCompanies.map((company) => (
+                                    <tr key={company.id} className="hover:bg-emerald-50/40 transition-colors">
+                                        <td className="px-4 py-3 align-top">
+                                            <div className="flex items-center gap-2 max-w-xs">
+                                                <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-700">
+                                                    <Building2 className="w-4 h-4" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium text-slate-900 truncate">
+                                                        {company.name}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 align-top text-slate-700">
+                                            {company.industry || "-"}
+                                        </td>
+                                        <td className="px-4 py-3 align-top text-slate-700">
+                                            {company.size || "-"}
+                                        </td>
+                                        <td className="px-4 py-3 align-top text-slate-700">
+                                            {company.country || "-"}
+                                        </td>
+                                        <td className="px-4 py-3 align-top text-slate-700">
+                                            {company.phone ? (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <Phone className="w-3 h-3" />
+                                                    {company.phone}
+                                                </span>
+                                            ) : (
+                                                "-"
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 align-top text-slate-700">
+                                            {company.website ? (
+                                                <a
+                                                    href={company.website}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700"
+                                                >
+                                                    <Globe2 className="w-3 h-3" />
+                                                    {company.website.replace(/^https?:\/\//, "")}
+                                                </a>
+                                            ) : (
+                                                "-"
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 align-top text-slate-700">
+                                            <div className="flex flex-col gap-1">
+                                                <span className="inline-flex items-center gap-1 text-xs text-slate-600">
+                                                    <Users className="w-3.5 h-3.5 text-emerald-500" />
+                                                    <span className="font-medium">
+                                                        {company.contacts.length} contact
+                                                        {company.contacts.length > 1 ? "s" : ""}
+                                                    </span>
+                                                </span>
+                                                {company.contacts.slice(0, 2).map((ct) => {
+                                                    const name =
+                                                        [ct.firstName, ct.lastName].filter(Boolean).join(" ") ||
+                                                        "Contact";
+                                                    return (
+                                                        <div
+                                                            key={ct.id}
+                                                            className="text-[11px] text-slate-500 flex flex-wrap gap-1"
+                                                        >
+                                                            <span className="font-medium text-slate-700">
+                                                                {name}
+                                                            </span>
+                                                            {ct.title && (
+                                                                <span className="text-slate-400">· {ct.title}</span>
+                                                            )}
+                                                            {ct.email && (
+                                                                <span className="w-full">
+                                                                    <a
+                                                                        href={`mailto:${ct.email}`}
+                                                                        className="inline-flex items-center gap-1 hover:text-emerald-700"
+                                                                    >
+                                                                        <Mail className="w-3 h-3" />
+                                                                        {ct.email}
+                                                                    </a>
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {company.contacts.length > 2 && (
+                                                    <span className="text-[11px] text-slate-400">
+                                                        + {company.contacts.length - 2} autre
+                                                        {company.contacts.length - 2 > 1 ? "s" : ""} contact
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">

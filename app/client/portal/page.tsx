@@ -53,10 +53,7 @@ const MONTH_NAMES = [
 ];
 
 function getGreeting(): string {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Bonjour";
-    if (hour < 18) return "Bon après-midi";
-    return "Bonsoir";
+    return "Bonjour";
 }
 
 function formatRelativeDate(dateString: string | null): string {
@@ -229,7 +226,7 @@ export default function ClientPortal() {
                     {/* Large RDV count */}
                     <div className="flex flex-col items-center md:items-start mb-8">
                         <p className="text-[11px] font-semibold text-indigo-200/80 uppercase tracking-[0.2em]">
-                            Rendez-vous ce mois
+                            Rendez-vous cumulés
                         </p>
                         <div className="mt-3 flex items-baseline gap-1">
                             <AnimatedNumber
@@ -285,22 +282,6 @@ export default function ClientPortal() {
                     </div>
                 </div>
             </div>
-
-            {/* ── Mailbox connection card ── */}
-            <Link
-                href="/client/portal/email"
-                className="flex items-center gap-4 p-4 rounded-xl border border-[#E8EBF0] bg-white/80 backdrop-blur-sm hover:border-[#7C5CFC]/30 hover:shadow-md hover:shadow-[#7C5CFC]/5 transition-all duration-200 group"
-                style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "100ms" }}
-            >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/10 to-violet-500/10 flex items-center justify-center shrink-0 group-hover:from-indigo-500/20 group-hover:to-violet-500/20 transition-colors">
-                    <Mail className="w-5 h-5 text-[#7C5CFC]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#12122A]">Connectez votre boîte email</p>
-                    <p className="text-xs text-[#6B7194] mt-0.5">Gmail, Outlook ou IMAP — l&apos;équipe envoie les emails de prospection depuis votre adresse</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-[#A0A3BD] group-hover:text-[#7C5CFC] group-hover:translate-x-0.5 transition-all shrink-0" />
-            </Link>
 
             {/* ── Optional: Call history & Database shortcuts ── */}
             {(portalSettings?.portalShowCallHistory || portalSettings?.portalShowDatabase) && (
