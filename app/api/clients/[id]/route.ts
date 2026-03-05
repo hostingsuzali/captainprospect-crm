@@ -20,6 +20,8 @@ const updateClientSchema = z.object({
     email: z.string().email().optional().or(z.literal('')),
     phone: z.string().optional(),
     bookingUrl: z.string().url().optional().or(z.literal('')),
+    portalShowCallHistory: z.boolean().optional(),
+    portalShowDatabase: z.boolean().optional(),
 });
 
 // ============================================

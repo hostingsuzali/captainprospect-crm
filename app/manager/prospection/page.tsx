@@ -60,6 +60,7 @@ interface ActionRecord {
     note?: string;
     duration?: number;
     createdAt: string;
+    callbackDate?: string | null;
     _searchKey?: string;
     voipProvider?: string | null;
     voipSummary?: string | null;
@@ -417,8 +418,9 @@ function exportCSV(rows: ActionRecord[], mission: string) {
             : "";
         const company = r.company?.name ?? r.contact?.company?.name ?? "";
         const note = (r.voipSummary ?? r.note ?? "").replace(/"/g, '""');
+        const dateKey = (r.callbackDate as string | null) || r.createdAt;
         return [
-            new Date(r.createdAt).toLocaleString("fr-FR"),
+            new Date(dateKey).toLocaleString("fr-FR"),
             name, company,
             r.sdr?.name ?? "",
             getCfg(r.result).label,
@@ -635,7 +637,11 @@ export default function ManagerProspectionPage() {
 
         rows.sort((a, b) => {
             let cmp = 0;
-            if (sortKey === "createdAt") cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            if (sortKey === "createdAt") {
+                const ak = (a.callbackDate as string | null) || a.createdAt;
+                const bk = (b.callbackDate as string | null) || b.createdAt;
+                cmp = new Date(ak).getTime() - new Date(bk).getTime();
+            }
             else if (sortKey === "result") cmp = a.result.localeCompare(b.result);
             else if (sortKey === "sdr") cmp = (a.sdr?.name || "").localeCompare(b.sdr?.name || "");
             else if (sortKey === "duration") cmp = (a.duration || 0) - (b.duration || 0);
@@ -1224,12 +1230,26 @@ export default function ManagerProspectionPage() {
                                             {/* Date */}
                                             {visibleCols.has("date") && (
                                                 <td className={cn("px-4 whitespace-nowrap", rowPy)}>
-                                                    <p className="text-sm font-semibold text-slate-800 tabular-nums">
-                                                        {new Date(row.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
-                                                    </p>
-                                                    <p className="text-[11px] text-slate-400 font-medium tabular-nums">
-                                                        {new Date(row.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                                                    </p>
+                                                    {(() => {
+                                                        const dateKey = (row.callbackDate as string | null) || row.createdAt;
+                                                        const d = new Date(dateKey);
+                                                        return (
+                                                            <>
+                                                                <p className="text-sm font-semibold text-slate-800 tabular-nums">
+                                                                    {d.toLocaleDateString("fr-FR", {
+                                                                        day: "2-digit",
+                                                                        month: "short",
+                                                                    })}
+                                                                </p>
+                                                                <p className="text-[11px] text-slate-400 font-medium tabular-nums">
+                                                                    {d.toLocaleTimeString("fr-FR", {
+                                                                        hour: "2-digit",
+                                                                        minute: "2-digit",
+                                                                    })}
+                                                                </p>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </td>
                                             )}
 

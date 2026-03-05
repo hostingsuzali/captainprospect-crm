@@ -16,6 +16,7 @@ import { z } from 'zod';
 const bookingSuccessSchema = z.object({
     contactId: z.string().min(1, 'Contact ID required'),
     eventData: z.record(z.string(), z.any()).optional(),
+    rdvDate: z.string().optional(), // Pre-selected date from the SDR (ISO string)
 });
 
 // ============================================
@@ -24,7 +25,7 @@ const bookingSuccessSchema = z.object({
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await requireRole(['SDR', 'BUSINESS_DEVELOPER'], request);
-    const { contactId, eventData } = await validateRequest(request, bookingSuccessSchema);
+    const { contactId, eventData, rdvDate } = await validateRequest(request, bookingSuccessSchema);
 
     // Get contact with campaign info
     const contact = await prisma.contact.findUnique({
@@ -69,6 +70,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         ? `RDV planifié via calendrier: ${JSON.stringify(eventData)}`
         : 'RDV planifié via calendrier';
 
+    // Parse rdvDate into a Date object (used as callbackDate = scheduled meeting date)
+    const scheduledAt = rdvDate ? new Date(rdvDate) : null;
+
     // Create action with MEETING_BOOKED result
     const action = await prisma.action.create({
         data: {
@@ -78,6 +82,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             channel: contact.company.list.mission.channel,
             result: 'MEETING_BOOKED',
             note: bookingNote,
+            callbackDate: scheduledAt ?? undefined,
         },
         include: {
             contact: {

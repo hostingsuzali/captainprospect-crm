@@ -8,10 +8,10 @@ import {
   Calendar, Search, X, ThumbsUp, Minus, ThumbsDown, XCircle,
   Mail, Phone, Linkedin, Download, Check, Loader2, Eye,
   MessageSquare, Edit3, Clock, FileSpreadsheet, AlertTriangle,
-  CalendarClock, Send, Building2, MapPin, Sparkles,
+  CalendarClock, Send, Building2, MapPin, Sparkles, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getMeetingCancellationLabel } from "@/lib/constants/meetingCancellationReasons";
+import { getMeetingCancellationLabel, MEETING_CANCELLATION_REASONS } from "@/lib/constants/meetingCancellationReasons";
 import { MeetingsSkeleton } from "@/components/client/skeletons";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -486,7 +486,7 @@ interface Meeting {
 
 type TabId      = "upcoming" | "past" | "rescheduled" | "cancelled" | "all";
 type RdvStatus  = "upcoming" | "past" | "rescheduled" | "cancelled";
-type ModalType  = null | "detail" | "feedback" | "reschedule";
+type ModalType  = null | "detail" | "feedback" | "reschedule" | "cancel";
 
 /* ═══════════════════════════════════════════════════════════════
    HELPERS
@@ -496,8 +496,12 @@ const getRdvStatus = (m: Meeting): RdvStatus => {
   return new Date(m.callbackDate || m.createdAt) >= new Date() ? "upcoming" : "past";
 };
 
-const getInitials = (m: Meeting) =>
-  ((m.contact.firstName?.[0] ?? "") + (m.contact.lastName?.[0] ?? "")).toUpperCase() || "?";
+const getInitials = (m: Meeting) => {
+  const first = m.contact?.firstName?.[0] ?? "";
+  const last  = m.contact?.lastName?.[0] ?? "";
+  const ini   = (first + last).toUpperCase();
+  return ini || "?";
+};
 
 const AVT = [
   { bg: "#EEEDFB", fg: "#4238D0" }, { bg: "#E8F8EF", fg: "#0A6E3D" },
@@ -563,14 +567,16 @@ const MTY = {
    EXPORT UTILS
 ═══════════════════════════════════════════════════════════════ */
 function genICS(m: Meeting) {
-  const name = [m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ");
+  const nameParts = [m.contact?.firstName, m.contact?.lastName].filter(Boolean) as string[];
+  const name = nameParts.join(" ") || "Contact inconnu";
   const dt = new Date(m.callbackDate || m.createdAt);
   const p  = (n: number) => n.toString().padStart(2,"0");
   const f  = (d: Date)   => `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`;
   const end = new Date(dt.getTime()+30*60000);
+  const companyName = m.contact?.company?.name || "Client";
   const txt = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CaptainProspect//RDV//FR",
     "BEGIN:VEVENT",`DTSTART:${f(dt)}`,`DTEND:${f(end)}`,
-    `SUMMARY:RDV - ${name} (${m.contact.company.name})`,
+    `SUMMARY:RDV - ${name} (${companyName})`,
     `DESCRIPTION:${(m.note||"").replace(/\n/g,"\\n").slice(0,200)}`,
     "END:VEVENT","END:VCALENDAR"].join("\r\n");
   const a = Object.assign(document.createElement("a"),{
@@ -584,12 +590,14 @@ function genCSV(meetings: Meeting[]) {
   const esc = (v: string) => v.includes('"')||v.includes(",")||v.includes("\n")?`"${v.replace(/"/g,'""')}"`:v;
   const rows = meetings.map(m=>{
     const d=new Date(m.callbackDate||m.createdAt), fb=m.meetingFeedback;
+    const c = m.contact;
+    const co = c?.company;
     return [d.toLocaleDateString("fr-FR"),d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
       S[getRdvStatus(m)].label,m.campaign.mission.name,m.campaign.name,
-      m.contact.firstName??"",m.contact.lastName??"",m.contact.title??"",m.contact.email??"",
-      m.contact.phone??"",m.contact.linkedin??"",m.contact.company.name,
-      m.contact.company.industry??"",m.contact.company.country??"",
-      m.contact.company.size??"",m.contact.company.website??"",m.note??"",
+      c?.firstName??"",c?.lastName??"",c?.title??"",c?.email??"",
+      c?.phone??"",c?.linkedin??"",co?.name??"",
+      co?.industry??"",co?.country??"",
+      co?.size??"",co?.website??"",m.note??"",
       fb?(OM[fb.outcome]?.label??fb.outcome):"",
       fb?.recontactRequested??"",fb?.clientNote??"",
     ].map(String).map(esc);
@@ -619,7 +627,7 @@ function Pill({ label, color, bg, border, dot }: {
 }
 
 function Avt({ m, size=38 }: { m:Meeting; size?:number }) {
-  const s = avt(m.contact.id);
+  const s = avt(m.contact?.id || m.id);
   return (
     <div className="cp-avatar" style={{width:size,height:size,background:s.bg,color:s.fg,fontSize:size*0.34}}
       aria-hidden="true">
@@ -720,14 +728,31 @@ export default function ClientPortalMeetingsPage() {
 
   const [rsDate, setRsDate]       = useState("");
   const [rsTime, setRsTime]       = useState("10:00");
-  const [rsReason, setRsReason]   = useState("");
   const [rsSub, setRsSub]         = useState(false);
 
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelNote, setCancelNote]     = useState("");
+  const [cancelSub, setCancelSub]       = useState(false);
+
+  const [deleteConfirm, setDeleteConfirm] = useState<Meeting|null>(null);
+  const [deleteSub, setDeleteSub]        = useState(false);
+
   const [sigId, setSigId]         = useState<string|null>(null);
-  const [sigType, setSigType]     = useState<"NO_SHOW"|"CANCEL"|null>(null);
+  const [sigDropdownId, setSigDropdownId] = useState<string|null>(null);
+  const [sigType, setSigType]     = useState<"NO_SHOW"|null>(null);
   const [sigRec, setSigRec]       = useState("");
   const [sigNote, setSigNote]     = useState("");
   const [sigSub, setSigSub]       = useState(false);
+
+  useEffect(() => {
+    if (!sigDropdownId) return;
+    const handler = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest?.("[data-signaler-dropdown]")) return;
+      setSigDropdownId(null);
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [sigDropdownId]);
 
   useEffect(()=>{
     if (!clientId) return;
@@ -752,7 +777,21 @@ export default function ClientPortalMeetingsPage() {
     let list = tab==="all" ? meetings : meetings.filter(m=>getRdvStatus(m)===tab);
     if (q.trim()) {
       const lq = q.toLowerCase();
-      list = list.filter(m=>[m.contact.firstName,m.contact.lastName,m.contact.company.name].join(" ").toLowerCase().includes(lq));
+      list = list.filter(m=>{
+        const c = m.contact;
+        const co = c?.company;
+        const haystack = [
+          c?.firstName,
+          c?.lastName,
+          co?.name,
+          m.campaign?.name,
+          m.campaign?.mission?.name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(lq);
+      });
     }
     return list.sort((a,b)=>{
       const da=new Date(a.callbackDate||a.createdAt).getTime();
@@ -768,7 +807,8 @@ export default function ClientPortalMeetingsPage() {
   const openModal = (m:Meeting, t:ModalType) => {
     setSel(m);
     if (t==="feedback"){ setFbOut(m.meetingFeedback?.outcome??""); setFbRec(m.meetingFeedback?.recontactRequested??""); setFbNote(m.meetingFeedback?.clientNote??""); setFbDone(false); }
-    if (t==="reschedule"){ setRsDate(""); setRsTime("10:00"); setRsReason(""); }
+    if (t==="reschedule"){ setRsDate(""); setRsTime("10:00"); }
+    if (t==="cancel"){ setCancelReason(""); setCancelNote(""); }
     setModal(t);
   };
   const closeModal = useCallback(()=>setModal(null),[]);
@@ -794,7 +834,7 @@ export default function ClientPortalMeetingsPage() {
     try {
       const r=await fetch(`/api/client/meetings/${sel.id}/reschedule`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({newDate:`${rsDate}T${rsTime}:00`,reason:rsReason||null}),
+        body:JSON.stringify({newDate:`${rsDate}T${rsTime}:00`}),
       });
       const j=await r.json();
       if (j.success){ toast.success("Demande envoyée","L'équipe vous recontactera pour confirmer."); closeModal(); }
@@ -806,21 +846,22 @@ export default function ClientPortalMeetingsPage() {
   const submitSignal = async (mid:string)=>{
     if (!sigType) return;
     if (sigType==="NO_SHOW"&&!sigRec) return;
-    if (sigType==="CANCEL"&&!sigNote) return;
     setSigSub(true);
     try {
       const r=await fetch(`/api/client/meetings/${mid}/feedback`,{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          outcome:sigType==="NO_SHOW"?"NO_SHOW":"CANCELLED_BY_CLIENT",
-          recontactRequested:sigType==="NO_SHOW"?sigRec:"NO",
+          // Map to allowed outcome codes for API:
+          // - NO_SHOW  -> "NO_SHOW"
+          outcome:"NO_SHOW",
+          recontactRequested:sigRec,
           clientNote:sigNote||null,
         }),
       });
       const j=await r.json();
       if (j.success){
-        setMeetings(p=>p.map(m=>m.id===mid?{...m,meetingFeedback:j.data,...(sigType==="CANCEL"?{result:"MEETING_CANCELLED",cancellationReason:"CLIENT_REQUEST"}:{})}:m));
-        toast.success("Signalement envoyé",sigType==="NO_SHOW"?"Marqué comme absent.":"Annulation signalée.");
+        setMeetings(p=>p.map(m=>m.id===mid?{...m,meetingFeedback:j.data}:m));
+        toast.success("Signalement envoyé","Le rendez-vous est marqué comme absent.");
         setSigId(null);
       } else toast.error("Erreur",j.error??"Une erreur est survenue.");
     } catch { toast.error("Erreur","Impossible de soumettre."); }
@@ -830,6 +871,41 @@ export default function ClientPortalMeetingsPage() {
   const toggleSig=(id:string)=>{
     setSigId(sigId===id?null:id);
     setSigType(null); setSigRec(""); setSigNote("");
+  };
+
+  const submitCancel = async ()=>{
+    if (!sel||!cancelReason.trim()) return;
+    setCancelSub(true);
+    try {
+      const r = await fetch(`/api/client/meetings/${sel.id}/cancel`,{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ cancellationReason: cancelReason.trim(), note: cancelNote.trim()||null }),
+      });
+      const j=await r.json();
+      if (j.success){
+        setMeetings(p=>p.map(m=>m.id===sel.id?{...m,result:"MEETING_CANCELLED",cancellationReason:j.data.cancellationReason}:m));
+        toast.success("Rendez-vous annulé");
+        closeModal();
+      } else toast.error("Erreur",j.error??"Impossible d'annuler.");
+    } catch { toast.error("Erreur","Impossible d'annuler."); }
+    finally { setCancelSub(false); }
+  };
+
+  const deleteMeeting = async (m:Meeting)=>{
+    setDeleteSub(true);
+    try {
+      const r = await fetch(`/api/client/meetings/${m.id}`,{ method:"DELETE" });
+      if (r.status===204){
+        setMeetings(p=>p.filter(x=>x.id!==m.id));
+        if (sel?.id===m.id) closeModal();
+        setDeleteConfirm(null);
+        toast.success("Rendez-vous supprimé");
+      } else {
+        const j=await r.json().catch(()=>({}));
+        toast.error("Erreur",j.error??"Impossible de supprimer.");
+      }
+    } catch { toast.error("Erreur","Impossible de supprimer."); }
+    finally { setDeleteSub(false); }
   };
 
   if (!clientId||loading) return <MeetingsSkeleton />;
@@ -932,10 +1008,14 @@ export default function ClientPortalMeetingsPage() {
             <Card key={meeting.id} m={meeting} idx={idx}
               sigOpen={sigId===meeting.id} sigType={sigType}
               sigRec={sigRec} sigNote={sigNote} sigSub={sigSub}
+              sigDropdownOpen={sigDropdownId===meeting.id}
               onDetail={()=>openModal(meeting,"detail")}
               onFeedback={()=>openModal(meeting,"feedback")}
-              onICS={()=>genICS(meeting)}
               onToggleSig={()=>toggleSig(meeting.id)}
+              onReschedule={()=>openModal(meeting,"reschedule")}
+              onSigDropdownToggle={()=>setSigDropdownId(sigDropdownId===meeting.id?null:meeting.id)}
+              onSigOptionContactAbsent={()=>{ setSigId(meeting.id); setSigType("NO_SHOW"); setSigDropdownId(null); }}
+              onSigOptionReplanifier={()=>{ openModal(meeting,"reschedule"); setSigDropdownId(null); }}
               onSigType={setSigType} onSigRec={setSigRec} onSigNote={setSigNote}
               onSigSubmit={()=>submitSignal(meeting.id)}
             />
@@ -947,7 +1027,8 @@ export default function ClientPortalMeetingsPage() {
       {modal==="detail" && sel && (
         <DetailModal m={sel} onClose={closeModal}
           onFeedback={()=>openModal(sel,"feedback")}
-          onICS={()=>genICS(sel)}
+          onCancel={getRdvStatus(sel)==="upcoming"?()=>openModal(sel,"cancel"):undefined}
+          onDelete={()=>setDeleteConfirm(sel)}
         />
       )}
       {modal==="feedback" && sel && (
@@ -958,9 +1039,32 @@ export default function ClientPortalMeetingsPage() {
       )}
       {modal==="reschedule" && sel && (
         <RsModal m={sel} onClose={closeModal}
-          date={rsDate} time={rsTime} reason={rsReason} sub={rsSub}
-          onDate={setRsDate} onTime={setRsTime} onReason={setRsReason} onSubmit={submitReschedule}
+          date={rsDate} time={rsTime} sub={rsSub}
+          onDate={setRsDate} onTime={setRsTime} onSubmit={submitReschedule}
         />
+      )}
+      {modal==="cancel" && sel && (
+        <CancelModal m={sel} onClose={closeModal}
+          reason={cancelReason} note={cancelNote} sub={cancelSub}
+          onReason={setCancelReason} onNote={setCancelNote} onSubmit={submitCancel}
+        />
+      )}
+      {deleteConfirm && (
+        <div className="cp-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-title"
+          style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}
+          onClick={()=>!deleteSub&&setDeleteConfirm(null)}>
+          <div className="cp-enter-scale" style={{background:tk.surface,borderRadius:16,padding:24,maxWidth:400,width:"100%",boxShadow:"0 24px 64px -12px rgba(0,0,0,0.25)"}}
+            onClick={e=>e.stopPropagation()}>
+            <h3 id="delete-title" style={{fontSize:16,fontWeight:700,color:tk.ink,margin:0}}>Supprimer ce rendez-vous ?</h3>
+            <p style={{fontSize:13.5,color:tk.ink3,marginTop:10,marginBottom:20}}>Cette action est irréversible. Le rendez-vous sera définitivement supprimé.</p>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <Btn variant="ghost" onClick={()=>setDeleteConfirm(null)} disabled={deleteSub}>Annuler</Btn>
+              <Btn variant="danger" onClick={()=>deleteMeeting(deleteConfirm)} loading={deleteSub}>
+                <Trash2 style={{width:14,height:14}} />Supprimer
+              </Btn>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -970,14 +1074,16 @@ export default function ClientPortalMeetingsPage() {
    MEETING CARD
 ═══════════════════════════════════════════════════════════════ */
 function Card({
-  m, idx, sigOpen, sigType, sigRec, sigNote, sigSub,
-  onDetail, onFeedback, onICS, onToggleSig,
+  m, idx, sigOpen, sigType, sigRec, sigNote, sigSub, sigDropdownOpen,
+  onDetail, onFeedback, onToggleSig, onReschedule,
+  onSigDropdownToggle, onSigOptionContactAbsent, onSigOptionReplanifier,
   onSigType, onSigRec, onSigNote, onSigSubmit,
 }: {
-  m:Meeting; idx:number; sigOpen:boolean; sigType:"NO_SHOW"|"CANCEL"|null;
-  sigRec:string; sigNote:string; sigSub:boolean;
-  onDetail:()=>void; onFeedback:()=>void; onICS:()=>void; onToggleSig:()=>void;
-  onSigType:(t:"NO_SHOW"|"CANCEL"|null)=>void;
+  m:Meeting; idx:number; sigOpen:boolean; sigType:"NO_SHOW"|null;
+  sigRec:string; sigNote:string; sigSub:boolean; sigDropdownOpen:boolean;
+  onDetail:()=>void; onFeedback:()=>void; onToggleSig:()=>void; onReschedule:()=>void;
+  onSigDropdownToggle:()=>void; onSigOptionContactAbsent:()=>void; onSigOptionReplanifier:()=>void;
+  onSigType:(t:"NO_SHOW"|null)=>void;
   onSigRec:(v:string)=>void; onSigNote:(v:string)=>void; onSigSubmit:()=>void;
 }) {
   const st     = getRdvStatus(m);
@@ -985,7 +1091,7 @@ function Card({
   const fb     = m.meetingFeedback;
   const up     = st==="upcoming";
   const dt     = fmtCard(m.callbackDate||m.createdAt);
-  const sigDis = sigSub||(sigType==="NO_SHOW"&&!sigRec)||(sigType==="CANCEL"&&!sigNote);
+  const sigDis = sigSub||(sigType==="NO_SHOW"&&!sigRec);
 
   return (
     <li className={cn("cp-card cp-enter", up&&"cp-card-upcoming")}
@@ -1024,18 +1130,20 @@ function Card({
             <Avt m={m} />
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",flexWrap:"wrap",alignItems:"baseline",gap:"2px 7px"}}>
-                <span style={{fontSize:14.5,fontWeight:700,color:tk.ink}}>{m.contact.firstName} {m.contact.lastName}</span>
-                {m.contact.title && <span style={{fontSize:12,color:tk.ink3}}>{m.contact.title}</span>}
+                <span style={{fontSize:14.5,fontWeight:700,color:tk.ink}}>
+                  {[m.contact?.firstName, m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu"}
+                </span>
+                {m.contact?.title && <span style={{fontSize:12,color:tk.ink3}}>{m.contact.title}</span>}
               </div>
               <div style={{fontSize:12.5,fontWeight:600,color:tk.ink2,marginTop:2,display:"flex",alignItems:"center",gap:5}}>
                 <Building2 style={{width:12,height:12,color:tk.ink4,flexShrink:0}} aria-hidden="true" />
-                {m.contact.company.name}
-                {m.contact.company.industry && <span style={{fontWeight:400,color:tk.ink3}}>· {m.contact.company.industry}</span>}
+                {m.contact?.company?.name || "Entreprise inconnue"}
+                {m.contact?.company?.industry && <span style={{fontWeight:400,color:tk.ink3}}>· {m.contact.company.industry}</span>}
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:"3px 12px",marginTop:6}}>
-                {m.contact.email   && <a href={`mailto:${m.contact.email}`}  className="cp-link" onClick={e=>e.stopPropagation()}><Mail   style={{width:11,height:11}} />{m.contact.email}</a>}
-                {m.contact.phone   && <a href={`tel:${m.contact.phone}`}     className="cp-link" onClick={e=>e.stopPropagation()}><Phone  style={{width:11,height:11}} />{m.contact.phone}</a>}
-                {m.contact.linkedin&& <a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" className="cp-link" onClick={e=>e.stopPropagation()}><Linkedin style={{width:11,height:11}} />LinkedIn</a>}
+                {m.contact?.email   && <a href={`mailto:${m.contact.email}`}  className="cp-link" onClick={e=>e.stopPropagation()}><Mail   style={{width:11,height:11}} />{m.contact.email}</a>}
+                {m.contact?.phone   && <a href={`tel:${m.contact.phone}`}     className="cp-link" onClick={e=>e.stopPropagation()}><Phone  style={{width:11,height:11}} />{m.contact.phone}</a>}
+                {m.contact?.linkedin&& <a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" className="cp-link" onClick={e=>e.stopPropagation()}><Linkedin style={{width:11,height:11}} />LinkedIn</a>}
               </div>
             </div>
           </div>
@@ -1064,31 +1172,36 @@ function Card({
           <button type="button" className="cp-action" onClick={onDetail}>
             <Eye style={{width:12,height:12}} />Voir la fiche
           </button>
-          {up && (
-            <button type="button" className="cp-action" onClick={onICS}>
-              <Download style={{width:12,height:12}} />Calendrier
+          {!up && !fb && (
+            <button type="button" className="cp-action prim" onClick={onFeedback}>
+              <MessageSquare style={{width:12,height:12}} />Donner votre avis
             </button>
           )}
-          {!up && !fb && (
-            <>
-              <button type="button" className="cp-action prim" onClick={onFeedback}>
-                <MessageSquare style={{width:12,height:12}} />Donner mon avis
-              </button>
-              <button type="button" className="cp-action dngr" onClick={onToggleSig} aria-expanded={sigOpen}>
-                <AlertTriangle style={{width:12,height:12}} />Signaler
-              </button>
-            </>
-          )}
-          {fb && (
+          {!up && fb && (
             <button type="button" className="cp-action" onClick={onFeedback}>
               <Edit3 style={{width:12,height:12}} />Modifier l&apos;avis
             </button>
           )}
+          <div data-signaler-dropdown style={{position:"relative"}}>
+            <button type="button" className="cp-action dngr" onClick={(e)=>{ e.stopPropagation(); onSigDropdownToggle(); }} aria-expanded={sigDropdownOpen}>
+              <AlertTriangle style={{width:12,height:12}} />Signaler
+            </button>
+            {sigDropdownOpen && (
+              <div className="cp-enter-scale" style={{position:"absolute",top:"100%",left:0,marginTop:4,minWidth:200,background:tk.surface,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",border:`1px solid ${tk.border}`,padding:4,zIndex:10}}>
+                <button type="button" className="cp-action" style={{width:"100%",justifyContent:"flex-start"}} onClick={onSigOptionContactAbsent}>
+                  <XCircle style={{width:12,height:12}} />Contact absent
+                </button>
+                <button type="button" className="cp-action" style={{width:"100%",justifyContent:"flex-start"}} onClick={onSigOptionReplanifier}>
+                  <CalendarClock style={{width:12,height:12}} />Replanifier avec le prospect
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ── Signal panel ─────────────────────────────────── */}
-      {sigOpen && !up && !fb && (
+      {/* ── Signal panel (Contact absent form) ────────────── */}
+      {sigOpen && sigType==="NO_SHOW" && (
         <div className="cp-signal">
           <div className="cp-signal-inner">
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
@@ -1096,9 +1209,9 @@ function Card({
                 <AlertTriangle style={{width:15,height:15,color:tk.red}} />
               </div>
               <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700,color:tk.redText}}>Signaler un problème</div>
+                <div style={{fontSize:13,fontWeight:700,color:tk.redText}}>Contact absent</div>
                 <div style={{fontSize:11.5,color:"#C08080",marginTop:1}}>
-                  Indiquez ce qui s&apos;est passé — l&apos;équipe prendra en charge.
+                  Indiquez si vous souhaitez que l&apos;on recontacte ce prospect.
                 </div>
               </div>
               <button type="button" onClick={onToggleSig} aria-label="Fermer"
@@ -1106,56 +1219,32 @@ function Card({
                 <X style={{width:12,height:12}} />
               </button>
             </div>
-
-            {/* Type */}
-            <div style={{display:"flex",gap:10,marginBottom:sigType?16:0}}>
-              {([
-                {id:"NO_SHOW" as const, label:"Contact absent",         Icon:XCircle},
-                {id:"CANCEL"  as const, label:"Annuler définitivement", Icon:X},
-              ] as const).map(({id,label,Icon})=>(
-                <button key={id} type="button" aria-pressed={sigType===id}
-                  onClick={()=>onSigType(id)}
-                  className={cn("cp-choice",sigType===id&&"sel")}>
-                  <div className="cp-choice-ico"><Icon style={{width:16,height:16}} /></div>
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {sigType && (
-              <div className="cp-signal-form" style={{display:"flex",flexDirection:"column",gap:12}}>
-                {sigType==="NO_SHOW" && (
-                  <div>
-                    <div style={{fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:tk.ink4,marginBottom:8}}>
-                      Recontacter ce prospect ? <span style={{color:tk.red}}>*</span>
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      {[{v:"YES",l:"Oui, recontacter"},{v:"NO",l:"Non, clôturer"}].map(({v,l})=>(
-                        <button key={v} type="button" aria-pressed={sigRec===v} onClick={()=>onSigRec(v)}
-                          className={cn("cp-toggle",sigRec===v&&"sel")} style={{flex:1}}>
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <div style={{fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:tk.ink4,marginBottom:8}}>
-                    Commentaire
-                    {sigType==="CANCEL"
-                      ? <span style={{color:tk.red}}> *</span>
-                      : <span style={{color:tk.ink4,textTransform:"none",fontWeight:400}}> (optionnel)</span>}
-                  </div>
-                  <input className="cp-input" type="text" value={sigNote} onChange={e=>onSigNote(e.target.value)} placeholder="Précisez la raison…" />
-                </div>
-                <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-                  <Btn variant="ghost" onClick={()=>onSigType(null)}>Annuler</Btn>
-                  <Btn variant="danger" onClick={onSigSubmit} disabled={sigDis} loading={sigSub}>
-                    <Send style={{width:13,height:13}} />Confirmer le signalement
-                  </Btn>
-                </div>
+            <div className="cp-signal-form" style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:tk.ink4,marginBottom:8}}>
+                Souhaitez-vous que l&apos;on recontacte ce prospect ? <span style={{color:tk.red}}>*</span>
               </div>
-            )}
+              <div style={{display:"flex",gap:8}}>
+                {[{v:"YES",l:"Oui, à recontacter"},{v:"NO",l:"Non, clôturer"}].map(({v,l})=>(
+                  <button key={v} type="button" aria-pressed={sigRec===v} onClick={()=>onSigRec(v)}
+                    className={cn("cp-toggle",sigRec===v&&"sel")} style={{flex:1}}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <div>
+                <div style={{fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:tk.ink4,marginBottom:8}}>
+                  Commentaire
+                  <span style={{color:tk.ink4,textTransform:"none",fontWeight:400}}> (optionnel)</span>
+                </div>
+                <input className="cp-input" type="text" value={sigNote} onChange={e=>onSigNote(e.target.value)} placeholder="Précisez la raison…" />
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                <Btn variant="ghost" onClick={()=>{ onSigType(null); onToggleSig(); }}>Annuler</Btn>
+                <Btn variant="danger" onClick={onSigSubmit} disabled={sigDis} loading={sigSub}>
+                  <Send style={{width:13,height:13}} />Confirmer le signalement
+                </Btn>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1166,19 +1255,21 @@ function Card({
 /* ═══════════════════════════════════════════════════════════════
    DETAIL MODAL
 ═══════════════════════════════════════════════════════════════ */
-function DetailModal({ m, onClose, onFeedback, onICS }: {
-  m:Meeting; onClose:()=>void; onFeedback:()=>void; onICS:()=>void;
+function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
+  m:Meeting; onClose:()=>void; onFeedback:()=>void; onCancel?:()=>void; onDelete?:()=>void;
 }) {
   const st = getRdvStatus(m);
   const sm = S[st];
   const fb = m.meetingFeedback;
   const up = st==="upcoming";
-  const cn_name = [m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ");
+  const cn_name = [m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
+  const companyName = m.contact?.company?.name || "Entreprise inconnue";
 
   return (
-    <Modal wide title="Fiche du rendez-vous" subtitle={`${cn_name} · ${m.contact.company.name}`} onClose={onClose}
+    <Modal wide title="Fiche du rendez-vous" subtitle={`${cn_name} · ${companyName}`} onClose={onClose}
       footer={<>
-        {up && <Btn variant="secondary" onClick={onICS}><Download style={{width:14,height:14}} />Ajouter au calendrier</Btn>}
+        {up && onCancel && <Btn variant="secondary" onClick={onCancel}><XCircle style={{width:14,height:14}} />Annuler le RDV</Btn>}
+        {onDelete && <Btn variant="ghost" onClick={onDelete} style={{color:tk.redText}}><Trash2 style={{width:14,height:14}} />Supprimer</Btn>}
         {!up && !fb && <Btn variant="primary" onClick={onFeedback}><MessageSquare style={{width:14,height:14}} />Donner mon avis</Btn>}
         {fb && <Btn variant="secondary" onClick={onFeedback}><Edit3 style={{width:14,height:14}} />Modifier mon avis</Btn>}
         <Btn onClick={onClose}>Fermer</Btn>
@@ -1211,7 +1302,7 @@ function DetailModal({ m, onClose, onFeedback, onICS }: {
               style={{fontSize:12,color:tk.accentText,textDecoration:"none",marginLeft:2}}>Itinéraire →</a>
           </div>
         )}
-        {m.meetingType==="TELEPHONIQUE" && m.contact.phone && (
+        {m.meetingType==="TELEPHONIQUE" && m.contact?.phone && (
           <div style={{marginTop:10}}>
             <a href={`tel:${m.contact.phone}`} className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none"}}>
               <Phone style={{width:14,height:14}} />Appeler {m.contact.phone}
@@ -1228,28 +1319,28 @@ function DetailModal({ m, onClose, onFeedback, onICS }: {
               <Avt m={m} size={44} />
               <div>
                 <div style={{fontSize:15,fontWeight:700,color:tk.ink}}>{cn_name}</div>
-                <div style={{fontSize:12.5,color:tk.ink3,marginTop:2}}>{m.contact.title||<span style={{color:tk.ink4}}>—</span>}</div>
+                <div style={{fontSize:12.5,color:tk.ink3,marginTop:2}}>{m.contact?.title||<span style={{color:tk.ink4}}>—</span>}</div>
               </div>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:11}}>
-              <Fld label="E-mail">{m.contact.email&&<a href={`mailto:${m.contact.email}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.email}</a>}</Fld>
-              <Fld label="Téléphone">{m.contact.phone&&<a href={`tel:${m.contact.phone}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.phone}</a>}</Fld>
-              <Fld label="LinkedIn">{m.contact.linkedin&&<a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>Voir le profil →</a>}</Fld>
+              <Fld label="E-mail">{m.contact?.email&&<a href={`mailto:${m.contact.email}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.email}</a>}</Fld>
+              <Fld label="Téléphone">{m.contact?.phone&&<a href={`tel:${m.contact.phone}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.phone}</a>}</Fld>
+              <Fld label="LinkedIn">{m.contact?.linkedin&&<a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>Voir le profil →</a>}</Fld>
             </div>
           </div>
           <div style={{borderLeft:`1px solid ${tk.border}`,paddingLeft:24}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,fontSize:15,fontWeight:700,color:tk.ink}}>
-              <Building2 style={{width:16,height:16,color:tk.ink4,flexShrink:0}} />{m.contact.company.name}
+              <Building2 style={{width:16,height:16,color:tk.ink4,flexShrink:0}} />{companyName}
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:11}}>
-              <Fld label="Secteur">{m.contact.company.industry}</Fld>
-              <Fld label="Pays">{m.contact.company.country}</Fld>
-              <Fld label="Effectif">{m.contact.company.size}</Fld>
-              <Fld label="Site web">{m.contact.company.website&&<a href={m.contact.company.website} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.company.website.replace(/^https?:\/\//,"")}</a>}</Fld>
+              <Fld label="Secteur">{m.contact?.company?.industry}</Fld>
+              <Fld label="Pays">{m.contact?.company?.country}</Fld>
+              <Fld label="Effectif">{m.contact?.company?.size}</Fld>
+              <Fld label="Site web">{m.contact?.company?.website&&<a href={m.contact.company.website} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.company.website.replace(/^https?:\/\//,"")}</a>}</Fld>
             </div>
           </div>
         </div>
-        {m.contact.customData && Object.keys(m.contact.customData).length>0 && (
+        {m.contact?.customData && Object.keys(m.contact.customData).length>0 && (
           <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${tk.border}`}}>
             <div className="cp-section-label" style={{marginBottom:8}}>Données complémentaires</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -1307,7 +1398,8 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
   out:string; rec:string; note:string; done:boolean; sub:boolean;
   onOut:(v:string)=>void; onRec:(v:string)=>void; onNote:(v:string)=>void; onSubmit:()=>void;
 }) {
-  const name=[m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ");
+  const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
+  const companyName = m.contact?.company?.name || "Entreprise inconnue";
 
   if (done) return (
     <Modal title="Retour enregistré" onClose={onClose}
@@ -1325,7 +1417,7 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
   );
 
   return (
-    <Modal title="Feedback sur le rendez-vous" subtitle={`${name} · ${m.contact.company.name}`} onClose={onClose}
+    <Modal title="Feedback sur le rendez-vous" subtitle={`${name} · ${companyName}`} onClose={onClose}
       footer={<>
         <span style={{fontSize:11,color:tk.ink4,marginRight:"auto"}}>* champs requis</span>
         <Btn onClick={onClose}>Annuler</Btn>
@@ -1374,19 +1466,54 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   CANCEL MODAL
+═══════════════════════════════════════════════════════════════ */
+function CancelModal({ m, onClose, reason, note, sub, onReason, onNote, onSubmit }: {
+  m:Meeting; onClose:()=>void;
+  reason:string; note:string; sub:boolean;
+  onReason:(v:string)=>void; onNote:(v:string)=>void; onSubmit:()=>void;
+}) {
+  const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
+  const companyName = m.contact?.company?.name || "Entreprise inconnue";
+  return (
+    <Modal title="Annuler le rendez-vous" subtitle={`${name} · ${companyName}`} onClose={onClose}
+      footer={<>
+        <Btn onClick={onClose}>Fermer</Btn>
+        <Btn variant="danger" onClick={onSubmit} disabled={!reason.trim()} loading={sub}>
+          <XCircle style={{width:14,height:14}} />Confirmer l&apos;annulation
+        </Btn>
+      </>}>
+      <Sec label="Motif d'annulation *">
+        <select className="cp-input" value={reason} onChange={e=>onReason(e.target.value)}>
+          <option value="">Sélectionner…</option>
+          {MEETING_CANCELLATION_REASONS.map(r=>(
+            <option key={r.code} value={r.code}>{r.label}</option>
+          ))}
+        </select>
+      </Sec>
+      <Sec label="Commentaire (optionnel)" last>
+        <textarea className="cp-textarea" value={note} onChange={e=>onNote(e.target.value)} rows={2}
+          placeholder="Précisez si besoin…" style={{minHeight:60}} />
+      </Sec>
+    </Modal>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
    RESCHEDULE MODAL
 ═══════════════════════════════════════════════════════════════ */
-function RsModal({ m, onClose, date, time, reason, sub, onDate, onTime, onReason, onSubmit }: {
+function RsModal({ m, onClose, date, time, sub, onDate, onTime, onSubmit }: {
   m:Meeting; onClose:()=>void;
-  date:string; time:string; reason:string; sub:boolean;
-  onDate:(v:string)=>void; onTime:(v:string)=>void; onReason:(v:string)=>void; onSubmit:()=>void;
+  date:string; time:string; sub:boolean;
+  onDate:(v:string)=>void; onTime:(v:string)=>void; onSubmit:()=>void;
 }) {
-  const name=[m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ");
+  const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
+  const companyName = m.contact?.company?.name || "Entreprise inconnue";
   const tmrw=new Date(); tmrw.setDate(tmrw.getDate()+1);
   const minDate=tmrw.toISOString().split("T")[0];
 
   return (
-    <Modal title="Demander un report" subtitle={`${name} · ${m.contact.company.name}`} onClose={onClose}
+    <Modal title="Demander un report" subtitle={`${name} · ${companyName}`} onClose={onClose}
       footer={<>
         <Btn onClick={onClose}>Annuler</Btn>
         <Btn variant="primary" onClick={onSubmit} disabled={!date} loading={sub}>
@@ -1418,11 +1545,8 @@ function RsModal({ m, onClose, date, time, reason, sub, onDate, onTime, onReason
         </div>
       </Sec>
 
-      <Sec label="Motif" last>
-        <textarea className="cp-textarea" value={reason} onChange={e=>onReason(e.target.value)} rows={3}
-          placeholder="Indisponibilité, changement de priorité…"
-          style={{minHeight:80}} />
-        <p style={{fontSize:11,color:tk.ink4,marginTop:8}}>L&apos;équipe vous recontactera pour confirmer le nouveau créneau.</p>
+      <Sec last>
+        <p style={{fontSize:11,color:tk.ink4,marginTop:4}}>L&apos;équipe vous recontactera pour confirmer le nouveau créneau.</p>
       </Sec>
     </Modal>
   );

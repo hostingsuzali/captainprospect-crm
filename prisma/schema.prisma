@@ -482,6 +482,10 @@ model Client {
   files         File[]
   projects      Project[]
   
+  // Client Portal visibility settings
+  portalShowCallHistory  Boolean @default(false)
+  portalShowDatabase     Boolean @default(false)
+ 
   // Business Developer relations
   bdAssignments BusinessDeveloperClient[]
   onboarding    ClientOnboarding?

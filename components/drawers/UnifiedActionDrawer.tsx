@@ -48,7 +48,7 @@ import {
     Check,
     Info,
 } from "lucide-react";
-import { BookingModal } from "@/components/sdr/BookingModal";
+import { BookingDrawer } from "@/components/sdr/BookingDrawer";
 import { ContactDrawer } from "./ContactDrawer";
 import { cn } from "@/lib/utils";
 
@@ -394,7 +394,8 @@ export function UnifiedActionDrawer({
     const [isImprovingNote, setIsImprovingNote] = useState(false);
     const noteRef = useRef<HTMLTextAreaElement>(null);
 
-    const [showBookingModal, setShowBookingModal] = useState(false);
+    const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+    const [rdvDate, setRdvDate] = useState("");
     const [showAddContact, setShowAddContact] = useState(false);
     const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
     const [historyExpanded, setHistoryExpanded] = useState(false);
@@ -1900,12 +1901,6 @@ export function UnifiedActionDrawer({
                                                         onClick={() => {
                                                             setNewActionResult(opt.value);
                                                             if (opt.value === "ENVOIE_MAIL") onOpenEmailModal?.();
-                                                            if (
-                                                                opt.value === "MEETING_BOOKED" &&
-                                                                clientBookingUrl &&
-                                                                contactId
-                                                            )
-                                                                setShowBookingModal(true);
                                                         }}
                                                         className={cn(
                                                             "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1",
@@ -1961,18 +1956,38 @@ export function UnifiedActionDrawer({
                                         clientBookingUrl &&
                                         contactId &&
                                         contact && (
-                                            <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3.5 space-y-2.5">
-                                                <p className="text-sm text-slate-700">
-                                                    Ouvrez le calendrier du client pour planifier un rendez-vous.
-                                                </p>
+                                            <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3.5 space-y-3">
+                                                {/* Date / time picker — required before opening the calendar */}
+                                                <div>
+                                                    <label
+                                                        htmlFor="rdv-date"
+                                                        className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-2"
+                                                    >
+                                                        <Calendar className="w-4 h-4 text-indigo-600" aria-hidden="true" />
+                                                        Date et heure du RDV
+                                                        <span className="text-red-500" aria-hidden="true">*</span>
+                                                    </label>
+                                                    <input
+                                                        id="rdv-date"
+                                                        type="datetime-local"
+                                                        value={rdvDate}
+                                                        onChange={(e) => setRdvDate(e.target.value)}
+                                                        min={new Date().toISOString().slice(0, 16)}
+                                                        className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400"
+                                                    />
+                                                    <p className="text-xs text-slate-500 mt-1.5">
+                                                        Sélectionnez la date avant d&apos;ouvrir le calendrier client.
+                                                    </p>
+                                                </div>
                                                 <Button
                                                     type="button"
                                                     variant="secondary"
-                                                    onClick={() => setShowBookingModal(true)}
+                                                    onClick={() => setShowBookingDrawer(true)}
+                                                    disabled={!rdvDate}
                                                     className="gap-2 w-full"
                                                 >
                                                     <Calendar className="w-4 h-4" aria-hidden="true" />
-                                                    Planifier un RDV
+                                                    Ouvrir le calendrier client
                                                 </Button>
                                             </div>
                                         )}
@@ -2321,16 +2336,26 @@ export function UnifiedActionDrawer({
             )}
 
             {contactId && contact && clientBookingUrl && (
-                <BookingModal
-                    isOpen={showBookingModal}
-                    onClose={() => setShowBookingModal(false)}
+                <BookingDrawer
+                    isOpen={showBookingDrawer}
+                    onClose={() => setShowBookingDrawer(false)}
                     bookingUrl={clientBookingUrl}
                     contactId={contactId}
                     contactName={`${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Contact"}
+                    contactInfo={{
+                        firstName: contact.firstName,
+                        lastName: contact.lastName,
+                        email: contact.email,
+                        phone: contact.phone,
+                        title: contact.title,
+                        companyName: company?.name ?? undefined,
+                    }}
+                    rdvDate={rdvDate ? new Date(rdvDate).toISOString() : undefined}
                     onBookingSuccess={() => {
-                        setShowBookingModal(false);
+                        setShowBookingDrawer(false);
                         setNewActionResult("");
                         setNewActionNote("");
+                        setRdvDate("");
                         onActionRecorded?.();
                         setActionsLoading(true);
                         fetch(`/api/actions?contactId=${contactId}&limit=10`)

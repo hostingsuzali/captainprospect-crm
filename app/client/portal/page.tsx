@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui";
-import { RefreshCw, ArrowRight, Calendar, Sparkles, PhoneCall, Users, Clock, TrendingUp, CalendarCheck, Mail } from "lucide-react";
+import { RefreshCw, ArrowRight, Calendar, Sparkles, PhoneCall, TrendingUp, CalendarCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { DashboardSkeleton } from "@/components/client/skeletons";
@@ -12,8 +12,6 @@ import { DashboardSkeleton } from "@/components/client/skeletons";
 interface DashboardStats {
     totalActions: number;
     meetingsBooked: number;
-    contactsReached: number;
-    lastActivityDate: string | null;
     monthlyObjective: number;
     activeMissions: number;
 }
@@ -23,6 +21,7 @@ interface ClientMeeting {
     createdAt: string;
     callbackDate?: string | null;
     note?: string | null;
+    result?: string;
     contact: {
         firstName?: string | null;
         lastName?: string | null;
@@ -41,28 +40,18 @@ interface Mission {
     isActive: boolean;
 }
 
+interface PortalSettings {
+    portalShowCallHistory: boolean;
+    portalShowDatabase: boolean;
+}
+
 const MONTH_NAMES = [
     "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
     "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
 ];
 
 function getGreeting(): string {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Bonjour";
-    if (hour < 18) return "Bon après-midi";
-    return "Bonsoir";
-}
-
-function formatRelativeDate(dateString: string | null): string {
-    if (!dateString) return "—";
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / 86400000);
-    if (diffDays === 0) return "aujourd'hui";
-    if (diffDays === 1) return "hier";
-    if (diffDays < 7) return `il y a ${diffDays} jours`;
-    return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    return "Bonjour";
 }
 
 function formatMeetingDate(dateString: string): string {
@@ -92,6 +81,11 @@ export default function ClientPortal() {
     const [missionName, setMissionName] = useState<string>("");
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
+    const [totalMeetingsCount, setTotalMeetingsCount] = useState<number>(0);
+    const [callsCountForMonth, setCallsCountForMonth] = useState<number>(0);
+    // Month selector for calls stats: 0 = current month, -1 = previous, etc.
+    const [callsMonthOffset, setCallsMonthOffset] = useState(0);
 
     const clientId = (session?.user as { clientId?: string })?.clientId;
     const userName = session?.user?.name?.split(" ")[0] ?? "Client";
@@ -109,16 +103,27 @@ export default function ClientPortal() {
             const startDate = monthStart.toISOString().split("T")[0];
             const endDate = monthEnd.toISOString().split("T")[0];
 
-            const [statsRes, missionsRes, meetingsRes] = await Promise.all([
+            // For calls stats: selected month from offset
+            const callsMonthDate = new Date(now.getFullYear(), now.getMonth() + callsMonthOffset, 1);
+            const callsStart = new Date(callsMonthDate.getFullYear(), callsMonthDate.getMonth(), 1);
+            const callsEnd = new Date(callsMonthDate.getFullYear(), callsMonthDate.getMonth() + 1, 0, 23, 59, 59, 999);
+            const callsStartStr = callsStart.toISOString().split("T")[0];
+            const callsEndStr = callsEnd.toISOString().split("T")[0];
+
+            const [statsRes, missionsRes, meetingsRes, settingsRes, callsRes] = await Promise.all([
                 fetch(`/api/stats?startDate=${startDate}&endDate=${endDate}`),
                 fetch("/api/missions?isActive=true"),
                 clientId ? fetch(`/api/clients/${clientId}/meetings`) : Promise.resolve(null),
+                fetch("/api/client/portal/settings"),
+                fetch(`/api/client/calls?startDate=${callsStartStr}&endDate=${callsEndStr}`),
             ]);
 
-            const [statsJson, missionsJson, meetingsJson] = await Promise.all([
+            const [statsJson, missionsJson, meetingsJson, settingsJson, callsJson] = await Promise.all([
                 statsRes.json(),
                 missionsRes.json(),
                 meetingsRes?.ok ? meetingsRes.json() : Promise.resolve(null),
+                settingsRes.json(),
+                callsRes.ok ? callsRes.json() : Promise.resolve({ success: false }),
             ]);
 
             if (statsJson.success) setStats(statsJson.data);
@@ -140,6 +145,16 @@ export default function ClientPortal() {
                     })
                     .slice(0, 5);
                 setUpcomingMeetings(upcoming);
+                const nonCancelledCount = allMeetings.filter(
+                    (m) => m.result !== "MEETING_CANCELLED"
+                ).length;
+                setTotalMeetingsCount(nonCancelledCount);
+            }
+            if (settingsJson?.success) {
+                setPortalSettings(settingsJson.data);
+            }
+            if (callsJson?.success) {
+                setCallsCountForMonth(callsJson.data?.total ?? 0);
             }
         } catch (error) {
             console.error("Failed to fetch data:", error);
@@ -149,7 +164,7 @@ export default function ClientPortal() {
             setIsRefreshing(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [clientId]);
+    }, [clientId, callsMonthOffset]);
 
     useEffect(() => {
         fetchData();
@@ -159,7 +174,7 @@ export default function ClientPortal() {
         return <DashboardSkeleton />;
     }
 
-    const meetingsBooked = stats?.meetingsBooked ?? 0;
+    const meetingsBooked = totalMeetingsCount || stats?.meetingsBooked || 0;
 
     return (
         <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-6">
@@ -207,7 +222,7 @@ export default function ClientPortal() {
                     {/* Large RDV count */}
                     <div className="flex flex-col items-center md:items-start mb-8">
                         <p className="text-[11px] font-semibold text-indigo-200/80 uppercase tracking-[0.2em]">
-                            Rendez-vous ce mois
+                            Rendez-vous cumulés
                         </p>
                         <div className="mt-3 flex items-baseline gap-1">
                             <AnimatedNumber
@@ -218,67 +233,84 @@ export default function ClientPortal() {
                         </div>
                     </div>
 
-                    {/* KPI pills row */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {/* Appels réalisés */}
+                    {/* Appels passés (month selector + single KPI) */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold text-indigo-200/80 uppercase tracking-wider">Appels passés</span>
+                            <div className="flex items-center rounded-lg bg-white/[0.08] border border-white/[0.06] p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setCallsMonthOffset((o) => o - 1)}
+                                    className="w-8 h-8 rounded-md flex items-center justify-center text-indigo-200/80 hover:bg-white/[0.12] hover:text-white transition-all"
+                                    aria-label="Mois précédent"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <span className="min-w-[100px] text-center text-sm font-semibold text-white px-2">
+                                    {MONTH_NAMES[new Date(now.getFullYear(), now.getMonth() + callsMonthOffset, 1).getMonth()]} {new Date(now.getFullYear(), now.getMonth() + callsMonthOffset, 1).getFullYear()}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setCallsMonthOffset((o) => Math.min(o + 1, 0))}
+                                    disabled={callsMonthOffset >= 0}
+                                    className="w-8 h-8 rounded-md flex items-center justify-center text-indigo-200/80 hover:bg-white/[0.12] hover:text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                                    aria-label="Mois suivant"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
                         <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.12] transition-all duration-200 group">
                             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400/30 to-indigo-400/30 flex items-center justify-center shrink-0 group-hover:from-violet-400/40 group-hover:to-indigo-400/40 transition-all duration-200">
                                 <PhoneCall className="w-[18px] h-[18px] text-indigo-200" />
                             </div>
                             <div>
                                 <AnimatedNumber
-                                    value={stats?.totalActions ?? 0}
+                                    value={callsCountForMonth}
                                     className="text-xl font-extrabold text-white leading-none"
                                 />
-                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Appels réalisés</p>
-                            </div>
-                        </div>
-
-                        {/* Contacts joints */}
-                        <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.12] transition-all duration-200 group">
-                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400/30 to-indigo-400/30 flex items-center justify-center shrink-0 group-hover:from-violet-400/40 group-hover:to-indigo-400/40 transition-all duration-200">
-                                <Users className="w-[18px] h-[18px] text-indigo-200" />
-                            </div>
-                            <div>
-                                <AnimatedNumber
-                                    value={stats?.contactsReached ?? 0}
-                                    className="text-xl font-extrabold text-white leading-none"
-                                />
-                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Contacts joints</p>
-                            </div>
-                        </div>
-
-                        {/* Dernière activité */}
-                        <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.12] transition-all duration-200 group">
-                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400/30 to-indigo-400/30 flex items-center justify-center shrink-0 group-hover:from-violet-400/40 group-hover:to-indigo-400/40 transition-all duration-200">
-                                <Clock className="w-[18px] h-[18px] text-indigo-200" />
-                            </div>
-                            <div>
-                                <span className="text-xl font-extrabold text-white leading-none">
-                                    {formatRelativeDate(stats?.lastActivityDate ?? null)}
-                                </span>
-                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Dernière activité</p>
+                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">ce mois</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* ── Mailbox connection card ── */}
-            <Link
-                href="/client/portal/email"
-                className="flex items-center gap-4 p-4 rounded-xl border border-[#E8EBF0] bg-white/80 backdrop-blur-sm hover:border-[#7C5CFC]/30 hover:shadow-md hover:shadow-[#7C5CFC]/5 transition-all duration-200 group"
-                style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "100ms" }}
-            >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/10 to-violet-500/10 flex items-center justify-center shrink-0 group-hover:from-indigo-500/20 group-hover:to-violet-500/20 transition-colors">
-                    <Mail className="w-5 h-5 text-[#7C5CFC]" />
+            {/* ── Optional: Call history & Database shortcuts ── */}
+            {(portalSettings?.portalShowCallHistory || portalSettings?.portalShowDatabase) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "120ms" }}>
+                    {portalSettings?.portalShowCallHistory && (
+                        <Link
+                            href="/client/portal/calls"
+                            className="flex items-center gap-4 p-4 rounded-xl border border-[#E8EBF0] bg-white/80 backdrop-blur-sm hover:border-[#7C5CFC]/30 hover:shadow-md hover:shadow-[#7C5CFC]/5 transition-all duration-200 group"
+                        >
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/10 to-indigo-500/10 flex items-center justify-center shrink-0 group-hover:from-violet-500/20 group-hover:to-indigo-500/20 transition-colors">
+                                <PhoneCall className="w-5 h-5 text-[#7C5CFC]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-[#12122A]">Historique des appels</p>
+                                <p className="text-xs text-[#6B7194] mt-0.5">Consultez tous les appels passés par l&apos;équipe.</p>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-[#A0A3BD] group-hover:text-[#7C5CFC] group-hover:translate-x-0.5 transition-all shrink-0" />
+                        </Link>
+                    )}
+                    {portalSettings?.portalShowDatabase && (
+                        <Link
+                            href="/client/portal/database"
+                            className="flex items-center gap-4 p-4 rounded-xl border border-[#E8EBF0] bg-white/80 backdrop-blur-sm hover:border-[#7C5CFC]/30 hover:shadow-md hover:shadow-[#7C5CFC]/5 transition-all duration-200 group"
+                        >
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center shrink-0 group-hover:from-emerald-500/20 group-hover:to-teal-500/20 transition-colors">
+                                <Users className="w-5 h-5 text-emerald-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-[#12122A]">Base de données</p>
+                                <p className="text-xs text-[#6B7194] mt-0.5">Vue des entreprises et contacts suivis par l&apos;équipe.</p>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-[#A0A3BD] group-hover:text-[#7C5CFC] group-hover:translate-x-0.5 transition-all shrink-0" />
+                        </Link>
+                    )}
                 </div>
-                <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#12122A]">Connectez votre boîte email</p>
-                    <p className="text-xs text-[#6B7194] mt-0.5">Gmail, Outlook ou IMAP — l&apos;équipe envoie les emails de prospection depuis votre adresse</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-[#A0A3BD] group-hover:text-[#7C5CFC] group-hover:translate-x-0.5 transition-all shrink-0" />
-            </Link>
+            )}
 
             {/* ── Upcoming Meetings ── */}
             <div className="premium-card overflow-hidden" style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "140ms" }}>

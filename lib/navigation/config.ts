@@ -400,12 +400,6 @@ export const CLIENT_NAV: NavSection[] = [
         permission: "pages.dashboard",
       },
       {
-        href: "/client/results",
-        icon: BarChart3,
-        label: "Resultats",
-        permission: "pages.dashboard",
-      },
-      {
         href: "/client/portal/reporting",
         icon: FileDown,
         label: "Rapports",
@@ -426,6 +420,12 @@ export const CLIENT_NAV: NavSection[] = [
         href: "/client/portal/email",
         icon: Mail,
         label: "Mon Email",
+        permission: "pages.dashboard",
+      },
+      {
+        href: "/client/portal/database",
+        icon: Database,
+        label: "Base de donnees",
         permission: "pages.dashboard",
       },
       {

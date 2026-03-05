@@ -80,13 +80,19 @@ export default function ClientPortalReportingPage() {
             const dateTo = new Date(entry.year, entry.month, 0).toISOString().split("T")[0];
             const params = new URLSearchParams({ dateFrom, dateTo, comparePrevious: "false" });
             const res = await fetch(`/api/client/reporting/pdf?${params}`);
-            if (!res.ok) throw new Error("PDF generation failed");
+            if (!res.ok) {
+                const message = "Impossible de generer le rapport PDF";
+                toast.error("Erreur", message);
+                return;
+            }
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
             a.download = `rapport-${MONTH_NAMES[entry.month]}-${entry.year}.pdf`;
+            document.body.appendChild(a);
             a.click();
+            a.remove();
             URL.revokeObjectURL(url);
             toast.success("Rapport telecharge");
         } catch {

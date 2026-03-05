@@ -39,7 +39,7 @@ import { Card, Badge, Button, LoadingState, EmptyState, Tabs, Drawer, DataTable,
 import type { Column } from "@/components/ui/DataTable";
 import { CompanyDrawer, ContactDrawer } from "@/components/drawers";
 import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
-import { BookingModal } from "@/components/sdr/BookingModal";
+import { BookingDrawer } from "@/components/sdr/BookingDrawer";
 import { QuickEmailModal } from "@/components/email/QuickEmailModal";
 import type { ActionResult, Channel } from "@/lib/types";
 import { ACTION_RESULT_LABELS, CHANNEL_LABELS } from "@/lib/types";
@@ -365,7 +365,8 @@ export default function SDRActionPage() {
         });
     }, []);
     const [activeTab, setActiveTab] = useState<string>("intro");
-    const [showBookingModal, setShowBookingModal] = useState(false);
+    const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+    const [rdvDate, setRdvDate] = useState("");
     const [isImprovingNote, setIsImprovingNote] = useState(false);
 
     // View mode: card vs table — persisted in localStorage
@@ -531,7 +532,7 @@ export default function SDRActionPage() {
     const getRequiresNote = useCallback((code: string) =>
         statusConfig?.statuses?.find((s) => s.code === code)?.requiresNote ??
         ["INTERESTED", "CALLBACK_REQUESTED", "ENVOIE_MAIL"].includes(code)
-    , [statusConfig]);
+        , [statusConfig]);
 
     const filteredLists = selectedMissionId
         ? lists.filter((l) => l.mission.id === selectedMissionId)
@@ -2432,14 +2433,33 @@ export default function SDRActionPage() {
                                         return null;
                                     })()}
                                     {currentAction.clientBookingUrl && (
-                                        <Button
-                                            variant="primary"
-                                            onClick={() => setShowBookingModal(true)}
-                                            className="w-full gap-2"
-                                        >
-                                            <Calendar className="w-4 h-4" />
-                                            Planifier un RDV
-                                        </Button>
+                                        <div className="space-y-2">
+                                            <div>
+                                                <label
+                                                    htmlFor="card-rdv-date"
+                                                    className="block text-xs font-semibold text-slate-700 mb-1.5"
+                                                >
+                                                    Date du RDV <span className="text-red-500">*</span>
+                                                </label>
+                                                <input
+                                                    id="card-rdv-date"
+                                                    type="datetime-local"
+                                                    value={rdvDate}
+                                                    onChange={(e) => setRdvDate(e.target.value)}
+                                                    min={new Date().toISOString().slice(0, 16)}
+                                                    className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400"
+                                                />
+                                            </div>
+                                            <Button
+                                                variant="primary"
+                                                onClick={() => setShowBookingDrawer(true)}
+                                                disabled={!rdvDate}
+                                                className="w-full gap-2"
+                                            >
+                                                <Calendar className="w-4 h-4" />
+                                                Planifier un RDV
+                                            </Button>
+                                        </div>
                                     )}
                                 </div>
                             </>
@@ -2833,16 +2853,26 @@ export default function SDRActionPage() {
                 />
             )}
 
-            {/* Booking Modal */}
+            {/* Booking Drawer */}
             {currentAction?.clientBookingUrl && currentAction.contact && (
-                <BookingModal
-                    isOpen={showBookingModal}
-                    onClose={() => setShowBookingModal(false)}
+                <BookingDrawer
+                    isOpen={showBookingDrawer}
+                    onClose={() => setShowBookingDrawer(false)}
                     bookingUrl={currentAction.clientBookingUrl}
                     contactId={currentAction.contact.id}
                     contactName={`${currentAction.contact.firstName || ""} ${currentAction.contact.lastName || ""}`.trim() || "Contact"}
+                    contactInfo={{
+                        firstName: currentAction.contact.firstName,
+                        lastName: currentAction.contact.lastName,
+                        email: currentAction.contact.email,
+                        phone: currentAction.contact.phone,
+                        title: currentAction.contact.title,
+                        companyName: currentAction.company?.name,
+                    }}
+                    rdvDate={rdvDate ? new Date(rdvDate).toISOString() : undefined}
                     onBookingSuccess={() => {
-                        // Reload next action after booking success
+                        setShowBookingDrawer(false);
+                        setRdvDate("");
                         loadNextAction();
                     }}
                 />

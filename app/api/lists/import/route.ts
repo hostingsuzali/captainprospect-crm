@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import type { ActionResult } from "@prisma/client";
 
 // ============================================
 // CSV IMPORT API (streaming + batched for performance)
@@ -211,7 +212,7 @@ export async function POST(req: NextRequest) {
  noteColumn?: string;
  channelColumn?: string;
  } | null = null;
- let statusMappings: { csvValue: string; actionResult: string; count: number }[] = [];
+ let statusMappings: { csvValue: string; actionResult: ActionResult; count: number }[] = [];
  let channelMappings: { csvValue: string; channel: "CALL" | "EMAIL" | "LINKEDIN"; count: number }[] = [];
 
  if (actionColumnMappingStr) {
@@ -402,7 +403,7 @@ async function processBatch(
  noteColumn?: string;
  channelColumn?: string;
  } | null;
- statusMappings: { csvValue: string; actionResult: string; count: number }[];
+ statusMappings: { csvValue: string; actionResult: ActionResult; count: number }[];
  channelMappings: { csvValue: string; channel: "CALL" | "EMAIL" | "LINKEDIN"; count: number }[];
  missionId: string | null;
  sdrId: string;
@@ -460,7 +461,7 @@ async function processBatch(
  companyMap.set(c.name, { id: c.id });
  }
 
- // 3) Create missing companies: one payload per unique name (first row wins for custom data)
+// 3) Create missing companies: one payload per unique name (first row wins for custom data)
  const namesToCreate = uniqueNames.filter((n) => !companyMap.has(n));
  const companyPayloadByName = new Map<
  string,
@@ -503,6 +504,7 @@ async function processBatch(
  companiesCreated++;
  }
  }
+
 
  // 4) Contacts: preload existing for all companies in this batch (same dedup as original: email OR firstName+lastName)
  const companyIds = [...companyMap.values()].map((c) => c.id);
@@ -582,8 +584,9 @@ async function processBatch(
  options.statusMappings &&
  options.statusMappings.length > 0;
 
- if (shouldCreateActions && options) {
- const { actionColumnMapping, statusMappings, channelMappings, sdrId } = options;
+ if (shouldCreateActions && options && options.actionColumnMapping) {
+ const actionColumnMapping = options.actionColumnMapping;
+ const { statusMappings, channelMappings, sdrId } = options;
 
  // Reload contacts with IDs so we can link actions
  const allContacts = await prisma.contact.findMany({
@@ -619,12 +622,12 @@ async function processBatch(
  sdrId: string;
  campaignId: string;
  channel: "CALL" | "EMAIL" | "LINKEDIN";
- result: string;
+ result: ActionResult;
  note?: string | null;
  createdAt?: Date;
  }[] = [];
 
- const statusMap = new Map<string, string>();
+ const statusMap = new Map<string, ActionResult>();
  for (const m of statusMappings) {
  if (m.actionResult) {
  statusMap.set(m.csvValue, m.actionResult);
@@ -700,9 +703,9 @@ async function processBatch(
  if (dateColumn) {
  const rawDate = info.row[dateColumn];
  if (rawDate && rawDate.trim()) {
- const d = new Date(rawDate);
- if (!Number.isNaN(d.getTime())) {
- createdAt = d;
+ const parsed = parseCsvDate(rawDate.trim());
+ if (parsed) {
+ createdAt = parsed;
  }
  }
  }
@@ -732,4 +735,52 @@ async function processBatch(
  }
 
  return { companies: companiesCreated, contacts: contactsCreated, actions: actionsCreated, errs };
+}
+
+/**
+ * Parse CSV date values coming from customer files.
+ * - Supporte d'abord les formats français usuels: JJ/MM/AAAA, JJ/MM/AA, JJ/MM/AAAA HH:MM.
+ * - Sinon, retombe sur le parser natif (ISO, RFC, etc.).
+ */
+function parseCsvDate(raw: string): Date | undefined {
+    const value = raw.trim();
+    if (!value) return undefined;
+
+    // Format français classique: 31/12/2025 ou 31-12-2025, avec éventuellement une heure " 14:30"
+    const frMatch = value.match(
+        /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})(?:[ T](\d{1,2}):(\d{2}))?$/
+    );
+    if (frMatch) {
+        const day = parseInt(frMatch[1], 10);
+        const month = parseInt(frMatch[2], 10);
+        let year = parseInt(frMatch[3], 10);
+        const hours = frMatch[4] ? parseInt(frMatch[4], 10) : 0;
+        const minutes = frMatch[5] ? parseInt(frMatch[5], 10) : 0;
+
+        if (year < 100) {
+            // 2 chiffres -> bascule simple sur 2000+
+            year = 2000 + year;
+        }
+
+        if (
+            Number.isNaN(day) ||
+            Number.isNaN(month) ||
+            Number.isNaN(year) ||
+            day < 1 ||
+            day > 31 ||
+            month < 1 ||
+            month > 12
+        ) {
+            return undefined;
+        }
+
+        const d = new Date(year, month - 1, day, hours, minutes, 0, 0);
+        if (Number.isNaN(d.getTime())) return undefined;
+        return d;
+    }
+
+    // Fallback: laisser le moteur JS gérer (ISO, US, etc.)
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return undefined;
+    return d;
 }
