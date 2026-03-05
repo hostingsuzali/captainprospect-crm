@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui";
-import { RefreshCw, ArrowRight, Calendar, Sparkles, PhoneCall, Users, Clock, TrendingUp, CalendarCheck, Mail } from "lucide-react";
+import { RefreshCw, ArrowRight, Calendar, Sparkles, PhoneCall, TrendingUp, CalendarCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { DashboardSkeleton } from "@/components/client/skeletons";
@@ -12,8 +12,6 @@ import { DashboardSkeleton } from "@/components/client/skeletons";
 interface DashboardStats {
     totalActions: number;
     meetingsBooked: number;
-    contactsReached: number;
-    lastActivityDate: string | null;
     monthlyObjective: number;
     activeMissions: number;
 }
@@ -56,18 +54,6 @@ function getGreeting(): string {
     return "Bonjour";
 }
 
-function formatRelativeDate(dateString: string | null): string {
-    if (!dateString) return "—";
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / 86400000);
-    if (diffDays === 0) return "aujourd'hui";
-    if (diffDays === 1) return "hier";
-    if (diffDays < 7) return `il y a ${diffDays} jours`;
-    return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-}
-
 function formatMeetingDate(dateString: string): string {
     const d = new Date(dateString);
     return d.toLocaleDateString("fr-FR", {
@@ -97,7 +83,9 @@ export default function ClientPortal() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
     const [totalMeetingsCount, setTotalMeetingsCount] = useState<number>(0);
-    const [totalCallsCount, setTotalCallsCount] = useState<number>(0);
+    const [callsCountForMonth, setCallsCountForMonth] = useState<number>(0);
+    // Month selector for calls stats: 0 = current month, -1 = previous, etc.
+    const [callsMonthOffset, setCallsMonthOffset] = useState(0);
 
     const clientId = (session?.user as { clientId?: string })?.clientId;
     const userName = session?.user?.name?.split(" ")[0] ?? "Client";
@@ -115,11 +103,19 @@ export default function ClientPortal() {
             const startDate = monthStart.toISOString().split("T")[0];
             const endDate = monthEnd.toISOString().split("T")[0];
 
+            // For calls stats: selected month from offset
+            const callsMonthDate = new Date(now.getFullYear(), now.getMonth() + callsMonthOffset, 1);
+            const callsStart = new Date(callsMonthDate.getFullYear(), callsMonthDate.getMonth(), 1);
+            const callsEnd = new Date(callsMonthDate.getFullYear(), callsMonthDate.getMonth() + 1, 0, 23, 59, 59, 999);
+            const callsStartStr = callsStart.toISOString().split("T")[0];
+            const callsEndStr = callsEnd.toISOString().split("T")[0];
+
             const [statsRes, missionsRes, meetingsRes, settingsRes, callsRes] = await Promise.all([
                 fetch(`/api/stats?startDate=${startDate}&endDate=${endDate}`),
                 fetch("/api/missions?isActive=true"),
                 clientId ? fetch(`/api/clients/${clientId}/meetings`) : Promise.resolve(null),
                 fetch("/api/client/portal/settings"),
+                fetch(`/api/client/calls?startDate=${callsStartStr}&endDate=${callsEndStr}`),
             ]);
 
             const [statsJson, missionsJson, meetingsJson, settingsJson, callsJson] = await Promise.all([
@@ -127,7 +123,7 @@ export default function ClientPortal() {
                 missionsRes.json(),
                 meetingsRes?.ok ? meetingsRes.json() : Promise.resolve(null),
                 settingsRes.json(),
-                fetch("/api/client/calls").then((r) => r.json()).catch(() => ({ success: false })),
+                callsRes.ok ? callsRes.json() : Promise.resolve({ success: false }),
             ]);
 
             if (statsJson.success) setStats(statsJson.data);
@@ -158,7 +154,7 @@ export default function ClientPortal() {
                 setPortalSettings(settingsJson.data);
             }
             if (callsJson?.success) {
-                setTotalCallsCount(callsJson.data?.total ?? 0);
+                setCallsCountForMonth(callsJson.data?.total ?? 0);
             }
         } catch (error) {
             console.error("Failed to fetch data:", error);
@@ -168,7 +164,7 @@ export default function ClientPortal() {
             setIsRefreshing(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [clientId]);
+    }, [clientId, callsMonthOffset]);
 
     useEffect(() => {
         fetchData();
@@ -237,46 +233,43 @@ export default function ClientPortal() {
                         </div>
                     </div>
 
-                    {/* KPI pills row */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {/* Appels réalisés */}
+                    {/* Appels passés (month selector + single KPI) */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold text-indigo-200/80 uppercase tracking-wider">Appels passés</span>
+                            <div className="flex items-center rounded-lg bg-white/[0.08] border border-white/[0.06] p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setCallsMonthOffset((o) => o - 1)}
+                                    className="w-8 h-8 rounded-md flex items-center justify-center text-indigo-200/80 hover:bg-white/[0.12] hover:text-white transition-all"
+                                    aria-label="Mois précédent"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <span className="min-w-[100px] text-center text-sm font-semibold text-white px-2">
+                                    {MONTH_NAMES[new Date(now.getFullYear(), now.getMonth() + callsMonthOffset, 1).getMonth()]} {new Date(now.getFullYear(), now.getMonth() + callsMonthOffset, 1).getFullYear()}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setCallsMonthOffset((o) => Math.min(o + 1, 0))}
+                                    disabled={callsMonthOffset >= 0}
+                                    className="w-8 h-8 rounded-md flex items-center justify-center text-indigo-200/80 hover:bg-white/[0.12] hover:text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                                    aria-label="Mois suivant"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
                         <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.12] transition-all duration-200 group">
                             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400/30 to-indigo-400/30 flex items-center justify-center shrink-0 group-hover:from-violet-400/40 group-hover:to-indigo-400/40 transition-all duration-200">
                                 <PhoneCall className="w-[18px] h-[18px] text-indigo-200" />
                             </div>
                             <div>
                                 <AnimatedNumber
-                                    value={totalCallsCount || stats?.totalActions || 0}
+                                    value={callsCountForMonth}
                                     className="text-xl font-extrabold text-white leading-none"
                                 />
-                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Appels réalisés</p>
-                            </div>
-                        </div>
-
-                        {/* Contacts joints */}
-                        <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.12] transition-all duration-200 group">
-                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400/30 to-indigo-400/30 flex items-center justify-center shrink-0 group-hover:from-violet-400/40 group-hover:to-indigo-400/40 transition-all duration-200">
-                                <Users className="w-[18px] h-[18px] text-indigo-200" />
-                            </div>
-                            <div>
-                                <AnimatedNumber
-                                    value={stats?.contactsReached ?? 0}
-                                    className="text-xl font-extrabold text-white leading-none"
-                                />
-                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Contacts joints</p>
-                            </div>
-                        </div>
-
-                        {/* Dernière activité */}
-                        <div className="flex items-center gap-3 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.12] transition-all duration-200 group">
-                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400/30 to-indigo-400/30 flex items-center justify-center shrink-0 group-hover:from-violet-400/40 group-hover:to-indigo-400/40 transition-all duration-200">
-                                <Clock className="w-[18px] h-[18px] text-indigo-200" />
-                            </div>
-                            <div>
-                                <span className="text-xl font-extrabold text-white leading-none">
-                                    {formatRelativeDate(stats?.lastActivityDate ?? null)}
-                                </span>
-                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">Dernière activité</p>
+                                <p className="text-[11px] text-indigo-200/60 mt-0.5 font-medium">ce mois</p>
                             </div>
                         </div>
                     </div>

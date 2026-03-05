@@ -91,19 +91,8 @@ export const PATCH = withErrorHandler(async (
         return errorResponse('Raison d\'annulation invalide', 400);
     }
 
-    // Access: SDR own actions; BD actions on assigned missions; Manager any
-    if (session.user.role === 'SDR') {
-        if (action.sdrId !== session.user.id) {
-            return errorResponse('Non autorisé', 403);
-        }
-    } else if (session.user.role === 'BUSINESS_DEVELOPER') {
-        const assigned = await prisma.sDRAssignment.findFirst({
-            where: { missionId: action.campaign.missionId, sdrId: session.user.id },
-        });
-        if (!assigned) {
-            return errorResponse('Non autorisé', 403);
-        }
-    }
+    // Access: SDR, BD, Manager can all modify any meeting (remove, reschedule, cancel, absent)
+    // No restriction by ownership - everyone has full access to meeting actions
 
     const updateData: {
         callbackDate?: Date;
@@ -161,19 +150,8 @@ export const DELETE = withErrorHandler(async (
         return errorResponse('Seuls les rendez-vous (confirmés ou annulés) peuvent être supprimés', 400);
     }
 
-    // Same access as PATCH: SDR own, BD assigned mission, Manager any
-    if (session.user.role === 'SDR') {
-        if (action.sdrId !== session.user.id) {
-            return errorResponse('Non autorisé', 403);
-        }
-    } else if (session.user.role === 'BUSINESS_DEVELOPER') {
-        const assigned = await prisma.sDRAssignment.findFirst({
-            where: { missionId: action.campaign.missionId, sdrId: session.user.id },
-        });
-        if (!assigned) {
-            return errorResponse('Non autorisé', 403);
-        }
-    }
+    // Access: SDR, BD, Manager can all delete any meeting
+    // No restriction by ownership
 
     await prisma.action.delete({ where: { id } });
 

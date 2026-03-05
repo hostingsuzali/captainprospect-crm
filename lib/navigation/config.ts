@@ -400,12 +400,6 @@ export const CLIENT_NAV: NavSection[] = [
         permission: "pages.dashboard",
       },
       {
-        href: "/client/results",
-        icon: BarChart3,
-        label: "Resultats",
-        permission: "pages.dashboard",
-      },
-      {
         href: "/client/portal/reporting",
         icon: FileDown,
         label: "Rapports",

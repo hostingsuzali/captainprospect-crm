@@ -26,7 +26,7 @@ import {
     Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { BookingModal } from "@/components/sdr/BookingModal";
+import { BookingDrawer } from "@/components/sdr/BookingDrawer";
 import { QuickEmailModal } from "@/components/email/QuickEmailModal";
 
 // ============================================
@@ -121,7 +121,8 @@ export function ContactDrawer({
     const [newActionNote, setNewActionNote] = useState("");
     const [newActionSaving, setNewActionSaving] = useState(false);
     const [clientBookingUrl, setClientBookingUrl] = useState<string>("");
-    const [showBookingModal, setShowBookingModal] = useState(false);
+    const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+    const [rdvDate, setRdvDate] = useState("");
     const [newCallbackDateValue, setNewCallbackDateValue] = useState("");
     const [showQuickEmailModal, setShowQuickEmailModal] = useState(false);
     const [missionName, setMissionName] = useState<string>("");
@@ -1070,20 +1071,34 @@ export function ContactDrawer({
                                     value={newActionResult}
                                     onChange={setNewActionResult}
                                 />
-                                {/* Meeting booké: show client booking dialog */}
+                                {/* Meeting booké: show client booking drawer */}
                                 {newActionResult === "MEETING_BOOKED" && clientBookingUrl && (
-                                    <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
-                                        <div className="flex items-center gap-2 mb-2">
+                                    <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-3">
+                                        <div className="flex items-center gap-2">
                                             <Calendar className="w-5 h-5 text-indigo-600" />
                                             <span className="text-sm font-medium text-slate-900">Calendrier client</span>
                                         </div>
-                                        <p className="text-xs text-slate-600 mb-3">
-                                            Ouvrez le calendrier du client pour planifier un rendez-vous. Le RDV sera enregistré automatiquement.
-                                        </p>
+                                        <div>
+                                            <label
+                                                htmlFor="contact-rdv-date"
+                                                className="block text-xs font-semibold text-slate-700 mb-1.5"
+                                            >
+                                                Date et heure du RDV <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                id="contact-rdv-date"
+                                                type="datetime-local"
+                                                value={rdvDate}
+                                                onChange={(e) => setRdvDate(e.target.value)}
+                                                min={new Date().toISOString().slice(0, 16)}
+                                                className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300"
+                                            />
+                                        </div>
                                         <Button
                                             type="button"
                                             variant="secondary"
-                                            onClick={() => setShowBookingModal(true)}
+                                            onClick={() => setShowBookingDrawer(true)}
+                                            disabled={!rdvDate}
                                             className="gap-2"
                                         >
                                             <Calendar className="w-4 h-4" />
@@ -1149,11 +1164,11 @@ export function ContactDrawer({
                                             type="button"
                                             variant="primary"
                                             onClick={handleAddAction}
-                                            disabled={
+                                            disabled={Boolean(
                                                 newActionSaving ||
                                                 !newActionResult ||
                                                 (newActionResult && getRequiresNote(newActionResult) && !newActionNote.trim())
-                                            }
+                                            )}
                                             isLoading={newActionSaving}
                                         >
                                             Enregistrer l&apos;action
@@ -1268,33 +1283,43 @@ export function ContactDrawer({
                     />
                 )}
 
-                {/* Booking modal (MEETING_BOOKED) */}
+                {/* Booking drawer (MEETING_BOOKED) */}
                 {!isCreating && contact && clientBookingUrl && (
-                    <BookingModal
-                        isOpen={showBookingModal}
-                        onClose={() => setShowBookingModal(false)}
+                    <BookingDrawer
+                        isOpen={showBookingDrawer}
+                        onClose={() => setShowBookingDrawer(false)}
                         bookingUrl={clientBookingUrl}
                         contactId={contact.id}
                         contactName={`${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Contact"}
+                        contactInfo={{
+                            firstName: contact.firstName,
+                            lastName: contact.lastName,
+                            email: contact.email,
+                            phone: contact.phone,
+                            title: contact.title,
+                            companyName: contact.companyName ?? undefined,
+                        }}
+                        rdvDate={rdvDate ? new Date(rdvDate).toISOString() : undefined}
                         onBookingSuccess={() => {
-                            setShowBookingModal(false);
+                            setShowBookingDrawer(false);
+                            setRdvDate("");
                             fetch(`/api/actions?contactId=${contact.id}&limit=20`)
                                 .then((res) => res.json())
                                 .then((json) => {
-                    if (json.success && Array.isArray(json.data)) {
-                        setActions(
-                            (json.data as Array<{ id: string; result: string; note: string | null; createdAt: string; campaign?: { name: string }; sdr?: { id: string; name: string } }>).map(
-                                (a) => ({
-                                    id: a.id,
-                                    result: a.result,
-                                    note: a.note ?? null,
-                                    createdAt: a.createdAt,
-                                    campaign: a.campaign,
-                                    sdr: a.sdr,
-                                })
-                            )
-                        );
-                    }
+                                    if (json.success && Array.isArray(json.data)) {
+                                        setActions(
+                                            (json.data as Array<{ id: string; result: string; note: string | null; createdAt: string; campaign?: { name: string }; sdr?: { id: string; name: string } }>).map(
+                                                (a) => ({
+                                                    id: a.id,
+                                                    result: a.result,
+                                                    note: a.note ?? null,
+                                                    createdAt: a.createdAt,
+                                                    campaign: a.campaign,
+                                                    sdr: a.sdr,
+                                                })
+                                            )
+                                        );
+                                    }
                                 });
                         }}
                     />
@@ -1330,25 +1355,25 @@ export function ContactDrawer({
                                                 })}
                                             </span>
                                         </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            {a.campaign?.name && (
-                                <p className="text-xs text-slate-500">{a.campaign.name}</p>
-                            )}
-                            {a.sdr?.name && (
-                                <span className="text-xs text-indigo-500 font-medium bg-indigo-50 px-1.5 py-0.5 rounded">
-                                    {a.sdr.name}
-                                </span>
-                            )}
-                        </div>
-                        {a.note && (
-                            <p className="text-slate-600 mt-1 whitespace-pre-wrap">{a.note}</p>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {a.campaign?.name && (
+                                                <p className="text-xs text-slate-500">{a.campaign.name}</p>
+                                            )}
+                                            {a.sdr?.name && (
+                                                <span className="text-xs text-indigo-500 font-medium bg-indigo-50 px-1.5 py-0.5 rounded">
+                                                    {a.sdr.name}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {a.note && (
+                                            <p className="text-slate-600 mt-1 whitespace-pre-wrap">{a.note}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
                         )}
-                    </div>
-                ))}
-            </div>
-        )}
-    </DrawerSection>
-)}
+                    </DrawerSection>
+                )}
             </div>
         </Drawer>
     );

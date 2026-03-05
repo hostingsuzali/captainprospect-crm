@@ -57,17 +57,6 @@ const SECTIONS: { id: string; title: string; content: React.ReactNode }[] = [
         ),
     },
     {
-        id: "resultats",
-        title: "Résultats",
-        content: (
-            <p className="text-sm text-[#12122A] leading-relaxed">
-                La page Résultats affiche une synthèse des performances (actions, RDV, opportunités,
-                conversion) par mission et sur la période sélectionnée. Elle complète le tableau de bord
-                avec une vue plus détaillée.
-            </p>
-        ),
-    },
-    {
         id: "messages",
         title: "Messages / Contacter",
         content: (

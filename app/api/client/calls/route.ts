@@ -10,7 +10,15 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         return successResponse({ items: [], total: 0 });
     }
 
-    const where = {
+    const { searchParams } = new URL(request.url);
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
+
+    const where: {
+        channel: "CALL";
+        campaign: { mission: { clientId: string | null } };
+        createdAt?: { gte?: Date; lte?: Date };
+    } = {
         channel: "CALL" as const,
         campaign: {
             mission: {
@@ -18,6 +26,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             },
         },
     };
+
+    if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate);
+        if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            where.createdAt.lte = end;
+        }
+    }
 
     const [calls, total] = await Promise.all([
         prisma.action.findMany({
