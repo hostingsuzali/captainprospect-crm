@@ -62,6 +62,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         mission_name: string;
         mission_channel: string;
         client_id: string;
+        client_booking_url: string | null;
         last_action_result: string | null;
         last_action_note: string | null;
         last_action_created: Date | null;
@@ -92,7 +93,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 camp.script as campaign_script,
                 m.name as mission_name,
                 m.channel as mission_channel,
-                cl.id as client_id
+                cl.id as client_id,
+                cl."bookingUrl" as client_booking_url
             FROM "Contact" c
             INNER JOIN "Company" co ON c."companyId" = co.id
             INNER JOIN "List" l ON co."listId" = l.id
@@ -135,7 +137,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 camp.script as campaign_script,
                 m.name as mission_name,
                 m.channel as mission_channel,
-                cl.id as client_id
+                cl.id as client_id,
+                cl."bookingUrl" as client_booking_url
             FROM "Company" co
             INNER JOIN "List" l ON co."listId" = l.id
             INNER JOIN "Mission" m ON l."missionId" = m.id
@@ -219,28 +222,32 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         LIMIT 500
     `, sdrId, cooldownDate);
 
-    // Resolve missionId for config (from params or first row's campaign)
-    let configMissionId = missionId ?? null;
-    if (!configMissionId && listId) {
-        const list = await prisma.list.findUnique({
-            where: { id: listId },
-            select: { missionId: true },
-        });
-        configMissionId = list?.missionId ?? null;
-    }
-    if (!configMissionId && result.length > 0) {
-        const camp = await prisma.campaign.findUnique({
-            where: { id: result[0].campaign_id },
-            select: { missionId: true },
-        });
-        configMissionId = camp?.missionId ?? null;
-    }
+    // Resolve missionId for config and fetch interlocuteurs in parallel
+    const configMissionIdPromise = (async () => {
+        if (missionId) return missionId;
+        if (listId) {
+            const list = await prisma.list.findUnique({
+                where: { id: listId },
+                select: { missionId: true },
+            });
+            if (list?.missionId) return list.missionId;
+        }
+        if (result.length > 0) {
+            const camp = await prisma.campaign.findUnique({
+                where: { id: result[0].campaign_id },
+                select: { missionId: true },
+            });
+            return camp?.missionId ?? null;
+        }
+        return null;
+    })();
 
+    // Sort by config once we have it
+    const configMissionId = await configMissionIdPromise;
     const config = await statusConfigService.getEffectiveStatusConfig(
         configMissionId ? { missionId: configMissionId } : {}
     );
 
-    // Sort by config-driven priority, filter out SKIP (999)
     const withPriority = result.map((row) => {
         const { priorityOrder, priorityLabel } = statusConfigService.getPriorityForResult(
             row.last_action_result,
@@ -258,10 +265,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     );
     const next = sorted[0];
 
-    // ============================================
-    // HANDLE RESULT
-    // ============================================
-
     if (!next) {
         return successResponse({
             hasNext: false,
@@ -273,24 +276,17 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         });
     }
 
-    // Fetch client bookingUrl and interlocuteurs separately
-    let clientBookingUrl: string | undefined = undefined;
+    // bookingUrl comes from the raw SQL now; only fetch interlocuteurs separately
+    const clientBookingUrl = next.client_booking_url || undefined;
     let clientInterlocuteurs: Array<Record<string, unknown>> = [];
     try {
-        const client = await prisma.client.findUnique({
-            where: { id: next.client_id },
-            select: {
-                bookingUrl: true,
-                interlocuteurs: {
-                    where: { isActive: true },
-                    orderBy: { createdAt: 'asc' },
-                },
-            },
+        const interlocuteurs = await prisma.clientInterlocuteur.findMany({
+            where: { clientId: next.client_id, isActive: true },
+            orderBy: { createdAt: 'asc' },
         });
-        clientBookingUrl = client?.bookingUrl || undefined;
-        clientInterlocuteurs = (client?.interlocuteurs || []) as Array<Record<string, unknown>>;
+        clientInterlocuteurs = interlocuteurs as Array<Record<string, unknown>>;
     } catch (err) {
-        console.warn('Could not fetch client bookingUrl:', err);
+        console.warn('Could not fetch client interlocuteurs:', err);
     }
 
     return successResponse({

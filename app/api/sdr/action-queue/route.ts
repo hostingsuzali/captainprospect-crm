@@ -194,47 +194,48 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             LEFT JOIN last_actions_companies lac2 ON at.contact_id IS NULL AND at.company_id = lac2."companyId"
         )
         SELECT * FROM targets_with_last_action
+        WHERE (last_action_created IS NULL OR last_action_created < $2)
         ${hasSearch ? `
-        WHERE (
-            (contact_first_name IS NOT NULL AND contact_first_name ILIKE $2)
-            OR (contact_last_name IS NOT NULL AND contact_last_name ILIKE $2)
-            OR (company_name IS NOT NULL AND company_name ILIKE $2)
+        AND (
+            (contact_first_name IS NOT NULL AND contact_first_name ILIKE $3)
+            OR (contact_last_name IS NOT NULL AND contact_last_name ILIKE $3)
+            OR (company_name IS NOT NULL AND company_name ILIKE $3)
         )` : ""}
     `,
-        ...(hasSearch ? [sdrId, `%${escapeIlikePattern(search)}%`] : [sdrId])
+        ...(hasSearch ? [sdrId, cooldownDate, `%${escapeIlikePattern(search)}%`] : [sdrId, cooldownDate])
     );
 
-    // Resolve missionId for config
-    let configMissionId = missionId ?? null;
-    if (!configMissionId && listId) {
-        const list = await prisma.list.findUnique({
-            where: { id: listId },
-            select: { missionId: true },
-        });
-        configMissionId = list?.missionId ?? null;
-    }
-    if (!configMissionId && rawResult.length > 0) {
-        const camp = await prisma.campaign.findUnique({
-            where: { id: rawResult[0].campaign_id },
-            select: { missionId: true },
-        });
-        configMissionId = camp?.missionId ?? null;
-    }
+    // Resolve config in parallel with result processing
+    const configPromise = (async () => {
+        let configMissionId = missionId ?? null;
+        if (!configMissionId && listId) {
+            const list = await prisma.list.findUnique({
+                where: { id: listId },
+                select: { missionId: true },
+            });
+            configMissionId = list?.missionId ?? null;
+        }
+        if (!configMissionId && rawResult.length > 0) {
+            const camp = await prisma.campaign.findUnique({
+                where: { id: rawResult[0].campaign_id },
+                select: { missionId: true },
+            });
+            configMissionId = camp?.missionId ?? null;
+        }
+        return statusConfigService.getEffectiveStatusConfig(
+            configMissionId ? { missionId: configMissionId } : {}
+        );
+    })();
 
-    const config = await statusConfigService.getEffectiveStatusConfig(
-        configMissionId ? { missionId: configMissionId } : {}
-    );
+    const config = await configPromise;
 
-    // Add config-driven priority, apply cooldown (999 for recent), sort, limit
+    // Cooldown already filtered in SQL; apply config-driven priority and sort
     const withPriority = rawResult.map((row) => {
-        const inCooldown =
-            row.last_action_created && new Date(row.last_action_created) >= cooldownDate;
-        const { priorityOrder, priorityLabel } = inCooldown
-            ? { priorityOrder: 999, priorityLabel: "SKIP" as const }
-            : statusConfigService.getPriorityForResult(row.last_action_result, config);
+        const { priorityOrder, priorityLabel } = statusConfigService.getPriorityForResult(row.last_action_result, config);
         return { ...row, _priorityOrder: priorityOrder, _priorityLabel: priorityLabel };
     });
-    const sorted = withPriority.sort(
+    const filtered = withPriority.filter((r) => r._priorityOrder < 999);
+    const sorted = filtered.sort(
         (a, b) =>
             a._priorityOrder - b._priorityOrder ||
             (a.contact_status === "ACTIONABLE" ? 0 : a.contact_status === "PARTIAL" ? 1 : 2) -

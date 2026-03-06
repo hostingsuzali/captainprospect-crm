@@ -842,9 +842,9 @@ model ActionNextStep {
 model Opportunity {
   id            String    @id @default(cuid())
   contactId     String
-  contact       Contact   @relation(fields: [contactId], references: [id])
+  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
   companyId     String
-  company       Company   @relation(fields: [companyId], references: [id])
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   needSummary   String    @db.Text
   urgency       Urgency
   estimatedMin  Float?
@@ -1784,7 +1784,7 @@ model EmailThread {
   campaignId    String?
   campaign      Campaign? @relation(fields: [campaignId], references: [id])
   opportunityId String?
-  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
   contactId     String?
   contact       Contact?  @relation(fields: [contactId], references: [id])
   

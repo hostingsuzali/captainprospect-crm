@@ -925,7 +925,7 @@ export default function SDRActionPage() {
         }
     }, [unifiedDrawerOpen, viewMode, refreshQueue]);
 
-    // Fetch client booking URL and interlocuteurs when drawer opens
+    // Fetch client booking URL and interlocuteurs when drawer opens (lightweight endpoint)
     useEffect(() => {
         if (!unifiedDrawerMissionId || !unifiedDrawerOpen) {
             setUnifiedDrawerClientBookingUrl("");
@@ -934,14 +934,14 @@ export default function SDRActionPage() {
         }
         const controller = new AbortController();
         const signal = controller.signal;
-        fetch(`/api/missions/${unifiedDrawerMissionId}`, { signal })
+        fetch(`/api/missions/${unifiedDrawerMissionId}/client-booking`, { signal })
             .then((res) => res.json())
             .then((json) => {
                 if (signal.aborted) return;
-                if (json.success && json.data?.client) {
-                    setUnifiedDrawerClientBookingUrl(json.data.client.bookingUrl || "");
+                if (json.success && json.data) {
+                    setUnifiedDrawerClientBookingUrl(json.data.bookingUrl || "");
                     setUnifiedDrawerInterlocuteurs(
-                        Array.isArray(json.data.client.interlocuteurs) ? json.data.client.interlocuteurs : []
+                        Array.isArray(json.data.interlocuteurs) ? json.data.interlocuteurs : []
                     );
                 } else {
                     setUnifiedDrawerClientBookingUrl("");
@@ -1019,6 +1019,11 @@ export default function SDRActionPage() {
     };
 
     const handleQuickAction = async (row: QueueItem, result: ActionResult) => {
+        // For MEETING_BOOKED, open the full drawer so SDR can use the booking flow
+        if (result === "MEETING_BOOKED") {
+            openDrawerForRow(row);
+            return;
+        }
         // For ENVOIE_MAIL, open the QuickEmailModal instead of submitting directly
         if (result === "ENVOIE_MAIL") {
             const mission = missions.find(m => m.name === row.missionName);
@@ -1188,6 +1193,12 @@ export default function SDRActionPage() {
         }
         if (getRequiresNote(selectedResult) && !note.trim()) {
             setError("Note requise pour ce résultat");
+            return;
+        }
+
+        // For MEETING_BOOKED with booking URLs, open booking drawer instead of submitting
+        if (selectedResult === "MEETING_BOOKED" && (currentAction.clientBookingUrl || currentAction.clientInterlocuteurs?.some((i: Record<string, unknown>) => (((i.bookingLinks as unknown[]) ?? []).length ?? 0) > 0))) {
+            setShowBookingDrawer(true);
             return;
         }
 
