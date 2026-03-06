@@ -117,6 +117,7 @@ interface Client {
     missions?: Mission[];
     users?: PortalUser[];
     interlocuteurs?: ClientInterlocuteur[];
+    onboarding?: { onboardingData?: { icp?: string } | null } | null;
 }
 
 interface Meeting {
@@ -294,6 +295,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [editFormData, setEditFormData] = useState({
         name: "", industry: "", email: "", phone: "", bookingUrl: "",
     });
+    const [showPersonaModal, setShowPersonaModal] = useState(false);
+    const [personaValue, setPersonaValue] = useState("");
+    const [isSavingPersona, setIsSavingPersona] = useState(false);
 
     // Meetings
     const [meetingsData, setMeetingsData] = useState<MeetingsData | null>(null);
@@ -652,6 +656,28 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 success("Client mis à jour", `${editFormData.name} a été mis à jour`);
             } else showError("Erreur", json.error);
         } catch { showError("Erreur", "Impossible de mettre à jour le client"); }
+    };
+
+    const handleSavePersona = async () => {
+        if (!client) return;
+        setIsSavingPersona(true);
+        try {
+            const res = await fetch(`/api/clients/${client.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ icp: personaValue }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                setClient(json.data);
+                setShowPersonaModal(false);
+                success("Persona mis à jour", "Le profil cible (ICP) du client a été enregistré.");
+            } else showError("Erreur", json.error);
+        } catch {
+            showError("Erreur", "Impossible de mettre à jour le persona");
+        } finally {
+            setIsSavingPersona(false);
+        }
     };
 
     const handleDelete = async () => {
@@ -1027,6 +1053,34 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                             <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
                                             <a href={client.bookingUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 hover:underline truncate">{client.bookingUrl}</a>
                                         </div>
+                                    )}
+                                </div>
+                            </Card>
+
+                            {/* Persona / ICP — manual edit */}
+                            <Card className="overflow-hidden border-slate-200">
+                                <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                                    <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                                        <Target className="w-4 h-4 text-indigo-500 shrink-0" />
+                                        Persona / ICP
+                                    </h2>
+                                    <button
+                                        onClick={() => {
+                                            setPersonaValue((client.onboarding?.onboardingData as { icp?: string } | null)?.icp ?? "");
+                                            setShowPersonaModal(true);
+                                        }}
+                                        className="text-xs text-indigo-600 font-semibold hover:text-indigo-700"
+                                    >
+                                        Modifier
+                                    </button>
+                                </div>
+                                <div className="p-5">
+                                    {((client.onboarding?.onboardingData as { icp?: string } | null)?.icp?.trim()) ? (
+                                        <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                                            {(client.onboarding?.onboardingData as { icp?: string }).icp}
+                                        </p>
+                                    ) : (
+                                        <p className="text-sm text-slate-400 italic">Persona (profil cible / ICP) non renseigné. Cliquez sur Modifier pour l’ajouter.</p>
                                     )}
                                 </div>
                             </Card>
@@ -1893,6 +1947,32 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         </ModalFooter>
                     </div>
                 )}
+            </Modal>
+
+            {/* ── EDIT PERSONA / ICP MODAL ── */}
+            <Modal
+                isOpen={showPersonaModal}
+                onClose={() => !isSavingPersona && setShowPersonaModal(false)}
+                title="Persona / ICP"
+                description="Définir ou modifier le profil cible (Ideal Customer Profile) du client."
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Profil cible (ICP)</label>
+                        <textarea
+                            className="w-full min-h-[120px] px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            placeholder="Ex: Directeurs commerciaux en PME B2B, 50–250 employés, secteur industrie ou services..."
+                            value={personaValue}
+                            onChange={(e) => setPersonaValue(e.target.value)}
+                            rows={4}
+                        />
+                        <p className="text-xs text-slate-500 mt-1">Ce champ alimente le readiness (Persona défini) et peut être utilisé dans les campagnes.</p>
+                    </div>
+                </div>
+                <ModalFooter>
+                    <Button variant="ghost" onClick={() => setShowPersonaModal(false)} disabled={isSavingPersona}>Annuler</Button>
+                    <Button variant="primary" onClick={handleSavePersona} isLoading={isSavingPersona}>Enregistrer</Button>
+                </ModalFooter>
             </Modal>
 
             {/* ── EDIT CLIENT MODAL ── */}

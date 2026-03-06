@@ -718,6 +718,7 @@ model Action {
   duration      Int?         // Duration in seconds
   cancellationReason String? // When result = MEETING_CANCELLED: by_mistake, wrong_contact, client_cancelled, double_booking, other
   meetingType     String?    // 'VISIO' | 'PHYSIQUE' | 'TELEPHONIQUE' — type of meeting for MEETING_BOOKED
+  meetingCategory String?    // 'EXPLORATOIRE' | 'BESOIN' — auto-detected from note or manually set
   meetingAddress  String?    // Physical address (for PHYSIQUE meetings only)
   meetingJoinUrl String?    // Video join link (for VISIO meetings only)
   meetingPhone   String?    // Dial number for call (for TELEPHONIQUE; fallback to contact.phone)
