@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Zap, Shield, Loader2 } from "lucide-react";
 import Image from "next/image";
+import logoCaptain from "../../logocaptainroseblanc.png";
 
 /* ─── tiny util ─── */
 const cn = (...classes: (string | undefined | false)[]) => classes.filter(Boolean).join(" ");
@@ -292,8 +293,8 @@ export default function LoginForm() {
                         {/* Logo */}
                         <div className="opacity-0 animate-[logoReveal_0.7s_ease_0.1s_forwards]">
                             <Image
-                                src="/suzalink_logo.png"
-                                alt="Suzalink"
+                                src={logoCaptain}
+                                alt="Captain Prospect"
                                 width={160}
                                 height={48}
                                 className="h-10 w-auto object-contain brightness-0 invert"
@@ -318,7 +319,7 @@ export default function LoginForm() {
                                 B2B.
                             </h1>
                             <p className="mt-5 text-base text-white/50 max-w-sm font-light leading-relaxed">
-                                Connectez-vous pour accéder à votre espace Suzalink.
+                                Connectez-vous pour accéder à votre espace Captain Prospect.
                             </p>
                         </div>
                     </div>
@@ -344,8 +345,8 @@ export default function LoginForm() {
                     {/* Mobile logo */}
                     <div className="lg:hidden mb-8 opacity-0 animate-[logoReveal_0.6s_ease_0.1s_forwards]">
                         <Image
-                            src="/suzalink_logo.png"
-                            alt="Suzalink"
+                            src={logoCaptain}
+                            alt="Captain Prospect"
                             width={160}
                             height={48}
                             className="h-10 w-auto object-contain"
@@ -490,7 +491,7 @@ export default function LoginForm() {
 
                         {/* Footer copyright */}
                         <p className="text-center text-[11px] text-slate-400 mt-5 tracking-wide">
-                            Suzalink &copy; {new Date().getFullYear()} · Tous droits réservés
+                            Captain Prospect &copy; {new Date().getFullYear()} · Tous droits réservés
                         </p>
                     </div>
                 </div>
