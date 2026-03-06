@@ -97,6 +97,12 @@ export const MANAGER_NAV: NavSection[] = [
         permission: "pages.clients",
       },
       {
+        href: "/manager/rdv",
+        icon: Calendar,
+        label: "RDV",
+        permission: "pages.analytics",
+      },
+      {
         href: "/manager/analytics",
         icon: BarChart3,
         label: "Statistiques",

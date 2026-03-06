@@ -778,7 +778,7 @@ export default function SDRCallbacksPage() {
             </div>
 
             {/* Filters & Sort - no overflow-hidden so Select dropdowns can extend outside */}
-            <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/60 shadow-sm">
+            <div className="relative z-20 bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/60 shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-white">
                     <div className="flex flex-wrap items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
@@ -926,7 +926,7 @@ export default function SDRCallbacksPage() {
                 </Card>
             ) : viewMode === "table" ? (
                 /* ========== TABLE VIEW ========== */
-                <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
+                <div className="relative z-0 bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
                     <DataTable
                         data={sortedCallbacks}
                         columns={tableColumns}
