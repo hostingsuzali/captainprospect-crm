@@ -527,7 +527,7 @@ export default function MailboxesPage() {
                             Aucune boîte mail connectée
                         </h3>
                         <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
-                            Connectez votre première boîte mail pour commencer à gérer vos emails depuis Captain Prospect CRM.
+                            Connectez votre première boîte mail pour commencer à gérer vos emails depuis Suzalink.
                         </p>
                         <button
                             onClick={() => setIsAddModalOpen(true)}

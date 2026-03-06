@@ -199,7 +199,7 @@ export function getReportHtml(data: ReportTemplateData): string {
 
     <!-- Footer -->
     <footer class="pt-8 border-t border-slate-200">
-      <p class="text-xs text-slate-400">Captain Prospect · Rapport d'activité</p>
+      <p class="text-xs text-slate-400">Suzalink · Rapport d'activité</p>
     </footer>
   </div>
 </body>

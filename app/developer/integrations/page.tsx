@@ -177,7 +177,7 @@ export default function IntegrationsPage() {
             <div>
                 <h1 className="text-2xl font-bold text-slate-900">Intégrations Email</h1>
                 <p className="text-sm text-slate-500 mt-1">
-                    Connectez vos comptes email pour envoyer des emails depuis Captain Prospect CRM
+                    Connectez vos comptes email pour envoyer des emails depuis Suzalink
                 </p>
             </div>
 

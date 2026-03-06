@@ -358,7 +358,7 @@ export function InboxLayout({
                         </Link>
                         <div className="flex-1 flex items-center gap-2.5">
                             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-                                <Image src="/Group%20503.png" alt="" width={16} height={16} className="rounded object-contain" />
+                                <Image src="/suzalink_logo.png" alt="" width={16} height={16} className="rounded object-contain" />
                             </div>
                             <span className="font-semibold text-slate-800 text-[15px]">Email Hub</span>
                         </div>
@@ -392,7 +392,7 @@ export function InboxLayout({
                     ) : null}
                     <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-sm shadow-indigo-500/20">
-                            <Image src="/Group%20503.png" alt="" width={16} height={16} className="rounded object-contain" />
+                            <Image src="/suzalink_logo.png" alt="" width={16} height={16} className="rounded object-contain" />
                         </div>
                         <span className="font-semibold text-slate-800 text-[15px] hidden sm:inline">Email Hub</span>
                     </div>
@@ -530,7 +530,7 @@ export function InboxLayout({
                     {!selectedThread && (
                         <div className="flex-1 hidden lg:flex flex-col items-center justify-center bg-slate-50/30">
                             <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-4">
-                                <Image src="/Group%20503.png" alt="" width={32} height={32} className="rounded-lg object-contain opacity-40" />
+                                <Image src="/suzalink_logo.png" alt="" width={32} height={32} className="rounded-lg object-contain opacity-40" />
                             </div>
                             <p className="text-sm text-slate-400 font-medium">Sélectionnez un email pour le lire</p>
                             <p className="text-xs text-slate-300 mt-1">ou appuyez sur C pour rédiger un nouveau message</p>

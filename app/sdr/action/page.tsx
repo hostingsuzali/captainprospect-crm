@@ -33,6 +33,7 @@ import {
     MailOpen,
     PenLine,
     BarChart2,
+    Trash2,
 } from "lucide-react";
 import { Card, Badge, Button, LoadingState, EmptyState, Tabs, Drawer, DataTable, Select, useToast, TableSkeleton, CardSkeleton, Modal, DateTimePicker } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
@@ -320,7 +321,7 @@ function ActionStatsModalBody({
 
 export default function SDRActionPage() {
     const { data: session } = useSession();
-    const { error: showError } = useToast();
+    const { success, error: showError } = useToast();
     const [currentAction, setCurrentAction] = useState<NextActionData | null>(null);
     const [selectedResult, setSelectedResult] = useState<ActionResult | null>(null);
     const [note, setNote] = useState("");
@@ -390,6 +391,10 @@ export default function SDRActionPage() {
     const [queueLoading, setQueueLoading] = useState(false);
     const [queueFetchError, setQueueFetchError] = useState<string | null>(null);
     const [submittingRowKey, setSubmittingRowKey] = useState<string | null>(null);
+    // Table view multi-select for bulk delete (disqualify)
+    const [tableSelectedIds, setTableSelectedIds] = useState<Set<string>>(new Set());
+    const [isBulkDisqualifying, setIsBulkDisqualifying] = useState(false);
+
     // Table view filters (client-side on current queue)
     const [tableFilterResult, setTableFilterResult] = useState<string>(""); // "" | ActionResult | "NONE" (no last action)
     const [tableFilterPriority, setTableFilterPriority] = useState<string>("");
@@ -1064,6 +1069,51 @@ export default function SDRActionPage() {
             showError("Erreur de connexion");
         } finally {
             setSubmittingRowKey(null);
+        }
+    };
+
+    const handleBulkDisqualify = async () => {
+        if (tableSelectedIds.size === 0) return;
+        if (!confirm(`Marquer ${tableSelectedIds.size} élément(s) comme disqualifié(s) ?`)) return;
+
+        const keysToRemove = new Set(tableSelectedIds);
+        const rowsToProcess = filteredQueueItems.filter((r) => keysToRemove.has(queueRowKey(r)));
+
+        // Optimistic: remove from UI immediately
+        setQueueItems((prev) => prev.filter((r) => !keysToRemove.has(queueRowKey(r))));
+        setTableSelectedIds(new Set());
+        setActionsCompleted((c) => c + rowsToProcess.length);
+        setIsBulkDisqualifying(false);
+
+        // Server: disqualify in background
+        let failCount = 0;
+        const promises = rowsToProcess.map(async (row) => {
+            try {
+                const res = await fetch("/api/actions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contactId: row.contactId ?? undefined,
+                        companyId: row.contactId ? undefined : row.companyId,
+                        campaignId: row.campaignId,
+                        channel: row.channel,
+                        result: "DISQUALIFIED" as const,
+                        note: "Disqualifié",
+                    }),
+                });
+                const json = await res.json();
+                if (!json.success) failCount++;
+            } catch {
+                failCount++;
+            }
+        });
+        await Promise.all(promises);
+
+        if (failCount > 0) {
+            await refreshQueue();
+            showError("Erreur", `${failCount} élément(s) n'ont pas pu être traités.`);
+        } else {
+            success(`${rowsToProcess.length} élément(s) disqualifié(s).`);
         }
     };
 
@@ -1770,6 +1820,39 @@ export default function SDRActionPage() {
                     </div>
                 </div>
 
+                {/* Bulk delete bar */}
+                {tableSelectedIds.size > 0 && (
+                    <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-indigo-50 border border-indigo-200 mb-4">
+                        <span className="text-sm font-medium text-indigo-800">
+                            {tableSelectedIds.size} élément(s) sélectionné(s)
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setTableSelectedIds(new Set())}
+                                disabled={isBulkDisqualifying}
+                            >
+                                Annuler
+                            </Button>
+                            <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={handleBulkDisqualify}
+                                disabled={isBulkDisqualifying}
+                                className="gap-2"
+                            >
+                                {isBulkDisqualifying ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                )}
+                                Disqualifier la sélection
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Data Table */}
                 <div className="bg-white rounded-2xl border border-slate-200/60 shadow-lg shadow-slate-200/50 overflow-hidden">
                     {queueLoading ? (
@@ -1827,6 +1910,9 @@ export default function SDRActionPage() {
                             emptyMessage="Aucun contact dans la file. Changez de mission ou liste."
                             onRowClick={openDrawerForRow}
                             enableSecondaryColumnsToggle
+                            selectable
+                            selectedIds={tableSelectedIds}
+                            onSelectionChange={(ids) => setTableSelectedIds(new Set(ids))}
                             getRowClassName={(row) =>
                                 recentlyUpdatedRowKeys.has(queueRowKey(row))
                                     ? "!bg-emerald-50/80 border-l-4 border-l-emerald-500 animate-fade-in"

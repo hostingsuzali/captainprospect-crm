@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Zap, Shield } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Zap, Shield, Loader2 } from "lucide-react";
 import Image from "next/image";
 
 /* ─── tiny util ─── */
@@ -292,8 +292,8 @@ export default function LoginForm() {
                         {/* Logo */}
                         <div className="opacity-0 animate-[logoReveal_0.7s_ease_0.1s_forwards]">
                             <Image
-                                src="/63a4904c16e186b9c414f3ba_captain_prospect_logo.webp"
-                                alt="Captain Prospect"
+                                src="/suzalink_logo.png"
+                                alt="Suzalink"
                                 width={160}
                                 height={48}
                                 className="h-10 w-auto object-contain brightness-0 invert"
@@ -310,15 +310,15 @@ export default function LoginForm() {
                                 <span className="text-xs font-medium text-white/70 tracking-wide">Espace Sécurisé</span>
                             </div>
                             <h1 className="text-4xl xl:text-5xl font-light text-white leading-tight tracking-tight">
-                                L'excellence de la <br />
+                                La connexion <br />
                                 <span className="text-transparent bg-clip-text font-bold"
                                     style={{ backgroundImage: "linear-gradient(90deg, #a5b4fc, #67e8f9)" }}>
-                                    prospection
+                                    intelligente
                                 </span>{" "}
                                 B2B.
                             </h1>
                             <p className="mt-5 text-base text-white/50 max-w-sm font-light leading-relaxed">
-                                Connectez-vous pour accéder à votre espace de travail.
+                                Connectez-vous pour accéder à votre espace Suzalink.
                             </p>
                         </div>
                     </div>
@@ -344,8 +344,8 @@ export default function LoginForm() {
                     {/* Mobile logo */}
                     <div className="lg:hidden mb-8 opacity-0 animate-[logoReveal_0.6s_ease_0.1s_forwards]">
                         <Image
-                            src="/63a4904c16e186b9c414f3ba_captain_prospect_logo.webp"
-                            alt="Captain Prospect"
+                            src="/suzalink_logo.png"
+                            alt="Suzalink"
                             width={160}
                             height={48}
                             className="h-10 w-auto object-contain"
@@ -386,7 +386,7 @@ export default function LoginForm() {
                                     label="Adresse email"
                                     placeholder="votre@email.com"
                                     value={email}
-                                    onChange={e => setEmail(e.target.value)}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                                     leadingIcon={<Mail className="w-4 h-4" />}
                                     required
                                     autoComplete="email"
@@ -399,11 +399,11 @@ export default function LoginForm() {
                                     label="Mot de passe"
                                     placeholder="••••••••"
                                     value={password}
-                                    onChange={e => setPassword(e.target.value)}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                                     leadingIcon={<Lock className="w-4 h-4" />}
                                     trailingNode={
                                         <button
-                                            type="button"
+                                            type={"button" as const}
                                             onClick={() => setShowPassword(!showPassword)}
                                             tabIndex={-1}
                                             aria-label={showPassword ? "Masquer" : "Afficher"}
@@ -419,7 +419,7 @@ export default function LoginForm() {
 
                                 {/* Forgot password */}
                                 <div className="flex justify-end -mt-1">
-                                    <button type="button" className="text-xs text-indigo-500 hover:text-indigo-700 font-medium transition-colors duration-150">
+                                    <button type={"button" as const} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium transition-colors duration-150">
                                         Mot de passe oublié ?
                                     </button>
                                 </div>
@@ -437,7 +437,7 @@ export default function LoginForm() {
                                 <div className="pt-2">
                                     <button
                                         id="login-submit"
-                                        type="submit"
+                                        type={"submit" as const}
                                         disabled={isLoading}
                                         className={cn(
                                             "w-full flex items-center justify-center gap-2.5 py-3.5 px-6 rounded-xl",
@@ -451,10 +451,7 @@ export default function LoginForm() {
                                     >
                                         {isLoading ? (
                                             <>
-                                                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                                </svg>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
                                                 <span>Connexion en cours…</span>
                                             </>
                                         ) : (
@@ -493,7 +490,7 @@ export default function LoginForm() {
 
                         {/* Footer copyright */}
                         <p className="text-center text-[11px] text-slate-400 mt-5 tracking-wide">
-                            Captain Prospect &copy; {new Date().getFullYear()} · Tous droits réservés
+                            Suzalink &copy; {new Date().getFullYear()} · Tous droits réservés
                         </p>
                     </div>
                 </div>

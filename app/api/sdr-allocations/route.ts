@@ -93,7 +93,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                 date: Date;
                 startTime: string;
                 endTime: string;
-                status: string;
+                status: 'SCHEDULED';
+                suggestionStatus: 'CONFIRMED';
                 allocationId: string;
                 createdById: string;
             }> = [];
@@ -113,7 +114,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                     date,
                     startTime,
                     endTime,
-                    status: 'CONFIRMED',
+                    status: 'SCHEDULED',
+                    suggestionStatus: 'CONFIRMED',
                     allocationId: allocation.id,
                     createdById: session.user.id,
                 });

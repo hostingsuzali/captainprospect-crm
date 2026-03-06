@@ -39,7 +39,7 @@ export default async function HomePage() {
                         <Zap className="w-6 h-6 text-white" />
                     </div>
                     <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-                        Captain Prospect CRM
+                        Suzalink
                     </span>
                 </div>
                 <Link href="/login">
@@ -125,7 +125,7 @@ export default async function HomePage() {
             {/* Footer */}
             <footer className="relative z-10 w-full border-t border-slate-800/50 bg-[#0f172a]/50 backdrop-blur-xl">
                 <div className="max-w-7xl mx-auto px-6 py-8 flex items-center justify-between text-slate-500 text-sm">
-                    <p>© 2026 Captain Prospect CRM. Tous droits réservés.</p>
+                    <p>© 2026 Suzalink. Tous droits réservés.</p>
                     <div className="flex items-center gap-4">
                         <span>Sécurisé par SSL</span>
                         <div className="w-1 h-1 rounded-full bg-slate-700" />
