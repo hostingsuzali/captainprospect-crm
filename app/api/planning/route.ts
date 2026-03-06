@@ -139,33 +139,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const [year, month, day] = data.date.split('-').map(Number);
     const blockDate = new Date(year, month - 1, day, 0, 0, 0, 0);
 
-    // Check for overlapping blocks (only CONFIRMED or legacy blocks block the slot)
-    const overlapping = await prisma.scheduleBlock.findFirst({
-        where: {
-            sdrId: data.sdrId,
-            date: blockDate,
-            status: { not: 'CANCELLED' },
-            AND: [
-                {
-                    OR: [
-                        { suggestionStatus: null },
-                        { suggestionStatus: 'CONFIRMED' },
-                    ],
-                },
-                {
-                    OR: [
-                        { startTime: { lte: data.startTime }, endTime: { gt: data.startTime } },
-                        { startTime: { lt: data.endTime }, endTime: { gte: data.endTime } },
-                        { startTime: { gte: data.startTime }, endTime: { lte: data.endTime } },
-                    ],
-                },
-            ],
-        },
-    });
-
-    if (overlapping) {
-        return errorResponse('Ce créneau chevauche un bloc existant', 409);
-    }
+    // Overlapping blocks are allowed: managers can place the same SDR on multiple missions
+    // on the same day/time, and the conflict engine will surface the conflict instead.
 
     // Verify SDR is assigned to mission
     const assignment = await prisma.sDRAssignment.findFirst({

@@ -28,7 +28,19 @@ const updateCallbackSchema = z.object({
         .string()
         .refine((v) => MEETING_CANCELLATION_REASON_CODES.includes(v as MeetingCancellationReasonCode))
         .optional(),
-});
+    meetingType: z.enum(['VISIO', 'PHYSIQUE', 'TELEPHONIQUE']).optional(),
+    meetingAddress: z.string().max(500).optional().nullable(),
+    meetingJoinUrl: z.string().url('Lien de rejoindre invalide').max(2000).optional().nullable(),
+    meetingPhone: z.string().max(50).optional().nullable(),
+}).refine(
+    (data) => {
+        if (!data.meetingType) return true;
+        if (data.meetingType === 'VISIO') return !!data.meetingJoinUrl?.trim();
+        if (data.meetingType === 'PHYSIQUE') return !!data.meetingAddress?.trim();
+        return true;
+    },
+    { message: 'VISIO requiert un lien de rejoindre ; PHYSIQUE requiert une adresse.', path: ['meetingType'] }
+);
 
 export const PATCH = withErrorHandler(async (
     request: NextRequest,
@@ -99,11 +111,19 @@ export const PATCH = withErrorHandler(async (
         note?: string;
         result?: (typeof meetingResults)[number];
         cancellationReason?: string | null;
+        meetingType?: string | null;
+        meetingAddress?: string | null;
+        meetingJoinUrl?: string | null;
+        meetingPhone?: string | null;
     } = {};
     if (data.callbackDate !== undefined) updateData.callbackDate = data.callbackDate;
     if (data.note !== undefined) updateData.note = data.note;
     if (isMeetingAction && data.result !== undefined) updateData.result = data.result as (typeof meetingResults)[number];
     if (isMeetingAction && data.cancellationReason !== undefined) updateData.cancellationReason = data.cancellationReason;
+    if (isMeetingAction && data.meetingType !== undefined) updateData.meetingType = data.meetingType;
+    if (isMeetingAction && data.meetingAddress !== undefined) updateData.meetingAddress = data.meetingAddress;
+    if (isMeetingAction && data.meetingJoinUrl !== undefined) updateData.meetingJoinUrl = data.meetingJoinUrl;
+    if (isMeetingAction && data.meetingPhone !== undefined) updateData.meetingPhone = data.meetingPhone;
 
     if (Object.keys(updateData).length === 0) {
         return errorResponse('Aucune donnée à mettre à jour', 400);

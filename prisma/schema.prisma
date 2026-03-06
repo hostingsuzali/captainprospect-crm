@@ -485,6 +485,9 @@ model Client {
   // Client Portal visibility settings
   portalShowCallHistory  Boolean @default(false)
   portalShowDatabase     Boolean @default(false)
+
+  // RDV email notifications
+  rdvEmailNotificationsEnabled Boolean @default(true)
  
   // Business Developer relations
   bdAssignments BusinessDeveloperClient[]
@@ -507,12 +510,40 @@ model Client {
   
   // Leexi integration
   leexiImports  LeexiCallImport[]
+  sessions      ClientSession[]
 
   // Client Portal: shareable report links
   sharedReportLinks SharedReportLink[]
 
+  // Interlocuteurs (client's own sales team / commercials)
+  interlocuteurs ClientInterlocuteur[]
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+model ClientInterlocuteur {
+  id           String   @id @default(cuid())
+  clientId     String
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  firstName    String
+  lastName     String
+  title        String?
+  department   String?
+  territory    String?
+
+  emails       Json     @default("[]")
+  phones       Json     @default("[]")
+  bookingLinks Json     @default("[]")
+
+  notes        String?  @db.Text
+  isActive     Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([clientId])
 }
 
 model Mission {
@@ -688,6 +719,8 @@ model Action {
   cancellationReason String? // When result = MEETING_CANCELLED: by_mistake, wrong_contact, client_cancelled, double_booking, other
   meetingType     String?    // 'VISIO' | 'PHYSIQUE' | 'TELEPHONIQUE' — type of meeting for MEETING_BOOKED
   meetingAddress  String?    // Physical address (for PHYSIQUE meetings only)
+  meetingJoinUrl String?    // Video join link (for VISIO meetings only)
+  meetingPhone   String?    // Dial number for call (for TELEPHONIQUE; fallback to contact.phone)
   createdAt     DateTime     @default(now())
 
   // Call workflow: IN_PROGRESS when call started, PENDING_VALIDATION when webhook received
@@ -2978,4 +3011,60 @@ model SharedReportLink {
 
   @@index([token])
   @@index([clientId])
+}
+
+// ============================================
+// SYSTEM CONFIGURATION (manager-editable settings)
+// ============================================
+
+model SystemConfig {
+  key       String   @id        // e.g. "masterPasswordHash"
+  value     String   @db.Text   // hashed value
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// SYSTEM EMAIL TEMPLATES (manager-editable)
+// ============================================
+
+model SystemEmailTemplate {
+  key      String   @id       // e.g. "rdv_notification"
+  name     String             // Display name for the manager UI
+  subject  String             // Email subject (supports {{variables}})
+  bodyHtml String   @db.Text  // Full HTML body (supports {{variables}})
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// CLIENT SESSIONS & COMPTE RENDUS (Leexi → AI)
+// ============================================
+
+model ClientSession {
+  id           String        @id @default(cuid())
+  clientId     String
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type         String        // "Kick-Off" | "Onboarding" | "Validation" | "Reporting" | "Suivi" | "Autre"
+  date         DateTime
+  leexiId      String?       // Leexi call/meeting ID
+  recordingUrl String?
+  crMarkdown   String?       @db.Text
+  summaryEmail String?       @db.Text
+  emailSentAt  DateTime?
+  tasks        SessionTask[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([clientId])
+}
+
+model SessionTask {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   ClientSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  label     String
+  assignee  String?
+  doneAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([sessionId])
 }

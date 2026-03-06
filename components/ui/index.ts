@@ -14,6 +14,8 @@ export { default as FileUpload } from "./FileUpload";
 export { DataTable } from "./DataTable";
 export type { Column } from "./DataTable";
 export { default as DatePicker } from "./DatePicker";
+export { Calendar } from "./Calendar";
+export { DateTimePicker } from "./DateTimePicker";
 export {
     Skeleton,
     TextSkeleton,

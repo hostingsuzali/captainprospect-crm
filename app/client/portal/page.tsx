@@ -135,12 +135,12 @@ export default function ClientPortal() {
                 const allMeetings: ClientMeeting[] = meetingsJson.data?.allMeetings ?? [];
                 const upcoming = allMeetings
                     .filter((m) => {
-                        const meetingDate = m.callbackDate || m.createdAt;
-                        return new Date(meetingDate) >= new Date();
+                        if (!m.callbackDate) return true;
+                        return new Date(m.callbackDate) >= new Date();
                     })
                     .sort((a, b) => {
-                        const da = new Date(a.callbackDate || a.createdAt).getTime();
-                        const db = new Date(b.callbackDate || b.createdAt).getTime();
+                        const da = a.callbackDate ? new Date(a.callbackDate).getTime() : 0;
+                        const db = b.callbackDate ? new Date(b.callbackDate).getTime() : 0;
                         return da - db;
                     })
                     .slice(0, 5);
@@ -346,8 +346,7 @@ export default function ClientPortal() {
                         {upcomingMeetings.map((m, idx) => {
                             const contactName = [m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ") || "Contact";
                             const companyName = m.contact.company.name;
-                            const dateKey = m.callbackDate || m.createdAt;
-                            const d = new Date(dateKey);
+                            const d = m.callbackDate ? new Date(m.callbackDate) : null;
                             return (
                                 <Link
                                     key={m.id}
@@ -360,8 +359,14 @@ export default function ClientPortal() {
 
                                     {/* Date pill */}
                                     <div className="w-[52px] shrink-0 flex flex-col items-center py-1.5 px-1 rounded-lg bg-[#F4F5FA] border border-[#E8EBF0] group-hover:border-[#7C5CFC]/20 group-hover:bg-indigo-50/50 transition-all duration-200">
-                                        <span className="text-[17px] font-extrabold text-[#12122A] leading-none">{d.getDate()}</span>
-                                        <span className="text-[9px] font-bold text-[#8B8DAF] uppercase tracking-wide mt-0.5">{formatShortMonth(dateKey)}</span>
+                                        {d ? (
+                                            <>
+                                                <span className="text-[17px] font-extrabold text-[#12122A] leading-none">{d.getDate()}</span>
+                                                <span className="text-[9px] font-bold text-[#8B8DAF] uppercase tracking-wide mt-0.5">{formatShortMonth(m.callbackDate!)}</span>
+                                            </>
+                                        ) : (
+                                            <span className="text-[8px] font-bold text-[#8B8DAF] uppercase tracking-wide text-center leading-tight">À confirmer</span>
+                                        )}
                                     </div>
 
                                     {/* Content */}
@@ -372,8 +377,14 @@ export default function ClientPortal() {
                                             <span className="text-[12.5px] text-[#5C5E7E] font-medium truncate">{companyName}</span>
                                         </div>
                                         <div className="flex items-center gap-2 mt-0.5">
-                                            <span className="text-[11.5px] text-[#7C5CFC] font-semibold capitalize">{formatMeetingDate(dateKey)}</span>
-                                            <span className="text-[10.5px] text-[#A0A3BD] font-medium">{formatMeetingTime(dateKey)}</span>
+                                            {m.callbackDate ? (
+                                                <>
+                                                    <span className="text-[11.5px] text-[#7C5CFC] font-semibold capitalize">{formatMeetingDate(m.callbackDate)}</span>
+                                                    <span className="text-[10.5px] text-[#A0A3BD] font-medium">{formatMeetingTime(m.callbackDate)}</span>
+                                                </>
+                                            ) : (
+                                                <span className="text-[11px] text-[#A0A3BD] italic">Date à confirmer</span>
+                                            )}
                                         </div>
                                     </div>
 

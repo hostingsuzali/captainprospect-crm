@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { Badge, useToast } from "@/components/ui";
-import { DatePicker } from "@/components/ui/DatePicker";
+import { Badge, useToast, DateTimePicker } from "@/components/ui";
 import {
   Calendar, Search, X, ThumbsUp, Minus, ThumbsDown, XCircle,
   Mail, Phone, Linkedin, Download, Check, Loader2, Eye,
   MessageSquare, Edit3, Clock, FileSpreadsheet, AlertTriangle,
-  CalendarClock, Send, Building2, MapPin, Sparkles, Trash2,
+  CalendarClock, Send, Building2, MapPin, Sparkles, Trash2, Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getMeetingCancellationLabel, MEETING_CANCELLATION_REASONS } from "@/lib/constants/meetingCancellationReasons";
@@ -77,9 +76,10 @@ const GLOBAL_CSS = `
   background: ${tk.surface};
   border: 1px solid ${tk.border};
   border-radius: 16px;
-  overflow: hidden;
   transition: box-shadow 0.25s ease, border-color 0.22s ease;
 }
+.cp-card > .cp-card-stripe { border-radius: 16px 16px 0 0; }
+.cp-card > *:last-child { border-radius: 0 0 16px 16px; }
 .cp-card:hover {
   box-shadow: 0 8px 32px -8px rgba(0,0,0,0.11);
   border-color: ${tk.borderStrong};
@@ -482,18 +482,22 @@ interface Meeting {
   } | null;
   meetingType?: "VISIO" | "PHYSIQUE" | "TELEPHONIQUE" | null;
   meetingAddress?: string | null;
+  meetingJoinUrl?: string | null;
+  meetingPhone?: string | null;
 }
 
 type TabId      = "upcoming" | "past" | "rescheduled" | "cancelled" | "all";
 type RdvStatus  = "upcoming" | "past" | "rescheduled" | "cancelled";
 type ModalType  = null | "detail" | "feedback" | "reschedule" | "cancel";
+type OpenSignalCard = { id: string; stage: "menu" | "form" };
 
 /* ═══════════════════════════════════════════════════════════════
    HELPERS
 ═══════════════════════════════════════════════════════════════ */
 const getRdvStatus = (m: Meeting): RdvStatus => {
   if (m.result === "MEETING_CANCELLED") return "cancelled";
-  return new Date(m.callbackDate || m.createdAt) >= new Date() ? "upcoming" : "past";
+  if (!m.callbackDate) return "upcoming";
+  return new Date(m.callbackDate) >= new Date() ? "upcoming" : "past";
 };
 
 const getInitials = (m: Meeting) => {
@@ -569,7 +573,7 @@ const MTY = {
 function genICS(m: Meeting) {
   const nameParts = [m.contact?.firstName, m.contact?.lastName].filter(Boolean) as string[];
   const name = nameParts.join(" ") || "Contact inconnu";
-  const dt = new Date(m.callbackDate || m.createdAt);
+  const dt = m.callbackDate ? new Date(m.callbackDate) : new Date();
   const p  = (n: number) => n.toString().padStart(2,"0");
   const f  = (d: Date)   => `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`;
   const end = new Date(dt.getTime()+30*60000);
@@ -589,10 +593,10 @@ function genICS(m: Meeting) {
 function genCSV(meetings: Meeting[]) {
   const esc = (v: string) => v.includes('"')||v.includes(",")||v.includes("\n")?`"${v.replace(/"/g,'""')}"`:v;
   const rows = meetings.map(m=>{
-    const d=new Date(m.callbackDate||m.createdAt), fb=m.meetingFeedback;
+    const d=m.callbackDate ? new Date(m.callbackDate) : null, fb=m.meetingFeedback;
     const c = m.contact;
     const co = c?.company;
-    return [d.toLocaleDateString("fr-FR"),d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
+    return [d ? d.toLocaleDateString("fr-FR") : "",d ? d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : "",
       S[getRdvStatus(m)].label,m.campaign.mission.name,m.campaign.name,
       c?.firstName??"",c?.lastName??"",c?.title??"",c?.email??"",
       c?.phone??"",c?.linkedin??"",co?.name??"",
@@ -637,13 +641,13 @@ function Avt({ m, size=38 }: { m:Meeting; size?:number }) {
 }
 
 type BV = "primary"|"secondary"|"danger"|"ghost";
-function Btn({ children, onClick, disabled, loading, variant="secondary", type="button" }: {
+function Btn({ children, onClick, disabled, loading, variant="secondary", type="button", style }: {
   children:React.ReactNode; onClick?:()=>void; disabled?:boolean;
-  loading?:boolean; variant?:BV; type?:"button"|"submit";
+  loading?:boolean; variant?:BV; type?:"button"|"submit"; style?:React.CSSProperties;
 }) {
   return (
     <button type={type} onClick={onClick} disabled={disabled||loading}
-      className={`cp-btn cp-btn-${variant}`}>
+      className={`cp-btn cp-btn-${variant}`} style={style}>
       {loading && <Loader2 style={{width:14,height:14,animation:"cp-spin 0.8s linear infinite"}} />}
       {children}
     </button>
@@ -737,22 +741,21 @@ export default function ClientPortalMeetingsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<Meeting|null>(null);
   const [deleteSub, setDeleteSub]        = useState(false);
 
-  const [sigId, setSigId]         = useState<string|null>(null);
-  const [sigDropdownId, setSigDropdownId] = useState<string|null>(null);
+  const [openSignalCard, setOpenSignalCard] = useState<OpenSignalCard | null>(null);
   const [sigType, setSigType]     = useState<"NO_SHOW"|null>(null);
   const [sigRec, setSigRec]       = useState("");
   const [sigNote, setSigNote]     = useState("");
   const [sigSub, setSigSub]       = useState(false);
 
   useEffect(() => {
-    if (!sigDropdownId) return;
+    if (!openSignalCard) return;
     const handler = (e: MouseEvent) => {
-      if ((e.target as HTMLElement).closest?.("[data-signaler-dropdown]")) return;
-      setSigDropdownId(null);
+      if ((e.target as HTMLElement).closest?.(`[data-signaler-card="${openSignalCard.id}"]`)) return;
+      setOpenSignalCard(null);
     };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
-  }, [sigDropdownId]);
+  }, [openSignalCard]);
 
   useEffect(()=>{
     if (!clientId) return;
@@ -773,32 +776,46 @@ export default function ClientPortalMeetingsPage() {
     return s;
   },[meetings]);
 
+  const searchFilter = useMemo(() => {
+    if (!q.trim()) return (m: Meeting) => true;
+    const lq = q.toLowerCase();
+    return (m: Meeting) => {
+      const c = m.contact;
+      const co = c?.company;
+      const haystack = [
+        c?.firstName,
+        c?.lastName,
+        co?.name,
+        m.campaign?.name,
+        m.campaign?.mission?.name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(lq);
+    };
+  }, [q]);
+
   const filtered = useMemo(()=>{
     let list = tab==="all" ? meetings : meetings.filter(m=>getRdvStatus(m)===tab);
-    if (q.trim()) {
-      const lq = q.toLowerCase();
-      list = list.filter(m=>{
-        const c = m.contact;
-        const co = c?.company;
-        const haystack = [
-          c?.firstName,
-          c?.lastName,
-          co?.name,
-          m.campaign?.name,
-          m.campaign?.mission?.name,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(lq);
-      });
-    }
+    list = list.filter(searchFilter);
     return list.sort((a,b)=>{
-      const da=new Date(a.callbackDate||a.createdAt).getTime();
-      const db=new Date(b.callbackDate||b.createdAt).getTime();
+      const da=a.callbackDate ? new Date(a.callbackDate).getTime() : 0;
+      const db=b.callbackDate ? new Date(b.callbackDate).getTime() : 0;
       return tab==="upcoming" ? da-db : db-da;
     });
-  },[meetings,tab,q]);
+  },[meetings,tab,searchFilter]);
+
+  const tabCounts = useMemo(() => {
+    const base = q.trim() ? meetings.filter(searchFilter) : meetings;
+    return {
+      all: base.length,
+      upcoming: base.filter(m => getRdvStatus(m)==="upcoming").length,
+      past: base.filter(m => getRdvStatus(m)==="past").length,
+      rescheduled: base.filter(m => getRdvStatus(m)==="rescheduled").length,
+      cancelled: base.filter(m => getRdvStatus(m)==="cancelled").length,
+    };
+  }, [meetings, q, searchFilter]);
 
   useEffect(()=>{
     if (!loading && stats.upcoming===0 && stats.past>0 && tab==="upcoming") setTab("past");
@@ -814,12 +831,12 @@ export default function ClientPortalMeetingsPage() {
   const closeModal = useCallback(()=>setModal(null),[]);
 
   const submitFeedback = async ()=>{
-    if (!sel||!fbOut||!fbRec) return;
+    if (!sel||!fbOut) return;
     setFbSub(true);
     try {
       const r = await fetch(`/api/client/meetings/${sel.id}/feedback`,{
         method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({outcome:fbOut,recontactRequested:fbRec,clientNote:fbNote||null}),
+        body:JSON.stringify({outcome:fbOut,recontactRequested:null,clientNote:fbNote||null}),
       });
       const j=await r.json();
       if (j.success){ setFbDone(true); setMeetings(p=>p.map(m=>m.id===sel.id?{...m,meetingFeedback:j.data}:m)); toast.success("Retour enregistré","Votre avis a été transmis à l'équipe."); setTimeout(closeModal,1400); }
@@ -862,16 +879,16 @@ export default function ClientPortalMeetingsPage() {
       if (j.success){
         setMeetings(p=>p.map(m=>m.id===mid?{...m,meetingFeedback:j.data}:m));
         toast.success("Signalement envoyé","Le rendez-vous est marqué comme absent.");
-        setSigId(null);
+        setOpenSignalCard(null);
       } else toast.error("Erreur",j.error??"Une erreur est survenue.");
     } catch { toast.error("Erreur","Impossible de soumettre."); }
     finally { setSigSub(false); }
   };
 
-  const toggleSig=(id:string)=>{
-    setSigId(sigId===id?null:id);
+  const closeSignal = useCallback(() => {
+    setOpenSignalCard(null);
     setSigType(null); setSigRec(""); setSigNote("");
-  };
+  }, []);
 
   const submitCancel = async ()=>{
     if (!sel||!cancelReason.trim()) return;
@@ -944,7 +961,7 @@ export default function ClientPortalMeetingsPage() {
             {q && <button className="cp-search-clr" onClick={()=>setQ("")} aria-label="Effacer"><X style={{width:13,height:13}} /></button>}
           </div>
           <button className="cp-btn cp-btn-secondary" style={{gap:7,padding:"0 14px"}} onClick={()=>genCSV(filtered)}>
-            <FileSpreadsheet style={{width:15,height:15}} />Exporter
+            <FileSpreadsheet style={{width:15,height:15}} />Exporter{filtered.length ? ` (${filtered.length} RDV)` : ""}
           </button>
         </div>
       </header>
@@ -978,7 +995,7 @@ export default function ClientPortalMeetingsPage() {
         role="tablist" aria-label="Filtrer les rendez-vous">
         {TABS.map(t=>{
           const active=tab===t.id;
-          const count=t.id==="all"?stats.all:stats[t.id as RdvStatus]??0;
+          const count=t.id==="all"?tabCounts.all:tabCounts[t.id as RdvStatus]??0;
           return (
             <button key={t.id} role="tab" aria-selected={active} type="button" onClick={()=>setTab(t.id)}
               className={cn("cp-tab",active&&"active")}>
@@ -1006,16 +1023,16 @@ export default function ClientPortalMeetingsPage() {
         <ul style={{display:"flex",flexDirection:"column",gap:10,listStyle:"none",margin:0,padding:0}}>
           {filtered.map((meeting,idx)=>(
             <Card key={meeting.id} m={meeting} idx={idx}
-              sigOpen={sigId===meeting.id} sigType={sigType}
+              openSignalCard={openSignalCard}
+              sigOpen={openSignalCard?.id===meeting.id && openSignalCard?.stage==="form"}
+              sigType={sigType}
               sigRec={sigRec} sigNote={sigNote} sigSub={sigSub}
-              sigDropdownOpen={sigDropdownId===meeting.id}
               onDetail={()=>openModal(meeting,"detail")}
               onFeedback={()=>openModal(meeting,"feedback")}
-              onToggleSig={()=>toggleSig(meeting.id)}
-              onReschedule={()=>openModal(meeting,"reschedule")}
-              onSigDropdownToggle={()=>setSigDropdownId(sigDropdownId===meeting.id?null:meeting.id)}
-              onSigOptionContactAbsent={()=>{ setSigId(meeting.id); setSigType("NO_SHOW"); setSigDropdownId(null); }}
-              onSigOptionReplanifier={()=>{ openModal(meeting,"reschedule"); setSigDropdownId(null); }}
+              onCloseSignal={closeSignal}
+              onReschedule={()=>{ openModal(meeting,"reschedule"); setOpenSignalCard(null); }}
+              onOpenSignalMenu={()=>setOpenSignalCard({ id: meeting.id, stage: "menu" })}
+              onOpenSignalForm={()=>{ setOpenSignalCard({ id: meeting.id, stage: "form" }); setSigType("NO_SHOW"); }}
               onSigType={setSigType} onSigRec={setSigRec} onSigNote={setSigNote}
               onSigSubmit={()=>submitSignal(meeting.id)}
             />
@@ -1033,8 +1050,8 @@ export default function ClientPortalMeetingsPage() {
       )}
       {modal==="feedback" && sel && (
         <FbModal m={sel} onClose={closeModal}
-          out={fbOut} rec={fbRec} note={fbNote} done={fbDone} sub={fbSub}
-          onOut={setFbOut} onRec={setFbRec} onNote={setFbNote} onSubmit={submitFeedback}
+          out={fbOut} note={fbNote} done={fbDone} sub={fbSub}
+          onOut={setFbOut} onNote={setFbNote} onSubmit={submitFeedback}
         />
       )}
       {modal==="reschedule" && sel && (
@@ -1074,15 +1091,15 @@ export default function ClientPortalMeetingsPage() {
    MEETING CARD
 ═══════════════════════════════════════════════════════════════ */
 function Card({
-  m, idx, sigOpen, sigType, sigRec, sigNote, sigSub, sigDropdownOpen,
-  onDetail, onFeedback, onToggleSig, onReschedule,
-  onSigDropdownToggle, onSigOptionContactAbsent, onSigOptionReplanifier,
+  m, idx, openSignalCard, sigOpen, sigType, sigRec, sigNote, sigSub,
+  onDetail, onFeedback, onCloseSignal, onReschedule,
+  onOpenSignalMenu, onOpenSignalForm,
   onSigType, onSigRec, onSigNote, onSigSubmit,
 }: {
-  m:Meeting; idx:number; sigOpen:boolean; sigType:"NO_SHOW"|null;
-  sigRec:string; sigNote:string; sigSub:boolean; sigDropdownOpen:boolean;
-  onDetail:()=>void; onFeedback:()=>void; onToggleSig:()=>void; onReschedule:()=>void;
-  onSigDropdownToggle:()=>void; onSigOptionContactAbsent:()=>void; onSigOptionReplanifier:()=>void;
+  m:Meeting; idx:number; openSignalCard:OpenSignalCard|null; sigOpen:boolean; sigType:"NO_SHOW"|null;
+  sigRec:string; sigNote:string; sigSub:boolean;
+  onDetail:()=>void; onFeedback:()=>void; onCloseSignal:()=>void; onReschedule:()=>void;
+  onOpenSignalMenu:()=>void; onOpenSignalForm:()=>void;
   onSigType:(t:"NO_SHOW"|null)=>void;
   onSigRec:(v:string)=>void; onSigNote:(v:string)=>void; onSigSubmit:()=>void;
 }) {
@@ -1090,27 +1107,37 @@ function Card({
   const sm     = S[st];
   const fb     = m.meetingFeedback;
   const up     = st==="upcoming";
-  const dt     = fmtCard(m.callbackDate||m.createdAt);
+  const dt     = m.callbackDate ? fmtCard(m.callbackDate) : null;
   const sigDis = sigSub||(sigType==="NO_SHOW"&&!sigRec);
+  const sigMenuOpen = openSignalCard?.id===m.id && openSignalCard?.stage==="menu";
 
   return (
     <li className={cn("cp-card cp-enter", up&&"cp-card-upcoming")}
+      data-signaler-card={m.id}
       style={{animationDelay:`${idx*0.04}s`,opacity:st==="cancelled"?0.72:1}}>
       {/* Status stripe top */}
-      <div style={{height:3,background:sm.stripe,width:"100%",animation:"cp-stripe-in 0.4s ease"}} aria-hidden="true" />
+      <div className="cp-card-stripe" style={{height:3,background:sm.stripe,width:"100%",animation:"cp-stripe-in 0.4s ease"}} aria-hidden="true" />
 
       <div style={{display:"flex"}}>
         {/* Date column */}
         <div className="cp-date-block">
-          <span style={{fontSize:30,fontWeight:800,color:tk.ink,lineHeight:1,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.04em"}}>
-            {dt.day}
-          </span>
-          <span style={{fontSize:10,fontWeight:700,color:tk.ink4,letterSpacing:"0.1em",marginTop:3}}>
-            {dt.month}
-          </span>
-          <div style={{marginTop:10,fontSize:11.5,fontWeight:700,color:tk.accentText,background:tk.accentLight,padding:"3px 7px",borderRadius:99,whiteSpace:"nowrap"}}>
-            {dt.time}
-          </div>
+          {dt ? (
+            <>
+              <span style={{fontSize:30,fontWeight:800,color:tk.ink,lineHeight:1,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.04em"}}>
+                {dt.day}
+              </span>
+              <span style={{fontSize:10,fontWeight:700,color:tk.ink4,letterSpacing:"0.1em",marginTop:3}}>
+                {dt.month}
+              </span>
+              <div style={{marginTop:10,fontSize:11.5,fontWeight:700,color:tk.accentText,background:tk.accentLight,padding:"3px 7px",borderRadius:99,whiteSpace:"nowrap"}}>
+                {dt.time}
+              </div>
+            </>
+          ) : (
+            <span style={{fontSize:10,fontWeight:700,color:tk.ink4,letterSpacing:"0.08em",textAlign:"center",lineHeight:1.4}}>
+              Date à confirmer
+            </span>
+          )}
         </div>
 
         {/* Content */}
@@ -1145,6 +1172,24 @@ function Card({
                 {m.contact?.phone   && <a href={`tel:${m.contact.phone}`}     className="cp-link" onClick={e=>e.stopPropagation()}><Phone  style={{width:11,height:11}} />{m.contact.phone}</a>}
                 {m.contact?.linkedin&& <a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" className="cp-link" onClick={e=>e.stopPropagation()}><Linkedin style={{width:11,height:11}} />LinkedIn</a>}
               </div>
+              {/* Format action links on card: Rejoindre / Itinéraire / Appeler */}
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
+                {m.meetingType==="VISIO" && m.meetingJoinUrl && (
+                  <a href={m.meetingJoinUrl} target="_blank" rel="noopener noreferrer" className="cp-btn cp-btn-primary" style={{display:"inline-flex",textDecoration:"none",fontSize:12,padding:"6px 12px"}} onClick={e=>e.stopPropagation()}>
+                    <Video style={{width:12,height:12}} /> Rejoindre
+                  </a>
+                )}
+                {m.meetingType==="PHYSIQUE" && m.meetingAddress && (
+                  <a href={`https://maps.google.com/?q=${encodeURIComponent(m.meetingAddress)}`} target="_blank" rel="noopener noreferrer" className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none",fontSize:12,padding:"6px 12px"}} onClick={e=>e.stopPropagation()}>
+                    <MapPin style={{width:12,height:12}} /> Itinéraire
+                  </a>
+                )}
+                {m.meetingType==="TELEPHONIQUE" && (m.meetingPhone || m.contact?.phone) && (
+                  <a href={`tel:${m.meetingPhone || m.contact?.phone}`} className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none",fontSize:12,padding:"6px 12px"}} onClick={e=>e.stopPropagation()}>
+                    <Phone style={{width:12,height:12}} /> Appeler
+                  </a>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1168,13 +1213,13 @@ function Card({
         </div>
 
         {/* Actions */}
-        <div style={{width:152,flexShrink:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:6,padding:"14px 12px",borderLeft:`1px solid ${tk.border}`}}>
+        <div style={{width:160,flexShrink:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:6,padding:"14px 12px",borderLeft:`1px solid ${tk.border}`}}>
           <button type="button" className="cp-action" onClick={onDetail}>
             <Eye style={{width:12,height:12}} />Voir la fiche
           </button>
           {!up && !fb && (
             <button type="button" className="cp-action prim" onClick={onFeedback}>
-              <MessageSquare style={{width:12,height:12}} />Donner votre avis
+              <MessageSquare style={{width:12,height:12}} />Mon avis
             </button>
           )}
           {!up && fb && (
@@ -1182,23 +1227,44 @@ function Card({
               <Edit3 style={{width:12,height:12}} />Modifier l&apos;avis
             </button>
           )}
-          <div data-signaler-dropdown style={{position:"relative"}}>
-            <button type="button" className="cp-action dngr" onClick={(e)=>{ e.stopPropagation(); onSigDropdownToggle(); }} aria-expanded={sigDropdownOpen}>
-              <AlertTriangle style={{width:12,height:12}} />Signaler
-            </button>
-            {sigDropdownOpen && (
-              <div className="cp-enter-scale" style={{position:"absolute",top:"100%",left:0,marginTop:4,minWidth:200,background:tk.surface,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",border:`1px solid ${tk.border}`,padding:4,zIndex:10}}>
-                <button type="button" className="cp-action" style={{width:"100%",justifyContent:"flex-start"}} onClick={onSigOptionContactAbsent}>
-                  <XCircle style={{width:12,height:12}} />Contact absent
-                </button>
-                <button type="button" className="cp-action" style={{width:"100%",justifyContent:"flex-start"}} onClick={onSigOptionReplanifier}>
-                  <CalendarClock style={{width:12,height:12}} />Replanifier avec le prospect
-                </button>
-              </div>
-            )}
-          </div>
+          <button type="button" className="cp-action dngr" onClick={(e)=>{ e.stopPropagation(); onOpenSignalMenu(); }} aria-expanded={sigMenuOpen}>
+            <AlertTriangle style={{width:12,height:12}} />Signaler
+          </button>
         </div>
       </div>
+
+      {/* ── Signal menu (two choices below card) ───────────── */}
+      {sigMenuOpen && (
+        <div className="cp-signal">
+          <div className="cp-signal-inner">
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+              <div style={{width:32,height:32,borderRadius:"50%",background:tk.redLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <AlertTriangle style={{width:15,height:15,color:tk.red}} />
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:tk.redText}}>Signaler un problème</div>
+                <div style={{fontSize:11.5,color:"#C08080",marginTop:1}}>
+                  Choisissez une option ci-dessous.
+                </div>
+              </div>
+              <button type="button" onClick={onCloseSignal} aria-label="Fermer"
+                style={{width:26,height:26,border:"none",background:"rgba(217,48,37,0.08)",borderRadius:7,color:tk.redText,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <X style={{width:12,height:12}} />
+              </button>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button type="button" className={cn("cp-choice")} onClick={onOpenSignalForm} style={{flex:1}}>
+                <span className="cp-choice-ico"><XCircle style={{width:18,height:18}} /></span>
+                Contact absent
+              </button>
+              <button type="button" className={cn("cp-choice")} onClick={()=>{ onReschedule(); onCloseSignal(); }} style={{flex:1}}>
+                <span className="cp-choice-ico"><CalendarClock style={{width:18,height:18}} /></span>
+                Replanifier avec le prospect
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Signal panel (Contact absent form) ────────────── */}
       {sigOpen && sigType==="NO_SHOW" && (
@@ -1214,7 +1280,7 @@ function Card({
                   Indiquez si vous souhaitez que l&apos;on recontacte ce prospect.
                 </div>
               </div>
-              <button type="button" onClick={onToggleSig} aria-label="Fermer"
+              <button type="button" onClick={onCloseSignal} aria-label="Fermer"
                 style={{width:26,height:26,border:"none",background:"rgba(217,48,37,0.08)",borderRadius:7,color:tk.redText,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <X style={{width:12,height:12}} />
               </button>
@@ -1239,7 +1305,7 @@ function Card({
                 <input className="cp-input" type="text" value={sigNote} onChange={e=>onSigNote(e.target.value)} placeholder="Précisez la raison…" />
               </div>
               <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-                <Btn variant="ghost" onClick={()=>{ onSigType(null); onToggleSig(); }}>Annuler</Btn>
+                <Btn variant="ghost" onClick={()=>{ onSigType(null); onCloseSignal(); }}>Annuler</Btn>
                 <Btn variant="danger" onClick={onSigSubmit} disabled={sigDis} loading={sigSub}>
                   <Send style={{width:13,height:13}} />Confirmer le signalement
                 </Btn>
@@ -1282,7 +1348,7 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
             <Calendar style={{width:17,height:17,color:sm.dot}} />
           </div>
           <div>
-            <div style={{fontSize:14,fontWeight:700,color:tk.ink}}>{fmtFull(m.callbackDate||m.createdAt)}</div>
+            <div style={{fontSize:14,fontWeight:700,color:tk.ink}}>{m.callbackDate ? fmtFull(m.callbackDate) : "Date à confirmer"}</div>
             <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:6,marginTop:4}}>
               <Pill label={sm.label} color={sm.pill.color} bg={sm.pill.bg} border={sm.pill.border} dot={sm.dot} />
               {m.meetingType && <span style={{fontSize:12,color:tk.ink3}}>{MTY[m.meetingType].emoji} {MTY[m.meetingType].label}</span>}
@@ -1294,18 +1360,25 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
             Motif d&apos;annulation : {getMeetingCancellationLabel(m.cancellationReason)}
           </div>
         )}
+        {m.meetingType==="VISIO" && m.meetingJoinUrl && (
+          <div style={{marginTop:10}}>
+            <a href={m.meetingJoinUrl} target="_blank" rel="noopener noreferrer" className="cp-btn cp-btn-primary" style={{display:"inline-flex",textDecoration:"none"}}>
+              <Video style={{width:14,height:14}} />Rejoindre
+            </a>
+          </div>
+        )}
         {m.meetingType==="PHYSIQUE" && m.meetingAddress && (
           <div style={{marginTop:10,display:"flex",alignItems:"center",gap:7,fontSize:13,color:tk.ink2}}>
             <MapPin style={{width:14,height:14,color:tk.ink4,flexShrink:0}} />
-            <span>{m.meetingAddress}</span>
+            <a href={`https://maps.google.com/?q=${encodeURIComponent(m.meetingAddress)}`} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>{m.meetingAddress}</a>
             <a href={`https://maps.google.com/?q=${encodeURIComponent(m.meetingAddress)}`} target="_blank" rel="noopener noreferrer"
               style={{fontSize:12,color:tk.accentText,textDecoration:"none",marginLeft:2}}>Itinéraire →</a>
           </div>
         )}
-        {m.meetingType==="TELEPHONIQUE" && m.contact?.phone && (
+        {m.meetingType==="TELEPHONIQUE" && (m.meetingPhone || m.contact?.phone) && (
           <div style={{marginTop:10}}>
-            <a href={`tel:${m.contact.phone}`} className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none"}}>
-              <Phone style={{width:14,height:14}} />Appeler {m.contact.phone}
+            <a href={`tel:${m.meetingPhone || m.contact?.phone}`} className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none"}}>
+              <Phone style={{width:14,height:14}} />Appeler {m.meetingPhone || m.contact?.phone}
             </a>
           </div>
         )}
@@ -1393,13 +1466,14 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
 /* ═══════════════════════════════════════════════════════════════
    FEEDBACK MODAL
 ═══════════════════════════════════════════════════════════════ */
-function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, onSubmit }: {
+function FbModal({ m, onClose, out, note, done, sub, onOut, onNote, onSubmit }: {
   m:Meeting; onClose:()=>void;
-  out:string; rec:string; note:string; done:boolean; sub:boolean;
-  onOut:(v:string)=>void; onRec:(v:string)=>void; onNote:(v:string)=>void; onSubmit:()=>void;
+  out:string; note:string; done:boolean; sub:boolean;
+  onOut:(v:string)=>void; onNote:(v:string)=>void; onSubmit:()=>void;
 }) {
   const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
   const companyName = m.contact?.company?.name || "Entreprise inconnue";
+  const outcomeOpts = OUTCOME_OPTS.filter(o => o.value !== "NO_SHOW");
 
   if (done) return (
     <Modal title="Retour enregistré" onClose={onClose}
@@ -1421,14 +1495,14 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
       footer={<>
         <span style={{fontSize:11,color:tk.ink4,marginRight:"auto"}}>* champs requis</span>
         <Btn onClick={onClose}>Annuler</Btn>
-        <Btn variant="primary" onClick={onSubmit} disabled={!out||!rec} loading={sub}>
+        <Btn variant="primary" onClick={onSubmit} disabled={!out} loading={sub}>
           <Send style={{width:13,height:13}} />Envoyer mon avis
         </Btn>
       </>}>
 
       <Sec label="Comment s'est passé ce rendez-vous ? *">
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
-          {OUTCOME_OPTS.map(({value,label,Icon})=>{
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+          {outcomeOpts.map(({value,label,Icon})=>{
             const sel=out===value; const meta=OM[value];
             return (
               <button key={value} type="button" aria-pressed={sel} onClick={()=>onOut(value)}
@@ -1441,17 +1515,6 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
               </button>
             );
           })}
-        </div>
-      </Sec>
-
-      <Sec label="Souhaitez-vous que l'on recontacte ce prospect ? *">
-        <div style={{display:"flex",gap:10}}>
-          {[{v:"YES",l:"Oui, à recontacter"},{v:"NO",l:"Non merci"},{v:"MAYBE",l:"À rediscuter"}].map(({v,l})=>(
-            <button key={v} type="button" aria-pressed={rec===v} onClick={()=>onRec(v)}
-              className={cn("cp-recontact",rec===v&&"sel")}>
-              {l}
-            </button>
-          ))}
         </div>
       </Sec>
 
@@ -1509,8 +1572,15 @@ function RsModal({ m, onClose, date, time, sub, onDate, onTime, onSubmit }: {
 }) {
   const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
   const companyName = m.contact?.company?.name || "Entreprise inconnue";
-  const tmrw=new Date(); tmrw.setDate(tmrw.getDate()+1);
-  const minDate=tmrw.toISOString().split("T")[0];
+  const tmrw=new Date(); tmrw.setDate(tmrw.getDate()+1); tmrw.setHours(10,0,0,0);
+  const minDateTime=tmrw.toISOString().slice(0,16);
+  const dateTimeValue = date && time ? `${date}T${time}` : "";
+
+  const handleDateTimeChange = (value: string) => {
+    if (!value) { onDate(""); onTime("10:00"); return; }
+    onDate(value.slice(0, 10));
+    onTime(value.slice(11, 16));
+  };
 
   return (
     <Modal title="Demander un report" subtitle={`${name} · ${companyName}`} onClose={onClose}
@@ -1528,21 +1598,19 @@ function RsModal({ m, onClose, date, time, sub, onDate, onTime, onSubmit }: {
           </div>
           <div>
             <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:tk.ink4}}>Date actuelle</div>
-            <div style={{fontSize:14,fontWeight:600,color:tk.ink,marginTop:2}}>{fmtFull(m.callbackDate||m.createdAt)}</div>
+            <div style={{fontSize:14,fontWeight:600,color:tk.ink,marginTop:2}}>{m.callbackDate ? fmtFull(m.callbackDate) : "Date à confirmer"}</div>
           </div>
         </div>
       </Sec>
 
       <Sec label="Nouvelle date souhaitée *">
-        <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-          <div style={{flex:1,minWidth:180}}>
-            <DatePicker value={date} onChange={onDate} placeholder="Sélectionner une date" minDate={minDate} />
-          </div>
-          <div>
-            <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:tk.ink4,marginBottom:8}}>Horaire</div>
-            <input type="time" value={time} onChange={e=>onTime(e.target.value)} className="cp-input" style={{width:130}} />
-          </div>
-        </div>
+        {/* Note: verify DateTimePicker / API use same timezone for multi-timezone users */}
+        <DateTimePicker
+          value={dateTimeValue}
+          onChange={handleDateTimeChange}
+          placeholder="Choisir date et heure…"
+          min={minDateTime}
+        />
       </Sec>
 
       <Sec last>

@@ -150,6 +150,12 @@ export const MANAGER_NAV: NavSection[] = [
         permission: "pages.sdrs",
       },
       {
+        href: "/manager/settings",
+        icon: Mail,
+        label: "Notifications email",
+        permission: "pages.sdrs",
+      },
+      {
         href: "/manager/billing",
         icon: Receipt,
         label: "Facturation",

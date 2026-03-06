@@ -22,6 +22,7 @@ const updateClientSchema = z.object({
     bookingUrl: z.string().url().optional().or(z.literal('')),
     portalShowCallHistory: z.boolean().optional(),
     portalShowDatabase: z.boolean().optional(),
+    rdvEmailNotificationsEnabled: z.boolean().optional(),
 });
 
 // ============================================
@@ -67,6 +68,9 @@ export const GET = withErrorHandler(async (
                     createdAt: true,
                 },
                 orderBy: { createdAt: 'desc' },
+            },
+            interlocuteurs: {
+                orderBy: { createdAt: 'asc' },
             },
             _count: {
                 select: {

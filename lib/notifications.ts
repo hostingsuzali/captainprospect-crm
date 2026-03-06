@@ -1,4 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { sendTransactionalEmail } from "@/lib/email/transactional";
+import {
+    buildRdvNotificationEmail,
+    buildRdvEmailFromCustomTemplate,
+    RdvNotificationData,
+} from "@/lib/email/templates/rdv-notification";
 
 interface CreateNotificationParams {
     userId: string;
@@ -313,4 +319,72 @@ export async function createMilestoneNotification(
         type: "success",
         link: "/client/portal/reporting",
     });
+}
+
+// ============================================
+// RDV EMAIL NOTIFICATIONS
+// ============================================
+
+export interface RdvEmailNotificationData extends RdvNotificationData {
+    // all fields inherited from RdvNotificationData
+}
+
+/**
+ * Send a transactional email to all CLIENT users of the given clientId
+ * (and to Client.email if set) when a new RDV is booked on their mission.
+ *
+ * Respects the per-client `rdvEmailNotificationsEnabled` toggle.
+ * Uses the manager-customised SystemEmailTemplate if one exists, otherwise
+ * falls back to the default dynamic template.
+ *
+ * Fire-and-forget: errors are logged but never thrown.
+ */
+export async function sendNewRdvEmailNotification(
+    clientId: string,
+    data: RdvEmailNotificationData
+): Promise<void> {
+    try {
+        const [clientUsers, client, customTemplate] = await Promise.all([
+            prisma.user.findMany({
+                where: { role: "CLIENT", clientId, isActive: true },
+                select: { email: true },
+            }),
+            prisma.client.findUnique({
+                where: { id: clientId },
+                select: { email: true, rdvEmailNotificationsEnabled: true },
+            }),
+            (prisma as any).systemEmailTemplate.findUnique({
+                where: { key: "rdv_notification" },
+                select: { subject: true, bodyHtml: true },
+            }),
+        ]);
+
+        // Respect per-client opt-out (default true if field doesn't exist yet)
+        if (client?.rdvEmailNotificationsEnabled === false) {
+            return;
+        }
+
+        const recipients = new Set<string>();
+        for (const u of clientUsers) {
+            if (u.email) recipients.add(u.email);
+        }
+        if (client?.email) recipients.add(client.email);
+
+        if (recipients.size === 0) {
+            return;
+        }
+
+        // Use custom DB template if available, otherwise use default dynamic builder
+        const { subject, html } = customTemplate
+            ? buildRdvEmailFromCustomTemplate(customTemplate.subject, customTemplate.bodyHtml, data)
+            : buildRdvNotificationEmail(data);
+
+        await Promise.allSettled(
+            Array.from(recipients).map((email) =>
+                sendTransactionalEmail({ to: email, subject, html })
+            )
+        );
+    } catch (error) {
+        console.error("[sendNewRdvEmailNotification] Failed:", error);
+    }
 }

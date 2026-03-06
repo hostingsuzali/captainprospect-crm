@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { parseDateFromNote } from '@/lib/utils/parseDateFromNote';
-import { createClientPortalNotification } from '@/lib/notifications';
+import { createClientPortalNotification, sendNewRdvEmailNotification } from '@/lib/notifications';
 import type { EffectiveStatusDefinition } from './StatusConfigService';
 
 // ============================================
@@ -24,6 +24,8 @@ export interface CreateActionInput {
     duration?: number;
     meetingType?: string;
     meetingAddress?: string;
+    meetingJoinUrl?: string;
+    meetingPhone?: string;
 }
 
 export interface ActionWithRelations {
@@ -72,6 +74,9 @@ export class ActionService {
                 } else if (input.note) {
                     callbackDate = parseDateFromNote(input.note);
                 }
+            } else if (input.callbackDate) {
+                // For non-callback results (e.g. MEETING_BOOKED), store the provided date directly
+                callbackDate = input.callbackDate;
             }
 
             // Duplicate prevention: one pending callback per contact/company per campaign.
@@ -117,6 +122,8 @@ export class ActionService {
                     duration: input.duration,
                     meetingType: input.meetingType,
                     meetingAddress: input.meetingAddress,
+                    meetingJoinUrl: input.meetingJoinUrl,
+                    meetingPhone: input.meetingPhone,
                 },
                 include: {
                     contact: input.contactId ? {
@@ -148,7 +155,7 @@ export class ActionService {
         if (actionRecord.result === 'MEETING_BOOKED' || actionRecord.result === 'INTERESTED') {
             const campaign = await prisma.campaign.findUnique({
                 where: { id: actionRecord.campaignId },
-                select: { mission: { select: { clientId: true } } },
+                select: { mission: { select: { clientId: true, name: true } } },
             });
             const clientId = campaign?.mission?.clientId;
             if (clientId) {
@@ -158,6 +165,25 @@ export class ActionService {
                         message: 'Un nouveau rendez-vous a été réservé pour une de vos missions.',
                         type: 'success',
                         link: '/client/portal/meetings',
+                    });
+
+                    const contactData = (actionRecord as any).contact as {
+                        firstName?: string | null;
+                        lastName?: string | null;
+                        company?: { name?: string | null } | null;
+                    } | null | undefined;
+
+                    const anyRecord = actionRecord as any;
+                    void sendNewRdvEmailNotification(clientId, {
+                        contactFirstName: contactData?.firstName,
+                        contactLastName: contactData?.lastName,
+                        companyName: contactData?.company?.name,
+                        missionName: campaign?.mission?.name,
+                        scheduledAt: anyRecord.callbackDate ?? undefined,
+                        meetingType: anyRecord.meetingType ?? undefined,
+                        meetingJoinUrl: anyRecord.meetingJoinUrl ?? undefined,
+                        meetingAddress: anyRecord.meetingAddress ?? undefined,
+                        meetingPhone: anyRecord.meetingPhone ?? undefined,
                     });
                 } else {
                     await createClientPortalNotification(clientId, {

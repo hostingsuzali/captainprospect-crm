@@ -50,7 +50,14 @@ export const GET = withErrorHandler(async (
     const mission = await prisma.mission.findUnique({
         where: { id },
         include: {
-            client: true,
+            client: {
+                include: {
+                    interlocuteurs: {
+                        where: { isActive: true },
+                        orderBy: { createdAt: 'asc' },
+                    },
+                },
+            },
             campaigns: true,
             lists: {
                 include: {

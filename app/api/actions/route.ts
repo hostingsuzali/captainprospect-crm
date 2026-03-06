@@ -26,11 +26,24 @@ const createActionSchema = z.object({
     callbackDate: z.union([z.string(), z.date()]).optional().transform((s) => (s ? (typeof s === 'string' ? new Date(s) : s) : undefined)),
     duration: z.number().positive().max(7200, 'Durée invalide').optional(),
     meetingType: z.enum(['VISIO', 'PHYSIQUE', 'TELEPHONIQUE']).optional(),
-    meetingAddress: z.string().optional(),
+    meetingAddress: z.string().max(500).optional(),
+    meetingJoinUrl: z.string().url('Lien de rejoindre invalide').max(2000).optional(),
+    meetingPhone: z.string().max(50).optional(),
 }).refine(data => data.contactId || data.companyId, {
     message: 'Contact ou Company requis',
     path: ['contactId'],
-});
+}).refine(
+    (data) => {
+        if (data.result !== 'MEETING_BOOKED' || !data.meetingType) return true;
+        if (data.meetingType === 'VISIO') return !!data.meetingJoinUrl?.trim();
+        if (data.meetingType === 'PHYSIQUE') return !!data.meetingAddress?.trim();
+        return true; // TELEPHONIQUE: meetingPhone optional (fallback to contact)
+    },
+    {
+        message: 'VISIO requiert un lien de rejoindre ; PHYSIQUE requiert une adresse.',
+        path: ['meetingType'],
+    }
+);
 
 // ============================================
 // MISTRAL NOTE IMPROVEMENT (SERVER-SIDE AUTO-ENHANCE)
@@ -206,6 +219,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             duration: data.duration,
             meetingType: data.meetingType,
             meetingAddress: data.meetingAddress,
+            meetingJoinUrl: data.meetingJoinUrl,
+            meetingPhone: data.meetingPhone,
         }, statusDef);
         return successResponse(action, 201);
     } catch (err) {

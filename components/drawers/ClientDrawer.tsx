@@ -75,6 +75,7 @@ export function ClientDrawer({
         bookingUrl: "",
         portalShowCallHistory: false,
         portalShowDatabase: false,
+        rdvEmailNotificationsEnabled: true,
     });
 
     // Reset form when client changes
@@ -88,6 +89,7 @@ export function ClientDrawer({
                 bookingUrl: (client as any).bookingUrl || "",
                 portalShowCallHistory: (client as any).portalShowCallHistory ?? false,
                 portalShowDatabase: (client as any).portalShowDatabase ?? false,
+                rdvEmailNotificationsEnabled: (client as any).rdvEmailNotificationsEnabled ?? true,
             });
             setIsEditing(false);
         }
@@ -354,6 +356,28 @@ export function ClientDrawer({
                                             setFormData(prev => ({
                                                 ...prev,
                                                 portalShowDatabase: e.target.checked,
+                                            }))
+                                        }
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="mt-4 border-t border-slate-200 pt-4 space-y-3">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                    Notifications email
+                                </p>
+                                <label className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-slate-700">
+                                        Envoyer un email au client à chaque nouveau RDV
+                                    </span>
+                                    <input
+                                        type="checkbox"
+                                        className="h-4 w-4 accent-indigo-600"
+                                        checked={formData.rdvEmailNotificationsEnabled}
+                                        onChange={(e) =>
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                rdvEmailNotificationsEnabled: e.target.checked,
                                             }))
                                         }
                                     />

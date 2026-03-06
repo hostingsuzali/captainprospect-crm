@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { Drawer, Button, Badge, Select, useToast, TextSkeleton, ListSkeleton } from "@/components/ui";
+import { Drawer, Button, Badge, Select, useToast, TextSkeleton, ListSkeleton, DateTimePicker } from "@/components/ui";
 import { useVoipCall } from "@/hooks/useVoipCall";
 import { useVoipListener } from "@/hooks/useVoipListener";
 import { VoipCallValidationModal } from "@/components/voip/VoipCallValidationModal";
@@ -47,6 +47,7 @@ import {
     RotateCcw,
     Check,
     Info,
+    Video,
 } from "lucide-react";
 import { BookingDrawer } from "@/components/sdr/BookingDrawer";
 import { ContactDrawer } from "./ContactDrawer";
@@ -93,6 +94,13 @@ interface UnifiedActionDrawerProps {
     missionId?: string;
     missionName?: string;
     clientBookingUrl?: string;
+    clientInterlocuteurs?: Array<{
+        id: string; firstName: string; lastName: string; title?: string;
+        emails: Array<{ value: string; label: string; isPrimary: boolean }>;
+        phones: Array<{ value: string; label: string; isPrimary: boolean }>;
+        bookingLinks: Array<{ label: string; url: string; durationMinutes: number }>;
+        isActive: boolean;
+    }>;
     onActionRecorded?: () => void;
     onOpenEmailModal?: () => void;
     onValidateAndNext?: () => void;
@@ -350,6 +358,7 @@ export function UnifiedActionDrawer({
     missionId,
     missionName,
     clientBookingUrl,
+    clientInterlocuteurs,
     onActionRecorded,
     onOpenEmailModal,
     onValidateAndNext,
@@ -396,6 +405,10 @@ export function UnifiedActionDrawer({
 
     const [showBookingDrawer, setShowBookingDrawer] = useState(false);
     const [rdvDate, setRdvDate] = useState("");
+    const [meetingType, setMeetingType] = useState<"VISIO" | "PHYSIQUE" | "TELEPHONIQUE" | "">("");
+    const [meetingJoinUrl, setMeetingJoinUrl] = useState("");
+    const [meetingAddress, setMeetingAddress] = useState("");
+    const [meetingPhone, setMeetingPhone] = useState("");
     const [showAddContact, setShowAddContact] = useState(false);
     const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
     const [historyExpanded, setHistoryExpanded] = useState(false);
@@ -729,7 +742,15 @@ export function UnifiedActionDrawer({
                     callbackDate:
                         newActionResult === "CALLBACK_REQUESTED" && newCallbackDateValue
                             ? new Date(newCallbackDateValue).toISOString()
-                            : undefined,
+                            : newActionResult === "MEETING_BOOKED" && rdvDate
+                                ? new Date(rdvDate).toISOString()
+                                : undefined,
+                    ...(newActionResult === "MEETING_BOOKED" && {
+                        meetingType: meetingType || undefined,
+                        meetingAddress: meetingAddress?.trim() || undefined,
+                        meetingJoinUrl: meetingJoinUrl?.trim() || undefined,
+                        meetingPhone: meetingPhone?.trim() || undefined,
+                    }),
                 }),
             });
             const json = await res.json();
@@ -820,6 +841,8 @@ export function UnifiedActionDrawer({
     const canSubmit =
         !!newActionResult &&
         (!noteRequiredForResult || newActionNote.trim().length > 0) &&
+        !(newActionResult === "MEETING_BOOKED" && (!rdvDate || !meetingType)) &&
+        !(newActionResult === "MEETING_BOOKED" && meetingType === "PHYSIQUE" && !meetingAddress.trim()) &&
         !newActionSaving;
 
     const visibleActions = historyExpanded ? actions : actions.slice(0, 5);
@@ -1933,64 +1956,145 @@ export function UnifiedActionDrawer({
                                             aria-label="Date de rappel"
                                             className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5"
                                         >
-                                            <label
-                                                htmlFor="callback-date"
-                                                className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-2"
-                                            >
-                                                <Clock className="w-4 h-4 text-amber-600" aria-hidden="true" />
-                                                Date de rappel
-                                            </label>
-                                            <input
-                                                id="callback-date"
-                                                type="datetime-local"
+                                            <DateTimePicker
+                                                label="Date de rappel"
                                                 value={newCallbackDateValue}
-                                                onChange={(e) => setNewCallbackDateValue(e.target.value)}
+                                                onChange={setNewCallbackDateValue}
+                                                placeholder="Choisir date et heure du rappel…"
                                                 min={new Date().toISOString().slice(0, 16)}
-                                                className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400"
+                                                triggerClassName="border-amber-200 focus:ring-amber-400/40 focus:border-amber-400"
                                             />
+                                            <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+                                                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                                Optionnel. Vous pouvez aussi indiquer la date dans la note.
+                                            </p>
                                         </div>
                                     )}
 
-                                    {/* Contextual: meeting booking */}
-                                    {newActionResult === "MEETING_BOOKED" &&
-                                        clientBookingUrl &&
-                                        contactId &&
-                                        contact && (
-                                            <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3.5 space-y-3">
-                                                {/* Date / time picker — required before opening the calendar */}
+                                    {/* Contextual: meeting booking — always shown for MEETING_BOOKED */}
+                                    {newActionResult === "MEETING_BOOKED" && (
+                                        <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3.5 space-y-3">
+                                            {/* Date / time picker — always required */}
+                                            <div>
+                                                <DateTimePicker
+                                                    label={
+                                                        <>
+                                                            <Calendar className="w-4 h-4 text-indigo-600 inline-block mr-2" aria-hidden="true" />
+                                                            Date et heure du RDV
+                                                            <span className="text-red-500" aria-hidden="true"> *</span>
+                                                        </>
+                                                    }
+                                                    value={rdvDate}
+                                                    onChange={setRdvDate}
+                                                    placeholder="Choisir date et heure du RDV…"
+                                                    min={new Date().toISOString().slice(0, 16)}
+                                                    triggerClassName="border-indigo-200 focus:ring-indigo-400/40 focus:border-indigo-400"
+                                                />
+                                            </div>
+                                            {/* Type de RDV */}
+                                            <div>
+                                                <label className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-2">
+                                                    Type de RDV
+                                                    <span className="text-red-500" aria-hidden="true">*</span>
+                                                </label>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {(["VISIO", "PHYSIQUE", "TELEPHONIQUE"] as const).map((type) => (
+                                                        <button
+                                                            key={type}
+                                                            type="button"
+                                                            onClick={() => setMeetingType(type)}
+                                                            className={cn(
+                                                                "inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors",
+                                                                meetingType === type
+                                                                    ? "border-indigo-500 bg-indigo-100 text-indigo-800"
+                                                                    : "border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/50"
+                                                            )}
+                                                        >
+                                                            {type === "VISIO" && <Video className="w-4 h-4" />}
+                                                            {type === "PHYSIQUE" && <MapPin className="w-4 h-4" />}
+                                                            {type === "TELEPHONIQUE" && <Phone className="w-4 h-4" />}
+                                                            {type === "VISIO" && "Visio"}
+                                                            {type === "PHYSIQUE" && "Physique"}
+                                                            {type === "TELEPHONIQUE" && "Téléphonique"}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            {meetingType === "VISIO" && (
                                                 <div>
-                                                    <label
-                                                        htmlFor="rdv-date"
-                                                        className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-2"
-                                                    >
-                                                        <Calendar className="w-4 h-4 text-indigo-600" aria-hidden="true" />
-                                                        Date et heure du RDV
-                                                        <span className="text-red-500" aria-hidden="true">*</span>
+                                                    <label htmlFor="meeting-join-url" className="block text-sm font-medium text-slate-700 mb-1">
+                                                        Lien de rejoindre
+                                                        <span className="text-slate-400 ml-1 text-xs font-normal">(optionnel)</span>
                                                     </label>
                                                     <input
-                                                        id="rdv-date"
-                                                        type="datetime-local"
-                                                        value={rdvDate}
-                                                        onChange={(e) => setRdvDate(e.target.value)}
-                                                        min={new Date().toISOString().slice(0, 16)}
+                                                        id="meeting-join-url"
+                                                        type="url"
+                                                        value={meetingJoinUrl}
+                                                        onChange={(e) => setMeetingJoinUrl(e.target.value)}
+                                                        placeholder="Récupéré automatiquement depuis le calendrier si disponible"
                                                         className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400"
                                                     />
                                                     <p className="text-xs text-slate-500 mt-1.5">
-                                                        Sélectionnez la date avant d&apos;ouvrir le calendrier client.
+                                                        Si le calendrier renvoie le lien visio après réservation, il sera enregistré automatiquement.
                                                     </p>
                                                 </div>
-                                                <Button
-                                                    type="button"
-                                                    variant="secondary"
-                                                    onClick={() => setShowBookingDrawer(true)}
-                                                    disabled={!rdvDate}
-                                                    className="gap-2 w-full"
-                                                >
-                                                    <Calendar className="w-4 h-4" aria-hidden="true" />
-                                                    Ouvrir le calendrier client
-                                                </Button>
-                                            </div>
-                                        )}
+                                            )}
+                                            {meetingType === "PHYSIQUE" && (
+                                                <div>
+                                                    <label htmlFor="meeting-address" className="block text-sm font-medium text-slate-700 mb-1">
+                                                        Adresse
+                                                        <span className="text-red-500 ml-0.5">*</span>
+                                                    </label>
+                                                    <input
+                                                        id="meeting-address"
+                                                        type="text"
+                                                        value={meetingAddress}
+                                                        onChange={(e) => setMeetingAddress(e.target.value)}
+                                                        placeholder="Adresse du rendez-vous"
+                                                        className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400"
+                                                    />
+                                                </div>
+                                            )}
+                                            {meetingType === "TELEPHONIQUE" && (
+                                                <div>
+                                                    <label htmlFor="meeting-phone" className="block text-sm font-medium text-slate-700 mb-1">
+                                                        Numéro à appeler
+                                                    </label>
+                                                    <input
+                                                        id="meeting-phone"
+                                                        type="tel"
+                                                        value={meetingPhone || (contact?.phone ?? "")}
+                                                        onChange={(e) => setMeetingPhone(e.target.value)}
+                                                        placeholder={contact?.phone ?? "Numéro du contact"}
+                                                        className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400"
+                                                    />
+                                                    <p className="text-xs text-slate-500 mt-1">Par défaut : téléphone du contact</p>
+                                                </div>
+                                            )}
+                                            {/* Calendar button — only when a booking URL exists */}
+                                            {clientBookingUrl && contactId && contact && (
+                                                <>
+                                                    <p className="text-xs text-slate-500">
+                                                        Sélectionnez la date et le type avant d&apos;ouvrir le calendrier client.
+                                                    </p>
+                                                    <Button
+                                                        type="button"
+                                                        variant="secondary"
+                                                        onClick={() => setShowBookingDrawer(true)}
+                                                        disabled={
+                                                            !rdvDate ||
+                                                            !meetingType ||
+                                                            (meetingType === "PHYSIQUE" && !meetingAddress.trim())
+                                                        }
+                                                        className="gap-2 w-full"
+                                                    >
+                                                        <Calendar className="w-4 h-4" aria-hidden="true" />
+                                                        Ouvrir le calendrier client
+                                                    </Button>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* Note */}
                                     <div>
@@ -2351,11 +2455,20 @@ export function UnifiedActionDrawer({
                         companyName: company?.name ?? undefined,
                     }}
                     rdvDate={rdvDate ? new Date(rdvDate).toISOString() : undefined}
+                    meetingType={meetingType || undefined}
+                    meetingAddress={meetingType === "PHYSIQUE" ? meetingAddress : undefined}
+                    meetingJoinUrl={meetingType === "VISIO" ? meetingJoinUrl : undefined}
+                    meetingPhone={meetingType === "TELEPHONIQUE" ? (meetingPhone || contact.phone || undefined) : undefined}
+                    interlocuteurs={clientInterlocuteurs}
                     onBookingSuccess={() => {
                         setShowBookingDrawer(false);
                         setNewActionResult("");
                         setNewActionNote("");
                         setRdvDate("");
+                        setMeetingType("");
+                        setMeetingJoinUrl("");
+                        setMeetingAddress("");
+                        setMeetingPhone("");
                         onActionRecorded?.();
                         setActionsLoading(true);
                         fetch(`/api/actions?contactId=${contactId}&limit=10`)

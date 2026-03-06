@@ -81,33 +81,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             continue;
         }
 
-        // Check for overlaps
-        const overlapping = await prisma.scheduleBlock.findFirst({
-            where: {
-                sdrId: block.sdrId,
-                date: newDate,
-                status: { not: 'CANCELLED' },
-                OR: [
-                    {
-                        startTime: { lte: block.startTime },
-                        endTime: { gt: block.startTime },
-                    },
-                    {
-                        startTime: { lt: block.endTime },
-                        endTime: { gte: block.endTime },
-                    },
-                ],
-            },
-        });
-
-        if (overlapping) {
-            errors.push({
-                sdrId: block.sdrId,
-                date: newDate.toISOString(),
-                reason: 'Chevauchement détecté',
-            });
-            continue;
-        }
+        // Overlapping blocks are allowed when copying a week. Conflicts remain visible
+        // in planning instead of blocking the duplicate / overlapping placement.
 
         try {
             const newBlock = await prisma.scheduleBlock.create({

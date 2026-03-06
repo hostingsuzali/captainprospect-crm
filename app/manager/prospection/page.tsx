@@ -463,6 +463,7 @@ export default function ManagerProspectionPage() {
     const { error: showError, success: showSuccess } = useToast();
     const [sdrOptions, setSdrOptions] = useState<{ id: string; name: string }[]>([]);
     const [drawerAction, setDrawerAction] = useState<ActionRecord | null>(null);
+    const [drawerClientBookingUrl, setDrawerClientBookingUrl] = useState<string>("");
     const liveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // ── table state ─────────────────────────────────────────────────────────
@@ -511,6 +512,23 @@ export default function ManagerProspectionPage() {
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
     }, []);
+
+    // ── fetch client booking URL when drawer opens (for MEETING_BOOKED flow) ──
+    useEffect(() => {
+        if (!drawerAction || !selectedMission?.client?.id) {
+            setDrawerClientBookingUrl("");
+            return;
+        }
+        let cancelled = false;
+        fetch(`/api/clients/${selectedMission.client.id}`)
+            .then(r => r.json())
+            .then(j => {
+                if (!cancelled && j.success && j.data?.bookingUrl) setDrawerClientBookingUrl(j.data.bookingUrl);
+                else if (!cancelled) setDrawerClientBookingUrl("");
+            })
+            .catch(() => { if (!cancelled) setDrawerClientBookingUrl(""); });
+        return () => { cancelled = true; };
+    }, [drawerAction, selectedMission?.client?.id]);
 
     // ── fetch mission data ───────────────────────────────────────────────────
     const fetchMissionData = useCallback(async (missionId: string, silent = false) => {
@@ -1465,6 +1483,7 @@ export default function ManagerProspectionPage() {
                     companyId={drawerAction.companyId || drawerAction.contact?.company?.id || ""}
                     missionId={selectedMission.id}
                     missionName={selectedMission.name}
+                    clientBookingUrl={drawerClientBookingUrl || undefined}
                     onActionRecorded={() => fetchMissionData(selectedMission.id, true)}
                     onContactSelect={(newContactId) => {
                         // Switch drawer context to the new contact

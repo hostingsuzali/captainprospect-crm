@@ -103,35 +103,8 @@ export const PUT = withErrorHandler(async (request: NextRequest, { params }: Rou
         return errorResponse('L\'heure de début doit être avant l\'heure de fin', 400);
     }
 
-    // Check for overlapping blocks (excluding current block)
-    if (data.startTime || data.endTime || data.date) {
-        const overlapping = await prisma.scheduleBlock.findFirst({
-            where: {
-                id: { not: id },
-                sdrId: existingBlock.sdrId,
-                date: newDate,
-                status: { not: 'CANCELLED' },
-                OR: [
-                    {
-                        startTime: { lte: newStartTime },
-                        endTime: { gt: newStartTime },
-                    },
-                    {
-                        startTime: { lt: newEndTime },
-                        endTime: { gte: newEndTime },
-                    },
-                    {
-                        startTime: { gte: newStartTime },
-                        endTime: { lte: newEndTime },
-                    },
-                ],
-            },
-        });
-
-        if (overlapping) {
-            return errorResponse('Ce créneau chevauche un bloc existant', 409);
-        }
-    }
+    // Overlapping blocks are allowed: updates can create conflicts and those conflicts
+    // are handled by planning conflict reporting rather than by blocking the change.
 
     const block = await prisma.scheduleBlock.update({
         where: { id },

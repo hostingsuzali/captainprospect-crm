@@ -182,7 +182,7 @@ body {
 /* Ensure form inputs and email content have readable dark text on light backgrounds.
    Body uses --foreground (light) which would make text invisible on white inputs. */
 input:not(.input),
-textarea:not(.input),
+textarea:not(.input):not(.code),
 select:not(.input) {
     color: #0f172a;
 }

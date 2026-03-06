@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Card, Badge, Button, Modal, ModalFooter, Select, DataTable, useToast, TableSkeleton, CardSkeleton, EmptyState } from "@/components/ui";
+import { Card, Badge, Button, Modal, ModalFooter, Select, DataTable, useToast, TableSkeleton, CardSkeleton, EmptyState, DateTimePicker } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
 import {
@@ -1262,13 +1262,13 @@ export default function SDRCallbacksPage() {
                             </div>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Nouvelle date et heure</label>
-                            <input
-                                type="datetime-local"
+                            <DateTimePicker
+                                label="Nouvelle date et heure"
                                 value={rescheduleDateValue}
-                                onChange={(e) => setRescheduleDateValue(e.target.value)}
+                                onChange={setRescheduleDateValue}
+                                placeholder="Choisir date et heure…"
                                 min={new Date().toISOString().slice(0, 16)}
-                                className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                triggerClassName="border-amber-200 focus:ring-amber-400/40 focus:border-amber-400"
                             />
                         </div>
                         <ModalFooter>

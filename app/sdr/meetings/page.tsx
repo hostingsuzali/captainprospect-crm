@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Button, Select, Drawer, Modal, ConfirmModal, ContextMenu, useContextMenu, useToast } from "@/components/ui";
+import { Button, Select, Drawer, Modal, ConfirmModal, ContextMenu, useContextMenu, useToast, DateTimePicker } from "@/components/ui";
 import { getPresetRange, toISO } from "@/components/dashboard/DateRangeFilter";
 import {
     Calendar,
@@ -21,6 +21,8 @@ import {
     Trash2,
     Download,
     Circle,
+    MapPin,
+    Search,
 } from "lucide-react";
 import {
     MEETING_CANCELLATION_REASONS,
@@ -43,6 +45,8 @@ interface Meeting {
     cancellationReason?: string;
     meetingType?: "VISIO" | "PHYSIQUE" | "TELEPHONIQUE" | null;
     meetingAddress?: string | null;
+    meetingJoinUrl?: string | null;
+    meetingPhone?: string | null;
     contact: {
         id: string;
         firstName: string | null;
@@ -99,12 +103,12 @@ type RdvStatus = "upcoming" | "past" | "rescheduled" | "cancelled";
 
 function getRdvStatus(m: Meeting): RdvStatus {
     if (m.result === "MEETING_CANCELLED") return "cancelled";
-    const meetingDate = m.callbackDate ? new Date(m.callbackDate) : new Date(m.createdAt);
-    return meetingDate > new Date() ? "upcoming" : "past";
+    if (!m.callbackDate) return "upcoming";
+    return new Date(m.callbackDate) > new Date() ? "upcoming" : "past";
 }
 
-function getMeetingDisplayDate(m: Meeting): Date {
-    return m.callbackDate ? new Date(m.callbackDate) : new Date(m.createdAt);
+function getMeetingDisplayDate(m: Meeting): Date | null {
+    return m.callbackDate ? new Date(m.callbackDate) : null;
 }
 
 function getInitials(m: Meeting): string {
@@ -129,6 +133,7 @@ export default function SDRMeetingsPage() {
     const [meetings, setMeetings] = useState<Meeting[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<RdvStatus | "all">("all");
+    const [query, setQuery] = useState("");
 
     // Fetch meetings
     useEffect(() => {
@@ -165,9 +170,34 @@ export default function SDRMeetingsPage() {
 
     // Filtered meetings by status tab
     const filteredMeetings = useMemo(() => {
-        if (statusFilter === "all") return meetings;
-        return meetings.filter((m) => getRdvStatus(m) === statusFilter);
-    }, [meetings, statusFilter]);
+        const statusScoped = statusFilter === "all"
+            ? meetings
+            : meetings.filter((m) => getRdvStatus(m) === statusFilter);
+
+        const queryScoped = query.trim()
+            ? statusScoped.filter((m) => {
+                const haystack = [
+                    m.contact.firstName,
+                    m.contact.lastName,
+                    m.contact.company.name,
+                    m.contact.company.industry,
+                    m.mission?.name,
+                    m.list?.name,
+                ]
+                    .filter(Boolean)
+                    .join(" ")
+                    .toLowerCase();
+
+                return haystack.includes(query.trim().toLowerCase());
+            })
+            : statusScoped;
+
+        return [...queryScoped].sort((a, b) => {
+            const da = a.callbackDate ? new Date(a.callbackDate).getTime() : 0;
+            const db = b.callbackDate ? new Date(b.callbackDate).getTime() : 0;
+            return statusFilter === "upcoming" ? da - db : db - da;
+        });
+    }, [meetings, statusFilter, query]);
     const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
     const [editNote, setEditNote] = useState("");
     const [editResult, setEditResult] = useState<MeetingResult>("MEETING_BOOKED");
@@ -196,8 +226,8 @@ export default function SDRMeetingsPage() {
     const { success: showSuccess, error: showError } = useToast();
 
     function formatScheduledDate(meeting: Meeting): string {
-        const date = meeting.callbackDate ? new Date(meeting.callbackDate) : new Date(meeting.createdAt);
-        return date.toLocaleDateString("fr-FR", {
+        if (!meeting.callbackDate) return "Date à confirmer";
+        return new Date(meeting.callbackDate).toLocaleDateString("fr-FR", {
             weekday: "short",
             day: "numeric",
             month: "short",
@@ -300,7 +330,7 @@ export default function SDRMeetingsPage() {
 
     const openRescheduleModal = (meeting: Meeting) => {
         setRescheduleMeeting(meeting);
-        const base = meeting.callbackDate ? new Date(meeting.callbackDate) : new Date(meeting.createdAt);
+        const base = meeting.callbackDate ? new Date(meeting.callbackDate) : new Date();
         setRescheduleDateValue(base.toISOString().slice(0, 16));
         setRescheduleNote("");
     };
@@ -428,116 +458,139 @@ export default function SDRMeetingsPage() {
         d.toLocaleDateString("fr-FR", { month: "short" }).toUpperCase().replace(".", "");
 
     return (
-        <div className="space-y-6 animate-fade-in p-2 pb-20">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-900 to-violet-900">
-                        Mes Rendez-vous
-                    </h1>
-                    <p className="text-slate-500 mt-1 text-sm">
-                        Consultez, qualifiez et gérez vos rendez-vous
-                    </p>
-                </div>
-                <Button variant="outline" size="sm" className="gap-2 shrink-0">
-                    <Download className="w-4 h-4" />
-                    Exporter
-                </Button>
-            </div>
+        <div className="min-h-full bg-[#F2F3F7] px-4 py-7 pb-20 sm:px-6 animate-fade-in">
+            <div className="mx-auto max-w-7xl space-y-6">
+                <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                        <h1 className="text-[2rem] leading-none tracking-tight text-slate-950 font-serif italic">
+                            Mes rendez-vous
+                        </h1>
+                        <p className="mt-2 text-sm text-slate-500">
+                            Consultez, qualifiez et gérez vos rendez-vous dans une vue proche du portail client.
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="relative min-w-[280px]">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="search"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder="Contact, entreprise, mission..."
+                                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                            />
+                        </div>
+                        <Button variant="outline" size="sm" className="h-10 gap-2 rounded-xl border-slate-200 bg-white px-4 shadow-sm shrink-0">
+                            <Download className="w-4 h-4" />
+                            Exporter
+                        </Button>
+                    </div>
+                </header>
 
-            {/* Summary stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                    { key: "upcoming", label: "À venir", val: stats.upcoming, icon: "calendar", color: "emerald" },
-                    { key: "past", label: "Passés", val: stats.past, icon: "clock", color: "slate" },
-                    { key: "rescheduled", label: "Reportés", val: stats.rescheduled, icon: "calendar-clock", color: "amber" },
-                    { key: "cancelled", label: "Annulés", val: stats.cancelled, icon: "x-circle", color: "red" },
-                ].map((s) => (
-                    <div
-                        key={s.key}
-                        className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-all flex items-center gap-3"
-                    >
-                        <div
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    {[
+                        { key: "upcoming", label: "À venir", val: stats.upcoming, stripe: "bg-emerald-500", activeBg: "bg-emerald-50/70", activeBorder: "border-emerald-200" },
+                        { key: "past", label: "Passés", val: stats.past, stripe: "bg-slate-300", activeBg: "bg-slate-100/80", activeBorder: "border-slate-200" },
+                        { key: "rescheduled", label: "Reportés", val: stats.rescheduled, stripe: "bg-amber-500", activeBg: "bg-amber-50/80", activeBorder: "border-amber-200" },
+                        { key: "cancelled", label: "Annulés", val: stats.cancelled, stripe: "bg-red-500", activeBg: "bg-red-50/80", activeBorder: "border-red-200" },
+                    ].map((s) => {
+                        const isActive = statusFilter === s.key;
+                        return (
+                            <button
+                                key={s.key}
+                                type="button"
+                                onClick={() => setStatusFilter(s.key as RdvStatus)}
+                                className={cn(
+                                    "flex items-center gap-3 rounded-2xl border bg-white px-4 py-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                                    isActive ? `${s.activeBg} ${s.activeBorder}` : "border-slate-200"
+                                )}
+                            >
+                                <div className={cn("h-10 w-1 rounded-full", s.stripe)} />
+                                <div>
+                                    <div className="text-2xl font-extrabold tracking-tight text-slate-900">{s.val}</div>
+                                    <div className="text-xs font-medium text-slate-500">{s.label}</div>
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div className="inline-flex flex-wrap gap-1 rounded-2xl bg-black/[0.04] p-1">
+                    {(["all", "upcoming", "past", "rescheduled", "cancelled"] as const).map((f) => (
+                        <button
+                            key={f}
+                            type="button"
+                            onClick={() => setStatusFilter(f)}
                             className={cn(
-                                "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
-                                s.color === "emerald" && "bg-emerald-50",
-                                s.color === "slate" && "bg-slate-100",
-                                s.color === "amber" && "bg-amber-50",
-                                s.color === "red" && "bg-red-50"
+                                "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition",
+                                statusFilter === f
+                                    ? "bg-white text-slate-900 shadow-sm font-semibold"
+                                    : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
                             )}
                         >
-                            <Calendar className={cn("w-4 h-4", s.color === "emerald" && "text-emerald-600", s.color === "slate" && "text-slate-600", s.color === "amber" && "text-amber-600", s.color === "red" && "text-red-600")} />
-                        </div>
-                        <div>
-                            <div className={cn("text-xl font-extrabold tracking-tight", s.color === "emerald" && "text-emerald-700", s.color === "slate" && "text-slate-700", s.color === "amber" && "text-amber-700", s.color === "red" && "text-red-700")}>
-                                {s.val}
-                            </div>
-                            <div className="text-xs text-slate-500">{s.label}</div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Filter tabs */}
-            <div className="flex flex-wrap gap-1 p-1.5 bg-white rounded-xl border border-slate-200 shadow-sm w-fit">
-                {(["all", "upcoming", "past", "rescheduled", "cancelled"] as const).map((f) => (
-                    <button
-                        key={f}
-                        type="button"
-                        onClick={() => setStatusFilter(f)}
-                        className={cn(
-                            "px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2",
-                            statusFilter === f
-                                ? "bg-indigo-600 text-white shadow-md"
-                                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
-                        )}
-                    >
-                        {f === "all" ? "Tous" : f === "upcoming" ? "À venir" : f === "past" ? "Passés" : f === "rescheduled" ? "Reportés" : "Annulés"}
-                        <span className={cn("text-xs px-1.5 py-0.5 rounded-full", statusFilter === f ? "bg-white/20" : "bg-slate-200 text-slate-600")}>
-                            {f === "all" ? stats.all : f === "upcoming" ? stats.upcoming : f === "past" ? stats.past : f === "rescheduled" ? stats.rescheduled : stats.cancelled}
-                        </span>
-                    </button>
-                ))}
-            </div>
-
-            {/* List */}
-            {filteredMeetings.length === 0 ? (
-                <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
-                    <Calendar className="w-14 h-14 mx-auto mb-3 text-slate-300" strokeWidth={1.5} />
-                    <h3 className="text-lg font-semibold text-slate-800">Aucun rendez-vous</h3>
-                    <p className="text-slate-500 mt-1 max-w-sm mx-auto text-sm">
-                        {statusFilter === "all"
-                            ? "Vos rendez-vous validés apparaîtront ici."
-                            : statusFilter === "upcoming"
-                                ? "Aucun rendez-vous à venir."
-                                : statusFilter === "past"
-                                    ? "Aucun rendez-vous passé."
-                                    : statusFilter === "rescheduled"
-                                        ? "Aucun rendez-vous reporté."
-                                        : "Aucun rendez-vous annulé."}
-                    </p>
+                            {f === "all" ? "Tous" : f === "upcoming" ? "À venir" : f === "past" ? "Passés" : f === "rescheduled" ? "Reportés" : "Annulés"}
+                            <span className={cn(
+                                "rounded-full px-1.5 py-0.5 text-[11px] font-bold",
+                                statusFilter === f ? "bg-indigo-50 text-indigo-700" : "bg-slate-200 text-slate-600"
+                            )}>
+                                {f === "all" ? stats.all : f === "upcoming" ? stats.upcoming : f === "past" ? stats.past : f === "rescheduled" ? stats.rescheduled : stats.cancelled}
+                            </span>
+                        </button>
+                    ))}
                 </div>
-            ) : (
-                <div className="flex flex-col gap-3">
+
+                {filteredMeetings.length === 0 ? (
+                    <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+                        <Calendar className="mx-auto mb-3 h-12 w-12 text-slate-300" strokeWidth={1.5} />
+                        <h3 className="text-lg font-semibold text-slate-800">
+                            {query ? "Aucun résultat" : "Aucun rendez-vous"}
+                        </h3>
+                        <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+                            {query
+                                ? "Essayez une autre recherche."
+                                : statusFilter === "all"
+                                    ? "Vos rendez-vous validés apparaîtront ici."
+                                    : statusFilter === "upcoming"
+                                        ? "Aucun rendez-vous à venir."
+                                        : statusFilter === "past"
+                                            ? "Aucun rendez-vous passé."
+                                            : statusFilter === "rescheduled"
+                                                ? "Aucun rendez-vous reporté."
+                                                : "Aucun rendez-vous annulé."}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
                     {filteredMeetings.map((meeting) => {
                         const d = getMeetingDisplayDate(meeting);
                         const status = getRdvStatus(meeting);
                         return (
                             <div
                                 key={meeting.id}
-                                className="group bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer"
+                                className="group overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md cursor-pointer"
                                 onClick={() => setSelectedMeeting(meeting)}
                                 onContextMenu={(e) => handleContextMenu(e, meeting)}
                             >
                                 <div className="flex flex-col sm:flex-row">
-                                    {/* Date col - ticket style */}
-                                    <div className="relative sm:w-20 shrink-0 p-4 flex flex-col items-center justify-center bg-gradient-to-br from-violet-500 to-violet-600 text-white border-b sm:border-b-0 sm:border-r-0 border-violet-400/30 shadow-[2px_0_8px_rgba(139,92,246,0.25)] after:absolute after:right-0 after:top-1/2 after:-translate-y-1/2 after:w-4 after:h-4 after:rounded-full after:bg-white after:content-[''] sm:rounded-l-xl">
-                                        <div className="text-2xl font-extrabold tracking-tight text-white drop-shadow-sm">{d.getDate()}</div>
-                                        <div className="text-[11px] font-semibold text-violet-100 uppercase tracking-wide mt-0.5">{formatCardMonth(d)}</div>
-                                        <div className="text-xs font-semibold text-violet-200 mt-1">{formatCardTime(d)}</div>
+                                    <div className="flex shrink-0 flex-row items-center justify-center gap-3 border-b border-slate-100 bg-slate-50 px-5 py-4 sm:w-[110px] sm:flex-col sm:border-b-0 sm:border-r">
+                                        {d ? (
+                                            <>
+                                                <div className="text-center">
+                                                    <div className="text-[28px] font-extrabold leading-none tracking-tight text-slate-900">{d.getDate()}</div>
+                                                    <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{formatCardMonth(d)}</div>
+                                                </div>
+                                                <div className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
+                                                    {formatCardTime(d)}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="text-center">
+                                                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Date à</div>
+                                                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">confirmer</div>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {/* Main */}
                                     <div className="flex-1 p-4 sm:p-5 flex flex-col gap-3">
                                         <div className="flex flex-wrap items-center gap-2">
                                             {statusBadge(status)}
@@ -603,6 +656,25 @@ export default function SDRMeetingsPage() {
                                             </div>
                                         </div>
 
+                                        {/* Format action links on card */}
+                                        <div className="flex flex-wrap gap-2">
+                                            {meeting.meetingType === "VISIO" && meeting.meetingJoinUrl && (
+                                                <a href={meeting.meetingJoinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline bg-indigo-50 px-2.5 py-1.5 rounded-lg border border-indigo-100" onClick={(e) => e.stopPropagation()}>
+                                                    <Video className="w-3.5 h-3.5" /> Rejoindre
+                                                </a>
+                                            )}
+                                            {meeting.meetingType === "PHYSIQUE" && meeting.meetingAddress && (
+                                                <a href={`https://maps.google.com/?q=${encodeURIComponent(meeting.meetingAddress)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline bg-indigo-50 px-2.5 py-1.5 rounded-lg border border-indigo-100" onClick={(e) => e.stopPropagation()}>
+                                                    <MapPin className="w-3.5 h-3.5" /> Itinéraire
+                                                </a>
+                                            )}
+                                            {meeting.meetingType === "TELEPHONIQUE" && (meeting.meetingPhone || meeting.contact.phone) && (
+                                                <a href={`tel:${meeting.meetingPhone || meeting.contact.phone}`} className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline bg-indigo-50 px-2.5 py-1.5 rounded-lg border border-indigo-100" onClick={(e) => e.stopPropagation()}>
+                                                    <Phone className="w-3.5 h-3.5" /> Appeler
+                                                </a>
+                                            )}
+                                        </div>
+
                                         {meeting.note && (
                                             <div className="text-sm text-slate-600 bg-slate-50 border-l-2 border-slate-300 pl-3 py-2 rounded-r italic">
                                                 &ldquo;{meeting.note}&rdquo;
@@ -610,12 +682,11 @@ export default function SDRMeetingsPage() {
                                         )}
                                     </div>
 
-                                    {/* Actions */}
-                                    <div className="sm:w-40 shrink-0 p-4 border-t sm:border-t-0 sm:border-l border-slate-200 flex flex-col justify-center gap-2">
+                                    <div className="sm:w-40 shrink-0 p-4 border-t sm:border-t-0 sm:border-l border-slate-100 flex flex-col justify-center gap-2 bg-slate-50/55">
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            className="w-full justify-center gap-1.5 text-xs"
+                                            className="w-full justify-center gap-1.5 text-xs rounded-xl border-slate-200 bg-white"
                                             onClick={(e) => { e.stopPropagation(); setSelectedMeeting(meeting); }}
                                         >
                                             <Eye className="w-3.5 h-3.5" />
@@ -626,7 +697,7 @@ export default function SDRMeetingsPage() {
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="w-full justify-center gap-1.5 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                                                    className="w-full justify-center gap-1.5 text-xs rounded-xl border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50"
                                                     onClick={(e) => { e.stopPropagation(); openRescheduleModal(meeting); }}
                                                 >
                                                     <CalendarClock className="w-3.5 h-3.5" />
@@ -635,7 +706,7 @@ export default function SDRMeetingsPage() {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    className="w-full justify-center gap-1.5 text-xs text-amber-700 hover:bg-amber-50"
+                                                    className="w-full justify-center gap-1.5 text-xs rounded-xl text-amber-700 hover:bg-amber-50"
                                                     onClick={(e) => { e.stopPropagation(); openCancelModal(meeting); }}
                                                 >
                                                     <XCircle className="w-3.5 h-3.5" />
@@ -648,8 +719,9 @@ export default function SDRMeetingsPage() {
                             </div>
                         );
                     })}
-                </div>
-            )}
+                    </div>
+                )}
+            </div>
 
             {/* Meeting Detail Drawer - Reference style (two-column, clean sections) */}
             {selectedMeeting && (
@@ -828,6 +900,22 @@ export default function SDRMeetingsPage() {
                                             {selectedMeeting.meetingType === "TELEPHONIQUE" && <><Phone className="w-4 h-4 text-indigo-500 shrink-0" /><span>Appel téléphonique</span></>}
                                             {!selectedMeeting.meetingType && <><Video className="w-4 h-4 text-indigo-500 shrink-0" /><span>Visio Conférence</span></>}
                                         </div>
+                                        {/* Contextual action buttons by format */}
+                                        {selectedMeeting.meetingType === "VISIO" && selectedMeeting.meetingJoinUrl && (
+                                            <a href={selectedMeeting.meetingJoinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors">
+                                                <Video className="w-4 h-4" /> Rejoindre
+                                            </a>
+                                        )}
+                                        {selectedMeeting.meetingType === "PHYSIQUE" && selectedMeeting.meetingAddress && (
+                                            <a href={`https://maps.google.com/?q=${encodeURIComponent(selectedMeeting.meetingAddress)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">
+                                                <MapPin className="w-4 h-4" /> Itinéraire
+                                            </a>
+                                        )}
+                                        {selectedMeeting.meetingType === "TELEPHONIQUE" && (selectedMeeting.meetingPhone || selectedMeeting.contact.phone) && (
+                                            <a href={`tel:${selectedMeeting.meetingPhone || selectedMeeting.contact.phone}`} className="inline-flex items-center gap-2 mt-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">
+                                                <Phone className="w-4 h-4" /> Appeler
+                                            </a>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -939,12 +1027,12 @@ export default function SDRMeetingsPage() {
             >
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Nouvelle date et heure *</label>
-                        <input
-                            type="datetime-local"
+                        <DateTimePicker
+                            label="Nouvelle date et heure *"
                             value={rescheduleDateValue}
-                            onChange={(e) => setRescheduleDateValue(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            onChange={setRescheduleDateValue}
+                            placeholder="Choisir date et heure…"
+                            min={new Date().toISOString().slice(0, 16)}
                         />
                     </div>
                     <div>

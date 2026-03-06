@@ -24,6 +24,8 @@ import {
     Calendar,
     Plus,
     Trash2,
+    Video,
+    MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BookingDrawer } from "@/components/sdr/BookingDrawer";
@@ -121,8 +123,19 @@ export function ContactDrawer({
     const [newActionNote, setNewActionNote] = useState("");
     const [newActionSaving, setNewActionSaving] = useState(false);
     const [clientBookingUrl, setClientBookingUrl] = useState<string>("");
+    const [clientInterlocuteurs, setClientInterlocuteurs] = useState<Array<{
+        id: string; firstName: string; lastName: string; title?: string;
+        emails: Array<{ value: string; label: string; isPrimary: boolean }>;
+        phones: Array<{ value: string; label: string; isPrimary: boolean }>;
+        bookingLinks: Array<{ label: string; url: string; durationMinutes: number }>;
+        isActive: boolean;
+    }>>([]);
     const [showBookingDrawer, setShowBookingDrawer] = useState(false);
     const [rdvDate, setRdvDate] = useState("");
+    const [meetingType, setMeetingType] = useState<"VISIO" | "PHYSIQUE" | "TELEPHONIQUE" | "">("");
+    const [meetingJoinUrl, setMeetingJoinUrl] = useState("");
+    const [meetingAddress, setMeetingAddress] = useState("");
+    const [meetingPhone, setMeetingPhone] = useState("");
     const [newCallbackDateValue, setNewCallbackDateValue] = useState("");
     const [showQuickEmailModal, setShowQuickEmailModal] = useState(false);
     const [missionName, setMissionName] = useState<string>("");
@@ -177,10 +190,11 @@ export function ContactDrawer({
             .finally(() => setCampaignsLoading(false));
     }, [effectiveMissionId, isCreating]);
 
-    // Fetch client booking URL and mission name (for MEETING_BOOKED and QuickEmailModal)
+    // Fetch client booking URL, interlocuteurs, and mission name (for MEETING_BOOKED and QuickEmailModal)
     useEffect(() => {
         if (!effectiveMissionId || isCreating) {
             setClientBookingUrl("");
+            setClientInterlocuteurs([]);
             setMissionName("");
             return;
         }
@@ -189,14 +203,19 @@ export function ContactDrawer({
             .then((json) => {
                 if (json.success && json.data) {
                     setClientBookingUrl(json.data.client?.bookingUrl ?? "");
+                    setClientInterlocuteurs(
+                        Array.isArray(json.data.client?.interlocuteurs) ? json.data.client.interlocuteurs : []
+                    );
                     setMissionName(json.data.name ?? "");
                 } else {
                     setClientBookingUrl("");
+                    setClientInterlocuteurs([]);
                     setMissionName("");
                 }
             })
             .catch(() => {
                 setClientBookingUrl("");
+                setClientInterlocuteurs([]);
                 setMissionName("");
             });
     }, [effectiveMissionId, isCreating]);
@@ -1072,7 +1091,7 @@ export function ContactDrawer({
                                     onChange={setNewActionResult}
                                 />
                                 {/* Meeting booké: show client booking drawer */}
-                                {newActionResult === "MEETING_BOOKED" && clientBookingUrl && (
+                                {newActionResult === "MEETING_BOOKED" && (clientBookingUrl || clientInterlocuteurs.some(i => (i.bookingLinks?.length ?? 0) > 0)) && contact && (
                                     <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-3">
                                         <div className="flex items-center gap-2">
                                             <Calendar className="w-5 h-5 text-indigo-600" />
@@ -1094,11 +1113,82 @@ export function ContactDrawer({
                                                 className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300"
                                             />
                                         </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Type de RDV <span className="text-red-500">*</span></label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {(["VISIO", "PHYSIQUE", "TELEPHONIQUE"] as const).map((type) => (
+                                                    <button
+                                                        key={type}
+                                                        type="button"
+                                                        onClick={() => setMeetingType(type)}
+                                                        className={cn(
+                                                            "inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors",
+                                                            meetingType === type ? "border-indigo-500 bg-indigo-100 text-indigo-800" : "border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/50"
+                                                        )}
+                                                    >
+                                                        {type === "VISIO" && <Video className="w-4 h-4" />}
+                                                        {type === "PHYSIQUE" && <MapPin className="w-4 h-4" />}
+                                                        {type === "TELEPHONIQUE" && <Phone className="w-4 h-4" />}
+                                                        {type === "VISIO" && "Visio"}
+                                                        {type === "PHYSIQUE" && "Physique"}
+                                                        {type === "TELEPHONIQUE" && "Téléphonique"}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        {meetingType === "VISIO" && (
+                                            <div>
+                                                <label htmlFor="contact-meeting-join-url" className="block text-xs font-medium text-slate-700 mb-1">
+                                                    Lien de rejoindre <span className="text-slate-400 font-normal">(optionnel)</span>
+                                                </label>
+                                                <input
+                                                    id="contact-meeting-join-url"
+                                                    type="url"
+                                                    value={meetingJoinUrl}
+                                                    onChange={(e) => setMeetingJoinUrl(e.target.value)}
+                                                    placeholder="Récupéré automatiquement depuis le calendrier si disponible"
+                                                    className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300"
+                                                />
+                                                <p className="text-xs text-slate-500 mt-1.5">
+                                                    Le lien visio sera auto-renseigné si le calendrier le renvoie après réservation.
+                                                </p>
+                                            </div>
+                                        )}
+                                        {meetingType === "PHYSIQUE" && (
+                                            <div>
+                                                <label htmlFor="contact-meeting-address" className="block text-xs font-medium text-slate-700 mb-1">Adresse <span className="text-red-500">*</span></label>
+                                                <input
+                                                    id="contact-meeting-address"
+                                                    type="text"
+                                                    value={meetingAddress}
+                                                    onChange={(e) => setMeetingAddress(e.target.value)}
+                                                    placeholder="Adresse du rendez-vous"
+                                                    className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300"
+                                                />
+                                            </div>
+                                        )}
+                                        {meetingType === "TELEPHONIQUE" && (
+                                            <div>
+                                                <label htmlFor="contact-meeting-phone" className="block text-xs font-medium text-slate-700 mb-1">Numéro à appeler</label>
+                                                <input
+                                                    id="contact-meeting-phone"
+                                                    type="tel"
+                                                    value={meetingPhone || (contact?.phone ?? "")}
+                                                    onChange={(e) => setMeetingPhone(e.target.value)}
+                                                    placeholder={contact?.phone ?? "Numéro du contact"}
+                                                    className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300"
+                                                />
+                                            </div>
+                                        )}
                                         <Button
                                             type="button"
                                             variant="secondary"
                                             onClick={() => setShowBookingDrawer(true)}
-                                            disabled={!rdvDate}
+                                            disabled={
+                                                !rdvDate ||
+                                                !meetingType ||
+                                                (meetingType === "PHYSIQUE" && !meetingAddress.trim())
+                                            }
                                             className="gap-2"
                                         >
                                             <Calendar className="w-4 h-4" />
@@ -1284,11 +1374,11 @@ export function ContactDrawer({
                 )}
 
                 {/* Booking drawer (MEETING_BOOKED) */}
-                {!isCreating && contact && clientBookingUrl && (
+                {!isCreating && contact && (clientBookingUrl || clientInterlocuteurs.some(i => (i.bookingLinks?.length ?? 0) > 0)) && (
                     <BookingDrawer
                         isOpen={showBookingDrawer}
                         onClose={() => setShowBookingDrawer(false)}
-                        bookingUrl={clientBookingUrl}
+                        bookingUrl={clientBookingUrl || ""}
                         contactId={contact.id}
                         contactName={`${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Contact"}
                         contactInfo={{
@@ -1300,9 +1390,18 @@ export function ContactDrawer({
                             companyName: contact.companyName ?? undefined,
                         }}
                         rdvDate={rdvDate ? new Date(rdvDate).toISOString() : undefined}
+                        meetingType={meetingType || undefined}
+                        meetingAddress={meetingType === "PHYSIQUE" ? meetingAddress : undefined}
+                        meetingJoinUrl={meetingType === "VISIO" ? meetingJoinUrl : undefined}
+                        meetingPhone={meetingType === "TELEPHONIQUE" ? (meetingPhone || contact.phone || undefined) : undefined}
+                        interlocuteurs={clientInterlocuteurs}
                         onBookingSuccess={() => {
                             setShowBookingDrawer(false);
                             setRdvDate("");
+                            setMeetingType("");
+                            setMeetingJoinUrl("");
+                            setMeetingAddress("");
+                            setMeetingPhone("");
                             fetch(`/api/actions?contactId=${contact.id}&limit=20`)
                                 .then((res) => res.json())
                                 .then((json) => {

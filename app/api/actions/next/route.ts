@@ -273,16 +273,23 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         });
     }
 
-    // Fetch client bookingUrl separately (handles case where column doesn't exist yet)
+    // Fetch client bookingUrl and interlocuteurs separately
     let clientBookingUrl: string | undefined = undefined;
+    let clientInterlocuteurs: Array<Record<string, unknown>> = [];
     try {
         const client = await prisma.client.findUnique({
             where: { id: next.client_id },
-            select: { bookingUrl: true },
+            select: {
+                bookingUrl: true,
+                interlocuteurs: {
+                    where: { isActive: true },
+                    orderBy: { createdAt: 'asc' },
+                },
+            },
         });
         clientBookingUrl = client?.bookingUrl || undefined;
+        clientInterlocuteurs = (client?.interlocuteurs || []) as Array<Record<string, unknown>>;
     } catch (err) {
-        // Column might not exist yet, ignore
         console.warn('Could not fetch client bookingUrl:', err);
     }
 
@@ -312,6 +319,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         channel: next.mission_channel,
         script: next.campaign_script,
         clientBookingUrl,
+        clientInterlocuteurs,
         lastAction: next.last_action_result ? {
             result: next.last_action_result,
             note: next.last_action_note,

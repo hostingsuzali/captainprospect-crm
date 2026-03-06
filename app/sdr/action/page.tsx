@@ -34,7 +34,7 @@ import {
     PenLine,
     BarChart2,
 } from "lucide-react";
-import { Card, Badge, Button, LoadingState, EmptyState, Tabs, Drawer, DataTable, Select, useToast, TableSkeleton, CardSkeleton, Modal } from "@/components/ui";
+import { Card, Badge, Button, LoadingState, EmptyState, Tabs, Drawer, DataTable, Select, useToast, TableSkeleton, CardSkeleton, Modal, DateTimePicker } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { CompanyDrawer, ContactDrawer } from "@/components/drawers";
 import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
@@ -75,6 +75,13 @@ interface NextActionData {
     channel?: Channel;
     script?: string;
     clientBookingUrl?: string;
+    clientInterlocuteurs?: Array<{
+        id: string; firstName: string; lastName: string; title?: string;
+        emails: Array<{ value: string; label: string; isPrimary: boolean }>;
+        phones: Array<{ value: string; label: string; isPrimary: boolean }>;
+        bookingLinks: Array<{ label: string; url: string; durationMinutes: number }>;
+        isActive: boolean;
+    }>;
     lastAction?: {
         result: string;
         note?: string;
@@ -898,6 +905,7 @@ export default function SDRActionPage() {
     const [unifiedDrawerMissionId, setUnifiedDrawerMissionId] = useState<string | undefined>();
     const [unifiedDrawerMissionName, setUnifiedDrawerMissionName] = useState<string | undefined>();
     const [unifiedDrawerClientBookingUrl, setUnifiedDrawerClientBookingUrl] = useState<string>("");
+    const [unifiedDrawerInterlocuteurs, setUnifiedDrawerInterlocuteurs] = useState<NextAction["clientInterlocuteurs"]>([]);
     /** Row used to open the drawer (for email modal context when "Envoie mail" is selected in drawer) */
     const [drawerRow, setDrawerRow] = useState<QueueItem | null>(null);
     const prevUnifiedDrawerOpenRef = useRef(false);
@@ -912,10 +920,11 @@ export default function SDRActionPage() {
         }
     }, [unifiedDrawerOpen, viewMode, refreshQueue]);
 
-    // Fetch client booking URL when drawer opens (for MEETING_BOOKED calendar in drawer)
+    // Fetch client booking URL and interlocuteurs when drawer opens
     useEffect(() => {
         if (!unifiedDrawerMissionId || !unifiedDrawerOpen) {
             setUnifiedDrawerClientBookingUrl("");
+            setUnifiedDrawerInterlocuteurs([]);
             return;
         }
         const controller = new AbortController();
@@ -924,15 +933,20 @@ export default function SDRActionPage() {
             .then((res) => res.json())
             .then((json) => {
                 if (signal.aborted) return;
-                if (json.success && json.data?.client?.bookingUrl) {
-                    setUnifiedDrawerClientBookingUrl(json.data.client.bookingUrl);
+                if (json.success && json.data?.client) {
+                    setUnifiedDrawerClientBookingUrl(json.data.client.bookingUrl || "");
+                    setUnifiedDrawerInterlocuteurs(
+                        Array.isArray(json.data.client.interlocuteurs) ? json.data.client.interlocuteurs : []
+                    );
                 } else {
                     setUnifiedDrawerClientBookingUrl("");
+                    setUnifiedDrawerInterlocuteurs([]);
                 }
             })
             .catch((err) => {
                 if ((err as Error).name === "AbortError") return;
                 setUnifiedDrawerClientBookingUrl("");
+                setUnifiedDrawerInterlocuteurs([]);
                 showError("Impossible de charger l'URL de réservation");
             });
         return () => controller.abort();
@@ -1833,6 +1847,7 @@ export default function SDRActionPage() {
                             missionId={unifiedDrawerMissionId}
                             missionName={unifiedDrawerMissionName}
                             clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
+                            clientInterlocuteurs={unifiedDrawerInterlocuteurs}
                             onOpenEmailModal={openEmailModalFromDrawer}
                             onActionRecorded={() => {
                                 const rowKey = unifiedDrawerContactId ?? unifiedDrawerCompanyId ?? "";
@@ -2346,22 +2361,20 @@ export default function SDRActionPage() {
                                         }
                                         return null;
                                     })()}
-                                    {currentAction.clientBookingUrl && (
+                                    {(currentAction.clientBookingUrl || (currentAction.clientInterlocuteurs?.some(i => (i.bookingLinks?.length ?? 0) > 0))) && (
                                         <div className="space-y-2">
                                             <div>
-                                                <label
-                                                    htmlFor="card-rdv-date"
-                                                    className="block text-xs font-semibold text-slate-700 mb-1.5"
-                                                >
-                                                    Date du RDV <span className="text-red-500">*</span>
-                                                </label>
-                                                <input
-                                                    id="card-rdv-date"
-                                                    type="datetime-local"
+                                                <DateTimePicker
+                                                    label={
+                                                        <>
+                                                            Date du RDV <span className="text-red-500">*</span>
+                                                        </>
+                                                    }
                                                     value={rdvDate}
-                                                    onChange={(e) => setRdvDate(e.target.value)}
+                                                    onChange={setRdvDate}
+                                                    placeholder="Choisir date et heure du RDV…"
                                                     min={new Date().toISOString().slice(0, 16)}
-                                                    className="w-full px-3 py-2 text-sm border border-indigo-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400"
+                                                    triggerClassName="border-indigo-200 focus:ring-indigo-400/40 focus:border-indigo-400"
                                                 />
                                             </div>
                                             <Button
@@ -2635,12 +2648,13 @@ export default function SDRActionPage() {
                         </div>
                     </div>
                     <div className="p-5">
-                        <input
-                            type="datetime-local"
+                        <DateTimePicker
+                            label="Date de rappel"
                             value={callbackDateValue}
-                            onChange={(e) => setCallbackDateValue(e.target.value)}
+                            onChange={setCallbackDateValue}
+                            placeholder="Choisir date et heure du rappel…"
                             min={new Date().toISOString().slice(0, 16)}
-                            className="w-full px-4 py-3 text-sm border border-amber-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-300 cursor-pointer"
+                            triggerClassName="border-amber-200 focus:ring-amber-400/40 focus:border-amber-400"
                         />
                         <p className="text-xs text-slate-500 mt-3">
                             💡 Optionnel. Vous pouvez aussi indiquer la date dans la note (ex: &quot;rappeler demain 14h&quot;).
@@ -2754,6 +2768,7 @@ export default function SDRActionPage() {
                     missionId={unifiedDrawerMissionId}
                     missionName={unifiedDrawerMissionName}
                     clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
+                    clientInterlocuteurs={unifiedDrawerInterlocuteurs}
                     onOpenEmailModal={openEmailModalFromDrawer}
                     onActionRecorded={() => {
                         const rowKey = unifiedDrawerContactId ?? unifiedDrawerCompanyId ?? "";
@@ -2768,11 +2783,11 @@ export default function SDRActionPage() {
             )}
 
             {/* Booking Drawer */}
-            {currentAction?.clientBookingUrl && currentAction.contact && (
+            {currentAction?.contact && (currentAction.clientBookingUrl || (currentAction.clientInterlocuteurs?.some(i => (i.bookingLinks?.length ?? 0) > 0))) && (
                 <BookingDrawer
                     isOpen={showBookingDrawer}
                     onClose={() => setShowBookingDrawer(false)}
-                    bookingUrl={currentAction.clientBookingUrl}
+                    bookingUrl={currentAction.clientBookingUrl || ""}
                     contactId={currentAction.contact.id}
                     contactName={`${currentAction.contact.firstName || ""} ${currentAction.contact.lastName || ""}`.trim() || "Contact"}
                     contactInfo={{
@@ -2784,6 +2799,7 @@ export default function SDRActionPage() {
                         companyName: currentAction.company?.name,
                     }}
                     rdvDate={rdvDate ? new Date(rdvDate).toISOString() : undefined}
+                    interlocuteurs={currentAction.clientInterlocuteurs}
                     onBookingSuccess={() => {
                         setShowBookingDrawer(false);
                         setRdvDate("");

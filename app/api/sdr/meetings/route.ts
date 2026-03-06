@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
             },
         });
 
-        // Transform response to match frontend expectations
+        // Transform response to match frontend expectations (include meeting format metadata)
         const transformedMeetings = meetings.map((meeting) => ({
             id: meeting.id,
             createdAt: meeting.createdAt,
@@ -133,6 +133,10 @@ export async function GET(request: NextRequest) {
             note: meeting.note || undefined,
             callbackDate: meeting.callbackDate?.toISOString() ?? null,
             cancellationReason: meeting.cancellationReason ?? undefined,
+            meetingType: meeting.meetingType ?? undefined,
+            meetingAddress: meeting.meetingAddress ?? undefined,
+            meetingJoinUrl: meeting.meetingJoinUrl ?? undefined,
+            meetingPhone: meeting.meetingPhone ?? undefined,
             contact: meeting.contact,
             mission: meeting.campaign?.mission
                 ? {
