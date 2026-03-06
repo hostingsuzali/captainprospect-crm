@@ -85,6 +85,7 @@ interface Meeting {
   result: string;
   callbackDate: string | null;
   meetingType: string | null;
+  meetingCategory: string | null;
   meetingAddress: string | null;
   meetingJoinUrl: string | null;
   meetingPhone: string | null;
@@ -150,6 +151,7 @@ type ViewMode = "list" | "board" | "calendar";
 type StatusFilter = "all" | "upcoming" | "past" | "cancelled";
 type DatePreset = "today" | "7days" | "30days" | "3months" | "custom";
 type MeetingTypeFilter = "VISIO" | "PHYSIQUE" | "TELEPHONIQUE";
+type MeetingCategoryFilter = "EXPLORATOIRE" | "BESOIN";
 type OutcomeFilter = "POSITIVE" | "NEUTRAL" | "NEGATIVE" | "NO_SHOW" | "NONE";
 
 /* ═══════════════════════════════════════════
@@ -210,6 +212,24 @@ function meetingTypeLabel(t: string | null): string {
   }
 }
 
+function categoryLabel(c: string | null): string {
+  if (c === "BESOIN") return "Besoin";
+  if (c === "EXPLORATOIRE") return "Exploratoire";
+  return "";
+}
+
+function categoryColor(c: string | null): string {
+  if (c === "BESOIN") return "var(--green)";
+  if (c === "EXPLORATOIRE") return "var(--blue)";
+  return "var(--ink3)";
+}
+
+function categoryBg(c: string | null): string {
+  if (c === "BESOIN") return "var(--greenLight)";
+  if (c === "EXPLORATOIRE") return "var(--blueLight)";
+  return "var(--surface2)";
+}
+
 function outcomeIcon(o: string | null): ReactNode {
   switch (o) {
     case "POSITIVE": return <ThumbsUp size={14} style={{ color: "var(--green)" }} />;
@@ -251,7 +271,7 @@ function dateProximityColor(d: string | null): string {
 function downloadCSV(meetings: Meeting[], filters: string) {
   const BOM = "\uFEFF";
   const headers = [
-    "Date", "Heure", "Statut", "Client", "Mission", "Campagne",
+    "Date", "Heure", "Statut", "Catégorie", "Client", "Mission", "Campagne",
     "Contact", "Poste", "Email", "Téléphone", "LinkedIn", "Entreprise",
     "Secteur", "Pays", "Taille", "SDR", "Type RDV", "Feedback",
     "Recontact", "Note SDR", "Note Manager",
@@ -262,6 +282,7 @@ function downloadCSV(meetings: Meeting[], filters: string) {
       d ? d.toLocaleDateString("fr-FR") : "",
       d ? d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "",
       statusLabel(meetingStatus(m)),
+      categoryLabel(m.meetingCategory) || "",
       m.client?.name || "",
       m.mission.name,
       m.campaign.name,
@@ -366,6 +387,7 @@ export default function ManagerRdvPage() {
   const [selectedMissions, setSelectedMissions] = useState<Set<string>>(new Set());
   const [selectedSdrs, setSelectedSdrs] = useState<Set<string>>(new Set());
   const [selectedMeetingTypes, setSelectedMeetingTypes] = useState<Set<MeetingTypeFilter>>(new Set());
+  const [selectedMeetingCategories, setSelectedMeetingCategories] = useState<Set<MeetingCategoryFilter>>(new Set());
   const [selectedOutcomes, setSelectedOutcomes] = useState<Set<OutcomeFilter>>(new Set());
 
   const [clientOptions, setClientOptions] = useState<FilterOption[]>([]);
@@ -414,6 +436,7 @@ export default function ManagerRdvPage() {
       selectedSdrs.forEach((id) => p.append("sdrIds[]", id));
       if (statusFilter !== "all") p.append("status[]", statusFilter);
       selectedMeetingTypes.forEach((t) => p.append("meetingType[]", t));
+      selectedMeetingCategories.forEach((c) => p.append("meetingCategory[]", c));
       selectedOutcomes.forEach((o) => {
         if (o !== "NONE") p.append("outcome[]", o);
       });
@@ -421,7 +444,7 @@ export default function ManagerRdvPage() {
       p.set("limit", "50");
       return p.toString();
     },
-    [debouncedSearch, dateRange, selectedClients, selectedMissions, selectedSdrs, statusFilter, selectedMeetingTypes, selectedOutcomes]
+    [debouncedSearch, dateRange, selectedClients, selectedMissions, selectedSdrs, statusFilter, selectedMeetingTypes, selectedMeetingCategories, selectedOutcomes]
   );
 
   const fetchMeetings = useCallback(
@@ -568,14 +591,15 @@ export default function ManagerRdvPage() {
     if (selectedMissions.size > 0) c++;
     if (selectedSdrs.size > 0) c++;
     if (selectedMeetingTypes.size > 0) c++;
+    if (selectedMeetingCategories.size > 0) c++;
     if (selectedOutcomes.size > 0) c++;
     return c;
-  }, [debouncedSearch, statusFilter, selectedClients, selectedMissions, selectedSdrs, selectedMeetingTypes, selectedOutcomes]);
+  }, [debouncedSearch, statusFilter, selectedClients, selectedMissions, selectedSdrs, selectedMeetingTypes, selectedMeetingCategories, selectedOutcomes]);
 
   const clearAllFilters = useCallback(() => {
     setSearch(""); setDebouncedSearch(""); setStatusFilter("all"); setDatePreset("30days");
     setDateFrom(""); setDateTo(""); setSelectedClients(new Set()); setSelectedMissions(new Set());
-    setSelectedSdrs(new Set()); setSelectedMeetingTypes(new Set()); setSelectedOutcomes(new Set());
+    setSelectedSdrs(new Set()); setSelectedMeetingTypes(new Set()); setSelectedMeetingCategories(new Set()); setSelectedOutcomes(new Set());
   }, []);
 
   const filterSummary = useMemo(() => {
@@ -945,6 +969,16 @@ export default function ManagerRdvPage() {
                 </div>
               </FilterSection>
 
+              <FilterSection title="Catégorie">
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {([["EXPLORATOIRE", "Exploratoire"], ["BESOIN", "Besoin"]] as const).map(([key, label]) => (
+                    <button key={key} className="rdv-pill" style={{ cursor: "pointer", padding: "5px 14px", background: selectedMeetingCategories.has(key as MeetingCategoryFilter) ? categoryBg(key) : "var(--surface2)", color: selectedMeetingCategories.has(key as MeetingCategoryFilter) ? categoryColor(key) : "var(--ink3)", border: `1px solid ${selectedMeetingCategories.has(key as MeetingCategoryFilter) ? categoryColor(key) : "transparent"}` }} onClick={() => { setSelectedMeetingCategories((prev) => { const next = new Set(prev); const k = key as MeetingCategoryFilter; if (next.has(k)) next.delete(k); else next.add(k); return next; }); }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </FilterSection>
+
               <FilterSection title="Feedback">
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {([["POSITIVE", "Positif"], ["NEUTRAL", "Neutre"], ["NEGATIVE", "Négatif"], ["NO_SHOW", "Absent"], ["NONE", "Sans retour"]] as const).map(([key, label]) => (
@@ -972,6 +1006,9 @@ export default function ManagerRdvPage() {
                     })}
                     {Array.from(selectedMeetingTypes).map((t) => (
                       <FilterChip key={t} label={meetingTypeLabel(t)} onRemove={() => setSelectedMeetingTypes((p) => { const n = new Set(p); n.delete(t); return n; })} />
+                    ))}
+                    {Array.from(selectedMeetingCategories).map((c) => (
+                      <FilterChip key={c} label={categoryLabel(c)} onRemove={() => setSelectedMeetingCategories((p) => { const n = new Set(p); n.delete(c); return n; })} />
                     ))}
                   </div>
                 </div>
@@ -1020,6 +1057,7 @@ export default function ManagerRdvPage() {
                   <div style={{ flex: 1, minWidth: 100 }}>Mission</div>
                   <div style={{ width: 120 }}>SDR</div>
                   <div style={{ width: 44, textAlign: "center" }}>Type</div>
+                  <div style={{ width: 90, textAlign: "center" }}>Catégorie</div>
                   <div style={{ width: 80, textAlign: "center" }}>Statut</div>
                   <div style={{ width: 44, textAlign: "center" }}>FB</div>
                   <div style={{ width: 48 }} />
@@ -1089,6 +1127,11 @@ export default function ManagerRdvPage() {
                                   {m.company?.name || "—"}
                                 </div>
                               </div>
+                              {m.meetingCategory && (
+                                <span className="rdv-pill" style={{ background: categoryBg(m.meetingCategory), color: categoryColor(m.meetingCategory), padding: "2px 8px", fontSize: 10 }}>
+                                  {categoryLabel(m.meetingCategory)}
+                                </span>
+                              )}
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink3)" }}>
                               <Clock size={12} />
@@ -1212,13 +1255,22 @@ export default function ManagerRdvPage() {
                     </button>
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
                     <span className="rdv-pill" style={{ background: statusBg(meetingStatus(selectedMeeting)), color: statusColor(meetingStatus(selectedMeeting)), padding: "4px 14px" }}>
                       {statusLabel(meetingStatus(selectedMeeting))}
                     </span>
                     <span className="rdv-pill" style={{ background: "var(--surface2)", color: "var(--ink2)", padding: "4px 14px" }}>
                       {meetingTypeIcon(selectedMeeting.meetingType)} {meetingTypeLabel(selectedMeeting.meetingType)}
                     </span>
+                    {selectedMeeting.meetingCategory ? (
+                      <span className="rdv-pill" style={{ background: categoryBg(selectedMeeting.meetingCategory), color: categoryColor(selectedMeeting.meetingCategory), padding: "4px 14px" }}>
+                        {categoryLabel(selectedMeeting.meetingCategory)}
+                      </span>
+                    ) : (
+                      <span className="rdv-pill" style={{ background: "var(--surface2)", color: "var(--ink3)", padding: "4px 14px", opacity: 0.6 }}>
+                        Non classé
+                      </span>
+                    )}
                   </div>
 
                   <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
@@ -1260,6 +1312,33 @@ export default function ManagerRdvPage() {
                         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           {meetingTypeIcon(selectedMeeting.meetingType)} {meetingTypeLabel(selectedMeeting.meetingType)}
                         </span>
+                      </DetailRow>
+                      <DetailRow label="Catégorie">
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {(["EXPLORATOIRE", "BESOIN"] as const).map((cat) => (
+                            <button
+                              key={cat}
+                              className="rdv-pill"
+                              style={{
+                                cursor: "pointer",
+                                padding: "5px 14px",
+                                fontSize: 12,
+                                background: selectedMeeting.meetingCategory === cat ? categoryBg(cat) : "var(--surface2)",
+                                color: selectedMeeting.meetingCategory === cat ? categoryColor(cat) : "var(--ink3)",
+                                border: `1.5px solid ${selectedMeeting.meetingCategory === cat ? categoryColor(cat) : "transparent"}`,
+                                fontWeight: selectedMeeting.meetingCategory === cat ? 600 : 400,
+                                transition: "all 0.15s",
+                              }}
+                              onClick={() => {
+                                const newCat = selectedMeeting.meetingCategory === cat ? null : cat;
+                                updateMeeting(selectedMeeting.id, { meetingCategory: newCat });
+                                setSelectedMeeting({ ...selectedMeeting, meetingCategory: newCat });
+                              }}
+                            >
+                              {categoryLabel(cat)}
+                            </button>
+                          ))}
+                        </div>
                       </DetailRow>
                       {selectedMeeting.meetingJoinUrl && (
                         <DetailRow label="Lien visio">
@@ -1508,6 +1587,16 @@ const MeetingRow = memo(function MeetingRow({ meeting, selected, onToggleSelect,
       </div>
 
       <div style={{ width: 44, textAlign: "center", color: "var(--ink3)" }}>{meetingTypeIcon(meeting.meetingType)}</div>
+
+      <div style={{ width: 90, textAlign: "center" }}>
+        {meeting.meetingCategory ? (
+          <span className="rdv-pill" style={{ background: categoryBg(meeting.meetingCategory), color: categoryColor(meeting.meetingCategory), padding: "4px 10px" }}>
+            {categoryLabel(meeting.meetingCategory)}
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, color: "var(--ink3)", opacity: 0.4 }}>—</span>
+        )}
+      </div>
 
       <div style={{ width: 80, textAlign: "center" }}>
         <span className="rdv-pill" style={{ background: statusBg(status), color: statusColor(status), padding: "4px 12px" }}>

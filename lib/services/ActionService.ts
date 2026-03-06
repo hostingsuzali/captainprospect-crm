@@ -23,6 +23,7 @@ export interface CreateActionInput {
     callbackDate?: Date;
     duration?: number;
     meetingType?: string;
+    meetingCategory?: string;
     meetingAddress?: string;
     meetingJoinUrl?: string;
     meetingPhone?: string;
@@ -41,6 +42,34 @@ export interface ActionWithRelations {
  };
  result: string;
  createdAt: Date;
+}
+
+/**
+ * Auto-detect meeting category from note text.
+ * "BESOIN" = concrete project/need, "EXPLORATOIRE" = discovery/information.
+ */
+export function detectMeetingCategoryFromNote(note: string | null | undefined): string | null {
+    if (!note) return null;
+    const lower = note.toLowerCase();
+    const besoinKw = [
+        "besoin", "projet", "budget", "cahier des charges", "appel d'offre",
+        "devis", "proposition", "lancement", "deadline", "urgent",
+        "décision", "achat", "investir", "investissement", "signer",
+        "go", "valider", "validation", "contractualiser", "déployer",
+    ];
+    const exploKw = [
+        "exploratoire", "découverte", "premier contact", "prise de contact",
+        "veille", "information", "se renseigner", "benchmark", "curieux",
+        "pas de besoin", "pas de projet", "aucun projet", "à voir", "réflexion",
+        "échange", "introduction", "présentation", "demo", "démo",
+    ];
+    let bScore = 0, eScore = 0;
+    for (const kw of besoinKw) if (lower.includes(kw)) bScore++;
+    for (const kw of exploKw) if (lower.includes(kw)) eScore++;
+    if (bScore > eScore) return "BESOIN";
+    if (eScore > bScore) return "EXPLORATOIRE";
+    if (bScore > 0) return "BESOIN";
+    return null;
 }
 
 export class ActionService {
@@ -108,7 +137,11 @@ export class ActionService {
  }
  }
 
-            // 1. Create the action
+            // 1. Create the action — prefer explicit category, fallback to auto-detection from note
+            const autoCategory = (input.result === 'MEETING_BOOKED')
+                ? (input.meetingCategory || detectMeetingCategoryFromNote(noteToStore || input.note))
+                : null;
+
             const action = await tx.action.create({
                 data: {
                     contactId: input.contactId || null,
@@ -121,6 +154,7 @@ export class ActionService {
                     callbackDate: callbackDate,
                     duration: input.duration,
                     meetingType: input.meetingType,
+                    meetingCategory: autoCategory,
                     meetingAddress: input.meetingAddress,
                     meetingJoinUrl: input.meetingJoinUrl,
                     meetingPhone: input.meetingPhone,

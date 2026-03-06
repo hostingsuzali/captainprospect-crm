@@ -406,6 +406,7 @@ export function UnifiedActionDrawer({
     const [showBookingDrawer, setShowBookingDrawer] = useState(false);
     const [rdvDate, setRdvDate] = useState("");
     const [meetingType, setMeetingType] = useState<"VISIO" | "PHYSIQUE" | "TELEPHONIQUE" | "">("");
+    const [meetingCat, setMeetingCat] = useState<"EXPLORATOIRE" | "BESOIN" | "">("");
     const [meetingJoinUrl, setMeetingJoinUrl] = useState("");
     const [meetingAddress, setMeetingAddress] = useState("");
     const [meetingPhone, setMeetingPhone] = useState("");
@@ -747,6 +748,7 @@ export function UnifiedActionDrawer({
                                 : undefined,
                     ...(newActionResult === "MEETING_BOOKED" && {
                         meetingType: meetingType || undefined,
+                        meetingCategory: meetingCat || undefined,
                         meetingAddress: meetingAddress?.trim() || undefined,
                         meetingJoinUrl: meetingJoinUrl?.trim() || undefined,
                         meetingPhone: meetingPhone?.trim() || undefined,
@@ -2071,6 +2073,32 @@ export function UnifiedActionDrawer({
                                                     <p className="text-xs text-slate-500 mt-1">Par défaut : téléphone du contact</p>
                                                 </div>
                                             )}
+                                            {/* Meeting category */}
+                                            <div>
+                                                <label className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-2">
+                                                    Catégorie
+                                                    <span className="text-slate-400 text-xs font-normal">(optionnel)</span>
+                                                </label>
+                                                <div className="flex gap-2">
+                                                    {(["EXPLORATOIRE", "BESOIN"] as const).map((cat) => (
+                                                        <button
+                                                            key={cat}
+                                                            type="button"
+                                                            onClick={() => setMeetingCat(prev => prev === cat ? "" : cat)}
+                                                            className={cn(
+                                                                "flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors text-center",
+                                                                meetingCat === cat
+                                                                    ? cat === "BESOIN"
+                                                                        ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                                                                        : "border-blue-400 bg-blue-50 text-blue-700"
+                                                                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                                                            )}
+                                                        >
+                                                            {cat === "EXPLORATOIRE" ? "Exploratoire" : "Besoin"}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
                                             {/* Calendar button — only when a booking URL exists */}
                                             {clientBookingUrl && contactId && contact && (
                                                 <>
@@ -2456,6 +2484,7 @@ export function UnifiedActionDrawer({
                     }}
                     rdvDate={rdvDate ? new Date(rdvDate).toISOString() : undefined}
                     meetingType={meetingType || undefined}
+                    meetingCategory={meetingCat || undefined}
                     meetingAddress={meetingType === "PHYSIQUE" ? meetingAddress : undefined}
                     meetingJoinUrl={meetingType === "VISIO" ? meetingJoinUrl : undefined}
                     meetingPhone={meetingType === "TELEPHONIQUE" ? (meetingPhone || contact.phone || undefined) : undefined}
@@ -2466,6 +2495,7 @@ export function UnifiedActionDrawer({
                         setNewActionNote("");
                         setRdvDate("");
                         setMeetingType("");
+                        setMeetingCat("");
                         setMeetingJoinUrl("");
                         setMeetingAddress("");
                         setMeetingPhone("");

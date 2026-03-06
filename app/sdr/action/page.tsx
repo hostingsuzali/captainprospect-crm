@@ -374,6 +374,7 @@ export default function SDRActionPage() {
     const [activeTab, setActiveTab] = useState<string>("intro");
     const [showBookingDrawer, setShowBookingDrawer] = useState(false);
     const [rdvDate, setRdvDate] = useState("");
+    const [meetingCat, setMeetingCat] = useState<"EXPLORATOIRE" | "BESOIN" | "">("");
     const [isImprovingNote, setIsImprovingNote] = useState(false);
 
     // View mode: card vs table — persisted in localStorage
@@ -642,6 +643,7 @@ export default function SDRActionPage() {
         setSelectedResult(null);
         setNote("");
         setCallbackDateValue("");
+        setMeetingCat("");
         setShowSuccess(false);
         setElapsedTime(0);
         setActiveTab("intro");
@@ -1229,7 +1231,7 @@ export default function SDRActionPage() {
             const res = await fetch("/api/actions", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
+                    body: JSON.stringify({
                     contactId: currentAction.contact?.id,
                     companyId: !currentAction.contact && currentAction.company ? currentAction.company.id : undefined,
                     campaignId: currentAction.campaignId,
@@ -1238,6 +1240,7 @@ export default function SDRActionPage() {
                     note: note || undefined,
                     callbackDate: selectedResult === "CALLBACK_REQUESTED" && callbackDateValue ? new Date(callbackDateValue).toISOString() : undefined,
                     duration: elapsedTime,
+                    ...(selectedResult === "MEETING_BOOKED" && meetingCat && { meetingCategory: meetingCat }),
                 }),
             });
             const json = await res.json();
@@ -2760,6 +2763,43 @@ export default function SDRActionPage() {
                 </div>
             )}
 
+            {/* Meeting category (Exploratoire / Besoin) — only for MEETING_BOOKED */}
+            {selectedResult === "MEETING_BOOKED" && (
+                <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/60 to-blue-50/40 shadow-sm overflow-hidden">
+                    <div className="px-5 py-3 border-b border-indigo-100">
+                        <h3 className="text-sm font-bold text-slate-900">Catégorie du RDV</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">Optionnel — sinon détecté automatiquement depuis la note</p>
+                    </div>
+                    <div className="px-5 py-4 flex gap-3">
+                        {([["EXPLORATOIRE", "Exploratoire", "Prise de contact / découverte"], ["BESOIN", "Besoin", "Projet concret / budget identifié"]] as const).map(([value, label, desc]) => (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => setMeetingCat(prev => prev === value ? "" : value)}
+                                className={cn(
+                                    "flex-1 rounded-xl border-2 p-3 text-left transition-all duration-150",
+                                    meetingCat === value
+                                        ? value === "BESOIN"
+                                            ? "border-emerald-400 bg-emerald-50 shadow-sm"
+                                            : "border-blue-400 bg-blue-50 shadow-sm"
+                                        : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                                )}
+                            >
+                                <span className={cn(
+                                    "text-sm font-semibold",
+                                    meetingCat === value
+                                        ? value === "BESOIN" ? "text-emerald-700" : "text-blue-700"
+                                        : "text-slate-700"
+                                )}>
+                                    {label}
+                                </span>
+                                <span className="block text-xs text-slate-500 mt-0.5">{desc}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Submit */}
             <div className="flex items-center justify-between pt-2 gap-4">
                 {/* Skip / Passer button */}
@@ -2896,6 +2936,7 @@ export default function SDRActionPage() {
                         companyName: currentAction.company?.name,
                     }}
                     rdvDate={rdvDate ? new Date(rdvDate).toISOString() : undefined}
+                    meetingCategory={meetingCat || undefined}
                     interlocuteurs={currentAction.clientInterlocuteurs}
                     onBookingSuccess={() => {
                         setShowBookingDrawer(false);

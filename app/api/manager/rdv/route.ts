@@ -20,6 +20,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   const dateTo = sp.get("dateTo");
   const statuses = sp.getAll("status[]");
   const meetingTypes = sp.getAll("meetingType[]");
+  const meetingCategories = sp.getAll("meetingCategory[]");
   const outcomes = sp.getAll("outcome[]");
 
   const { page, limit, skip } = getPaginationParams(sp);
@@ -77,6 +78,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   if (meetingTypes.length > 0) {
     andClauses.push({ meetingType: { in: meetingTypes } });
+  }
+
+  if (meetingCategories.length > 0) {
+    andClauses.push({ meetingCategory: { in: meetingCategories } });
   }
 
   if (outcomes.length > 0) {
@@ -163,6 +168,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     result: m.result,
     callbackDate: m.callbackDate,
     meetingType: m.meetingType,
+    meetingCategory: m.meetingCategory,
     meetingAddress: m.meetingAddress,
     meetingJoinUrl: m.meetingJoinUrl,
     meetingPhone: m.meetingPhone,

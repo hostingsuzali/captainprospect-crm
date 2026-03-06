@@ -18,8 +18,9 @@ import { z } from 'zod';
 const bookingSuccessSchema = z.object({
     contactId: z.string().min(1, 'Contact ID required'),
     eventData: z.record(z.string(), z.any()).optional(),
-    rdvDate: z.string().optional(), // Pre-selected date from the SDR (ISO string)
+    rdvDate: z.string().optional(),
     meetingType: z.enum(['VISIO', 'PHYSIQUE', 'TELEPHONIQUE']).optional(),
+    meetingCategory: z.enum(['EXPLORATOIRE', 'BESOIN']).optional(),
     meetingAddress: z.string().max(500).optional(),
     meetingJoinUrl: z.string().url('Lien de rejoindre invalide').max(2000).optional(),
     meetingPhone: z.string().max(50).optional(),
@@ -143,7 +144,7 @@ function extractMeetingJoinUrl(eventData: Record<string, unknown> | undefined): 
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await requireRole(['SDR', 'BUSINESS_DEVELOPER'], request);
-    const { contactId, eventData, rdvDate, meetingType, meetingAddress, meetingJoinUrl, meetingPhone } = await validateRequest(request, bookingSuccessSchema);
+    const { contactId, eventData, rdvDate, meetingType, meetingCategory, meetingAddress, meetingJoinUrl, meetingPhone } = await validateRequest(request, bookingSuccessSchema);
 
     // Get contact with campaign info
     const contact = await prisma.contact.findUnique({
@@ -210,6 +211,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             note: bookingNote,
             callbackDate: scheduledAt ?? undefined,
             meetingType: meetingType ?? null,
+            meetingCategory: meetingCategory ?? null,
             meetingAddress: meetingAddress ?? null,
             meetingJoinUrl: resolvedMeetingJoinUrl,
             meetingPhone: meetingPhone ?? null,

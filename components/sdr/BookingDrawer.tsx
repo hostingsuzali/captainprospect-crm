@@ -65,6 +65,7 @@ interface BookingDrawerProps {
     contactInfo?: BookingContactInfo;
     rdvDate?: string;
     meetingType?: "VISIO" | "PHYSIQUE" | "TELEPHONIQUE";
+    meetingCategory?: "EXPLORATOIRE" | "BESOIN";
     meetingAddress?: string;
     meetingJoinUrl?: string;
     meetingPhone?: string;
@@ -124,6 +125,7 @@ export function BookingDrawer({
     contactInfo,
     rdvDate,
     meetingType,
+    meetingCategory,
     meetingAddress,
     meetingJoinUrl,
     meetingPhone,
@@ -214,6 +216,7 @@ export function BookingDrawer({
                             eventData,
                             rdvDate: rdvDate || undefined,
                             ...(meetingType && { meetingType }),
+                            ...(meetingCategory && { meetingCategory }),
                             ...(meetingAddress != null && meetingAddress.trim() && { meetingAddress: meetingAddress.trim() }),
                             ...(meetingJoinUrl != null && meetingJoinUrl.trim() && { meetingJoinUrl: meetingJoinUrl.trim() }),
                             ...(meetingPhone != null && meetingPhone.trim() && { meetingPhone: meetingPhone.trim() }),
@@ -245,7 +248,7 @@ export function BookingDrawer({
 
         window.addEventListener("message", handleMessage);
         return () => window.removeEventListener("message", handleMessage);
-    }, [isOpen, contactId, contactName, rdvDate, meetingType, meetingAddress, meetingJoinUrl, meetingPhone, onBookingSuccess, onClose, success, showError]);
+    }, [isOpen, contactId, contactName, rdvDate, meetingType, meetingCategory, meetingAddress, meetingJoinUrl, meetingPhone, onBookingSuccess, onClose, success, showError]);
 
     if (!isOpen) return null;
 

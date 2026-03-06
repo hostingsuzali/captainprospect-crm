@@ -9,12 +9,14 @@ import {
   NotFoundError,
 } from "@/lib/api-utils";
 import { z } from "zod";
+import { detectMeetingCategoryFromNote } from "@/lib/services/ActionService";
 
 const updateSchema = z.object({
   note: z.string().optional(),
   managerNote: z.string().optional(),
   callbackDate: z.string().datetime().optional(),
   meetingType: z.enum(["VISIO", "PHYSIQUE", "TELEPHONIQUE"]).optional(),
+  meetingCategory: z.enum(["EXPLORATOIRE", "BESOIN"]).nullable().optional(),
   result: z.enum(["MEETING_BOOKED", "MEETING_CANCELLED"]).optional(),
   sdrId: z.string().cuid().optional(),
   meetingAddress: z.string().optional(),
@@ -48,6 +50,12 @@ export const PUT = withErrorHandler(
     if (body.meetingJoinUrl !== undefined) actionUpdate.meetingJoinUrl = body.meetingJoinUrl;
     if (body.meetingPhone !== undefined) actionUpdate.meetingPhone = body.meetingPhone;
     if (body.cancellationReason !== undefined) actionUpdate.cancellationReason = body.cancellationReason;
+    if (body.meetingCategory !== undefined) {
+      actionUpdate.meetingCategory = body.meetingCategory;
+    } else if (body.note !== undefined && !action.meetingCategory) {
+      const detected = detectMeetingCategoryFromNote(body.note);
+      if (detected) actionUpdate.meetingCategory = detected;
+    }
 
     const updated = await prisma.action.update({
       where: { id },
