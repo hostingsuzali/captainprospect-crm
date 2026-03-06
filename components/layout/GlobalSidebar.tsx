@@ -358,11 +358,6 @@ export function GlobalSidebar({ navigation }: GlobalSidebarProps) {
                                 )}
                             />
                         </div>
-                        {isExpanded && (
-                            <span className="cp-brand-name">
-                                <span className="cp-brand-name-accent">suzalink</span>
-                            </span>
-                        )}
                     </Link>
 
                     {isExpanded && (
