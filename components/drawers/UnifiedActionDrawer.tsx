@@ -2100,7 +2100,7 @@ export function UnifiedActionDrawer({
                                                 </div>
                                             </div>
                                             {/* Calendar button — only when a booking URL exists */}
-                                            {clientBookingUrl && contactId && contact && (
+                                            {(clientBookingUrl || clientInterlocuteurs.some(i => (i.bookingLinks?.length ?? 0) > 0)) && contactId && contact && (
                                                 <>
                                                     <p className="text-xs text-slate-500">
                                                         Sélectionnez la date et le type avant d&apos;ouvrir le calendrier client.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
     Bell, Check, Info, AlertTriangle, XCircle, CheckCircle2,
     ChevronRight, Settings, Sparkles, Clock,
@@ -9,6 +9,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
+
+// Poll less often and only when tab is visible to reduce /api/notifications load
+const POLL_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes (was 1 min)
 
 interface Notification {
     id: string;
@@ -74,23 +77,7 @@ export function NotificationBell() {
         return "/sdr/notifications";
     };
 
-    useEffect(() => {
-        loadNotifications();
-        const interval = setInterval(loadNotifications, 60000);
-        return () => clearInterval(interval);
-    }, []);
-
-    useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    const loadNotifications = async () => {
+    const loadNotifications = useCallback(async () => {
         try {
             const res = await fetch("/api/notifications");
             const json = await res.json();
@@ -101,7 +88,53 @@ export function NotificationBell() {
         } catch (error) {
             console.error("Failed to load notifications", error);
         }
-    };
+    }, []);
+
+    // Initial load + poll only when tab is visible (reduces requests in background tabs)
+    useEffect(() => {
+        loadNotifications();
+
+        let intervalId: ReturnType<typeof setInterval> | null = null;
+        const stopPolling = () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+        };
+        const startPolling = () => {
+            stopPolling();
+            intervalId = setInterval(loadNotifications, POLL_INTERVAL_MS);
+        };
+
+        const onVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                loadNotifications();
+                startPolling();
+            } else {
+                stopPolling();
+            }
+        };
+
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        if (document.visibilityState === "visible") {
+            startPolling();
+        }
+
+        return () => {
+            document.removeEventListener("visibilitychange", onVisibilityChange);
+            stopPolling();
+        };
+    }, [loadNotifications]);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     const markAsRead = async (id: string, link: string | null) => {
         try {
@@ -172,7 +205,11 @@ export function NotificationBell() {
                 {/* ── Bell Button ── */}
                 <button
                     id="notification-bell-btn"
-                    onClick={() => setIsOpen(!isOpen)}
+                    onClick={() => {
+                        const next = !isOpen;
+                        setIsOpen(next);
+                        if (next) loadNotifications();
+                    }}
                     className={cn(
                         "relative w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200",
                         "border focus:outline-none",
