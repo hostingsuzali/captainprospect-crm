@@ -264,6 +264,65 @@ export const SDR_NAV: NavSection[] = [
 ];
 
 // ============================================
+// BOOKER NAVIGATION — Focused: Lists, Missions, Calling
+// No planning, no projects, no VOIP, no comms
+// ============================================
+
+export const BOOKER_NAV: NavSection[] = [
+  {
+    // No title — home
+    items: [
+      {
+        href: "/sdr",
+        icon: LayoutDashboard,
+        label: "Accueil",
+        permission: "pages.dashboard",
+      },
+    ],
+  },
+  {
+    title: "Prospection",
+    items: [
+      {
+        href: "/sdr/lists",
+        icon: Database,
+        label: "Listes",
+        permission: "pages.action",
+      },
+      {
+        href: "/sdr/action",
+        icon: Phone,
+        label: "Appeler",
+        permission: "pages.action",
+      },
+    ],
+  },
+  {
+    title: "Suivi",
+    items: [
+      {
+        href: "/sdr/callbacks",
+        icon: Calendar,
+        label: "Rappels",
+        permission: "pages.action",
+      },
+      {
+        href: "/sdr/history",
+        icon: History,
+        label: "Historique",
+        permission: "pages.action",
+      },
+      {
+        href: "/sdr/meetings",
+        icon: Calendar,
+        label: "Mes RDV",
+        permission: "pages.opportunities",
+      },
+    ],
+  },
+];
+
+// ============================================
 // BUSINESS DEVELOPER NAVIGATION — Grouped
 // ============================================
 
@@ -477,6 +536,8 @@ export function getNavByRole(role: UserRole): NavSection[] {
       return MANAGER_NAV;
     case "SDR":
       return SDR_NAV;
+    case "BOOKER":
+      return BOOKER_NAV;
     case "BUSINESS_DEVELOPER":
       return BD_NAV;
     case "DEVELOPER":
@@ -508,6 +569,12 @@ export const ROLE_CONFIG: Record<UserRole, RoleConfig> = {
   },
   SDR: {
     label: "Sales",
+    color: "indigo",
+    gradient: "from-indigo-500 to-indigo-600",
+    defaultPath: "/sdr/action",
+  },
+  BOOKER: {
+    label: "Booker",
     color: "indigo",
     gradient: "from-indigo-500 to-indigo-600",
     defaultPath: "/sdr/action",

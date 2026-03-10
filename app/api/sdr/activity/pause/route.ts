@@ -17,8 +17,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Only SDRs and BUSINESS_DEVELOPERs can pause their own activity
-        if (!["SDR", "BUSINESS_DEVELOPER"].includes(session.user.role)) {
+        // Only SDRs, BOOKERs and BUSINESS_DEVELOPERs can pause their own activity
+        if (!["SDR", "BUSINESS_DEVELOPER", "BOOKER"].includes(session.user.role)) {
             return NextResponse.json(
                 { success: false, error: "Non autorisé" },
                 { status: 403 }

@@ -38,13 +38,17 @@ export async function GET(request: Request) {
 
         const userRole = (session.user as { role?: string }).role;
         const isBusinessDeveloper = userRole === "BUSINESS_DEVELOPER";
+        const isBooker = userRole === "BOOKER";
 
-        // Missions assigned to current user
-        const assignments = await prisma.sDRAssignment.findMany({
-            where: { sdrId: session.user.id },
-            select: { missionId: true },
-        });
-        const assignedMissionIds = assignments.map((a) => a.missionId);
+        // Missions assigned to current user (for SDR/BD). Bookers see all missions.
+        const assignedMissionIds = isBooker
+            ? []
+            : (
+                  await prisma.sDRAssignment.findMany({
+                      where: { sdrId: session.user.id },
+                      select: { missionId: true },
+                  })
+              ).map((a) => a.missionId);
 
         // Missions where current user is team lead (can see all teammates' callbacks)
         const teamLeadMissions = await prisma.mission.findMany({
@@ -53,7 +57,9 @@ export async function GET(request: Request) {
         });
         const teamLeadMissionIds = teamLeadMissions.map((m) => m.id);
 
-        // BD: scope by assigned missions. SDR: own callbacks + all callbacks for missions where they are team lead.
+        // BD: scope by assigned missions.
+        // Bookers: see callbacks on all missions (no mission restriction).
+        // SDR: own callbacks + all callbacks for missions where they are team lead.
         const whereClause: {
             sdrId?: string;
             result: "CALLBACK_REQUESTED";
@@ -73,7 +79,7 @@ export async function GET(request: Request) {
             } else {
                 whereClause.campaign = { missionId: { in: assignedMissionIds } };
             }
-        } else {
+        } else if (!isBooker) {
             // SDR: own callbacks for assigned missions + all callbacks for missions where they are team lead
             if (missionIdParam && !assignedMissionIds.includes(missionIdParam) && !teamLeadMissionIds.includes(missionIdParam)) {
                 return NextResponse.json({ success: true, data: [] });
@@ -92,6 +98,11 @@ export async function GET(request: Request) {
                 });
             }
             whereClause.OR = orParts;
+        } else {
+            // Booker: only filter by missionId if provided; otherwise all missions
+            if (missionIdParam) {
+                whereClause.campaign = { missionId: missionIdParam };
+            }
         }
 
         // Date filter: callbackDate range

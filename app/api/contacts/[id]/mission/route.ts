@@ -4,10 +4,10 @@ import { successResponse, errorResponse, requireRole, withErrorHandler } from "@
 
 // GET /api/contacts/[id]/mission - Returns missionId for this contact (for drawer "add action" form)
 export const GET = withErrorHandler(async (
-    _request: NextRequest,
+    request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) => {
-    await requireRole(["MANAGER", "SDR", "BUSINESS_DEVELOPER"], request);
+    await requireRole(["MANAGER", "SDR", "BUSINESS_DEVELOPER", "BOOKER"], request);
     const { id } = await params;
 
     const contact = await prisma.contact.findUnique({

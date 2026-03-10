@@ -6,7 +6,7 @@ import { SDR_NAV } from "@/lib/navigation/config";
 export default function SDRLayout({ children }: { children: React.ReactNode }) {
     return (
         <AppLayoutShell
-            allowedRoles={["SDR", "BUSINESS_DEVELOPER"]}
+            allowedRoles={["SDR", "BUSINESS_DEVELOPER", "BOOKER"]}
             customNavigation={SDR_NAV}
         >
             {children}

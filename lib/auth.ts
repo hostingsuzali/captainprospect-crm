@@ -180,6 +180,8 @@ export function getRedirectPath(role: UserRole): string {
     switch (role) {
         case "SDR":
             return "/sdr/action";
+        case "BOOKER":
+            return "/sdr/action";
         case "MANAGER":
             return "/manager/dashboard";
         case "CLIENT":

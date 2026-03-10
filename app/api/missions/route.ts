@@ -53,7 +53,7 @@ const updateMissionSchema = z.object({
 // ============================================
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    const session = await requireRole(['MANAGER', 'CLIENT', 'SDR', 'BUSINESS_DEVELOPER'], request);
+    const session = await requireRole(['MANAGER', 'CLIENT', 'SDR', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const { searchParams } = new URL(request.url);
     const { page, limit, skip } = getPaginationParams(searchParams);
 
@@ -114,7 +114,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 // ============================================
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
+    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const data = await validateRequest(request, createMissionSchema);
 
     // Verify client exists

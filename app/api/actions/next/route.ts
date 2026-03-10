@@ -15,7 +15,7 @@ import { statusConfigService } from '@/lib/services/StatusConfigService';
 // ============================================
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    const session = await requireRole(['SDR', 'BUSINESS_DEVELOPER'], request);
+    const session = await requireRole(['SDR', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const { searchParams } = new URL(request.url);
     const missionId = searchParams.get('missionId');
     const listId = searchParams.get('listId');
@@ -29,6 +29,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const COOLDOWN_HOURS = 24;
     const cooldownDate = new Date(Date.now() - COOLDOWN_HOURS * 60 * 60 * 1000);
     const sdrId = session.user.id;
+    const isBooker = session.user.role === "BOOKER";
 
     // Build dynamic where clauses
     const missionFilter = missionId
@@ -37,6 +38,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const listFilter = listId
         ? `AND l.id = '${listId.replace(/'/g, "''")}'`
         : '';
+
+    // Booker: no SDRAssignment join; SDR/BD: join on SDRAssignment
+    const sdrAssignmentJoin = isBooker
+        ? ""
+        : `INNER JOIN "SDRAssignment" sa ON sa."missionId" = m.id`;
+    const sdrAssignmentWhere = isBooker
+        ? ""
+        : `AND sa."sdrId" = $1`;
 
     // ============================================
     // OPTIMIZED QUERY: Single CTE-based query
@@ -72,8 +81,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         priority_label: string;
     }>>(`
         WITH sdr_contacts AS (
-            -- Get all contacts for SDR's active missions
-            -- Include ALL statuses (INCOMPLETE, PARTIAL, ACTIONABLE) - SDRs can work with all
+            -- Get all contacts for active missions
             SELECT DISTINCT
                 c.id as contact_id,
                 co.id as company_id,
@@ -101,12 +109,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             INNER JOIN "Mission" m ON l."missionId" = m.id
             INNER JOIN "Client" cl ON m."clientId" = cl.id
             INNER JOIN "Campaign" camp ON camp."missionId" = m.id
-            INNER JOIN "SDRAssignment" sa ON sa."missionId" = m.id
-            WHERE sa."sdrId" = $1
-              AND m."isActive" = true
+            ${sdrAssignmentJoin}
+            WHERE m."isActive" = true
               AND camp."isActive" = true
-              -- Include all contacts regardless of status (INCOMPLETE, PARTIAL, ACTIONABLE)
-              -- Only check that they have the required channel info for the mission (mission can be multi-channel)
+              ${sdrAssignmentWhere}
               AND (
                   ('CALL' = ANY(m.channels) AND (c.phone IS NOT NULL AND c.phone != '' OR co.phone IS NOT NULL AND co.phone != '')) OR
                   ('EMAIL' = ANY(m.channels) AND c.email IS NOT NULL AND c.email != '') OR
@@ -117,7 +123,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               ${channelFilter}
         ),
         sdr_companies AS (
-            -- Get companies that can be called directly (have phone but maybe no contacts, or we want to call company)
+            -- Get companies that can be called directly
             SELECT DISTINCT
                 NULL::text as contact_id,
                 co.id as company_id,
@@ -144,15 +150,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             INNER JOIN "Mission" m ON l."missionId" = m.id
             INNER JOIN "Client" cl ON m."clientId" = cl.id
             INNER JOIN "Campaign" camp ON camp."missionId" = m.id
-            INNER JOIN "SDRAssignment" sa ON sa."missionId" = m.id
-            WHERE sa."sdrId" = $1
-              AND m."isActive" = true
+            ${sdrAssignmentJoin}
+            WHERE m."isActive" = true
               AND camp."isActive" = true
-              -- Only include companies with phone for CALL missions (mission can be multi-channel)
+              ${sdrAssignmentWhere}
               AND 'CALL' = ANY(m.channels)
               AND co.phone IS NOT NULL
               AND co.phone != ''
-              -- Exclude companies that already have actionable contacts (to avoid duplicates)
               AND NOT EXISTS (
                   SELECT 1 FROM "Contact" c2 
                   WHERE c2."companyId" = co.id 
@@ -215,12 +219,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         )
         SELECT *
         FROM targets_with_last_action
-        WHERE (last_action_created IS NULL OR last_action_created < $2)
+        WHERE (last_action_created IS NULL OR last_action_created < $${isBooker ? 1 : 2})
         ORDER BY 
             CASE WHEN contact_status = 'ACTIONABLE' THEN 0 WHEN contact_status = 'PARTIAL' THEN 1 WHEN contact_status = 'INCOMPLETE' THEN 2 ELSE 3 END,
             COALESCE(last_action_created, '1970-01-01'::timestamp) ASC
         LIMIT 500
-    `, sdrId, cooldownDate);
+    `, ...(isBooker ? [cooldownDate] : [sdrId, cooldownDate]));
 
     // Resolve missionId for config and fetch interlocuteurs in parallel
     const configMissionIdPromise = (async () => {

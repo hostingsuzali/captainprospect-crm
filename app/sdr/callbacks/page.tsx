@@ -331,7 +331,10 @@ export default function SDRCallbacksPage() {
 
     const submitOutcome = async () => {
         if (!outcomeCallback || !outcomeResult) return;
-        const noteRequired = outcomeResult === "INTERESTED" || outcomeResult === "CALLBACK_REQUESTED";
+        const noteRequired =
+            outcomeResult === "INTERESTED" ||
+            outcomeResult === "CALLBACK_REQUESTED" ||
+            outcomeResult === "ENVOIE_MAIL";
         if (noteRequired && !outcomeNote.trim()) return;
         setOutcomeSubmitting(true);
         try {
@@ -342,7 +345,14 @@ export default function SDRCallbacksPage() {
                     contactId: outcomeCallback.contact?.id ?? undefined,
                     companyId: outcomeCallback.contact ? undefined : outcomeCallback.company?.id,
                     campaignId: outcomeCallback.campaignId,
-                    channel: outcomeCallback.channel === "EMAIL" ? "EMAIL" : outcomeCallback.channel === "LINKEDIN" ? "LINKEDIN" : "CALL",
+                    channel:
+                        outcomeResult === "ENVOIE_MAIL"
+                            ? "EMAIL"
+                            : outcomeCallback.channel === "EMAIL"
+                                ? "EMAIL"
+                                : outcomeCallback.channel === "LINKEDIN"
+                                    ? "LINKEDIN"
+                                    : "CALL",
                     result: outcomeResult,
                     note: outcomeNote.trim() || (outcomeResult === "MEETING_BOOKED" ? "RDV pris suite au rappel" : undefined),
                     callbackDate: outcomeResult === "CALLBACK_REQUESTED" ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : undefined,
@@ -1182,13 +1192,15 @@ export default function SDRCallbacksPage() {
             >
                 {outcomeCallback && outcomeResult && (
                     <div className="space-y-4">
-                        {outcomeResult === "INTERESTED" && (
+                        {(outcomeResult === "INTERESTED" || outcomeResult === "CALLBACK_REQUESTED" || outcomeResult === "ENVOIE_MAIL") && (
                             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                                Une note est requise pour &quot;Intéressé&quot;.
+                                Une note est requise pour ce résultat.
                             </p>
                         )}
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">{outcomeResult === "INTERESTED" ? "Note *" : "Note (optionnel)"}</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                {(outcomeResult === "INTERESTED" || outcomeResult === "CALLBACK_REQUESTED" || outcomeResult === "ENVOIE_MAIL") ? "Note *" : "Note (optionnel)"}
+                            </label>
                             <textarea
                                 value={outcomeNote}
                                 onChange={(e) => setOutcomeNote(e.target.value)}
@@ -1206,7 +1218,7 @@ export default function SDRCallbacksPage() {
                             <Button
                                 variant="primary"
                                 onClick={submitOutcome}
-                                disabled={outcomeSubmitting || (outcomeResult === "INTERESTED" && !outcomeNote.trim())}
+                                disabled={outcomeSubmitting || ((outcomeResult === "INTERESTED" || outcomeResult === "CALLBACK_REQUESTED" || outcomeResult === "ENVOIE_MAIL") && !outcomeNote.trim())}
                                 isLoading={outcomeSubmitting}
                             >
                                 Enregistrer

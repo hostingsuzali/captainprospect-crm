@@ -1,5 +1,11 @@
 // User roles in the system
-export type UserRole = "SDR" | "MANAGER" | "CLIENT" | "DEVELOPER" | "BUSINESS_DEVELOPER";
+export type UserRole =
+    | "SDR"
+    | "BOOKER"
+    | "MANAGER"
+    | "CLIENT"
+    | "DEVELOPER"
+    | "BUSINESS_DEVELOPER";
 
 // Communication channels
 export type Channel = "CALL" | "EMAIL" | "LINKEDIN";

@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
         }
 
         const role = session.user.role as string;
-        if (role !== "SDR" && role !== "BUSINESS_DEVELOPER") {
+        if (role !== "SDR" && role !== "BUSINESS_DEVELOPER" && role !== "BOOKER") {
             return NextResponse.json(
                 { success: false, error: "Réservé aux SDR/BD" },
                 { status: 403 }

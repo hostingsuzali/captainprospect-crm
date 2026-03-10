@@ -19,52 +19,46 @@ export async function GET() {
             );
         }
 
-        // Get SDR assignments with mission details
-        const assignments = await prisma.sDRAssignment.findMany({
-            where: {
-                sdrId: session.user.id,
-                mission: {
-                    isActive: true,
+        const role = session.user.role;
+        if (role !== "SDR" && role !== "BOOKER") {
+            return NextResponse.json(
+                { success: false, error: "Accès non autorisé" },
+                { status: 403 }
+            );
+        }
+
+        const baseMissionInclude = {
+            client: { select: { id: true, name: true } },
+            lists: {
+                select: {
+                    id: true,
+                    _count: { select: { companies: true } },
                 },
             },
-            include: {
-                mission: {
-                    include: {
-                        client: {
-                            select: {
-                                id: true,
-                                name: true,
-                            },
-                        },
-                        lists: {
-                            select: {
-                                id: true,
-                                _count: {
-                                    select: {
-                                        companies: true,
-                                    },
-                                },
-                            },
-                        },
-                        _count: {
-                            select: {
-                                campaigns: true,
-                                lists: true,
-                            },
-                        },
-                    },
-                },
-            },
-            orderBy: {
-                createdAt: "desc",
-            },
-        });
+            _count: { select: { campaigns: true, lists: true } },
+        } as const;
+
+        const missionsRaw =
+            role === "BOOKER"
+                ? await prisma.mission.findMany({
+                      where: { isActive: true },
+                      include: baseMissionInclude,
+                      orderBy: { createdAt: "desc" },
+                  })
+                : (
+                      await prisma.sDRAssignment.findMany({
+                          where: {
+                              sdrId: session.user.id,
+                              mission: { isActive: true },
+                          },
+                          include: { mission: { include: baseMissionInclude } },
+                          orderBy: { createdAt: "desc" },
+                      })
+                  ).map((a) => a.mission);
 
         // Calculate progress and remaining contacts for each mission
         const missions = await Promise.all(
-            assignments.map(async (assignment) => {
-                const mission = assignment.mission;
-
+            missionsRaw.map(async (mission) => {
                 // Get total contacts count for this mission's lists
                 const totalContacts = await prisma.contact.count({
                     where: {

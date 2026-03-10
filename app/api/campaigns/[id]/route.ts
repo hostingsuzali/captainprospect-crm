@@ -35,7 +35,7 @@ export const GET = withErrorHandler(async (
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) => {
-    await requireRole(['MANAGER', 'CLIENT', 'SDR', 'BUSINESS_DEVELOPER'], request);
+    await requireRole(['MANAGER', 'CLIENT', 'SDR', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const { id } = await params;
 
     const campaign = await prisma.campaign.findUnique({
@@ -93,7 +93,7 @@ export const PUT = withErrorHandler(async (
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) => {
-    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
+    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const { id } = await params;
     const data = await validateRequest(request, updateCampaignSchema);
 

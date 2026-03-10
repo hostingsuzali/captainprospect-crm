@@ -32,7 +32,7 @@ const createCampaignSchema = z.object({
 // ============================================
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER', 'CLIENT', 'BUSINESS_DEVELOPER', 'SDR'], request);
+    await requireRole(['MANAGER', 'CLIENT', 'BUSINESS_DEVELOPER', 'SDR', 'BOOKER'], request);
     const { searchParams } = new URL(request.url);
     const { page, limit, skip } = getPaginationParams(searchParams);
 
@@ -94,7 +94,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 // ============================================
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
+    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const data = await validateRequest(request, createCampaignSchema);
 
     // Verify mission exists

@@ -22,22 +22,33 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const missionId = searchParams.get("missionId");
 
-        // Get SDR's assigned missions
-        const assignments = await prisma.sDRAssignment.findMany({
-            where: {
-                sdrId: session.user.id,
-                mission: {
-                    isActive: true,
+        const isBooker = (session.user as { role?: string }).role === "BOOKER";
+
+        // Booker sees all active missions; SDR/BD sees only assigned missions
+        let assignedMissionIds: string[];
+        if (isBooker) {
+            const activeMissions = await prisma.mission.findMany({
+                where: { isActive: true },
+                select: { id: true },
+            });
+            assignedMissionIds = activeMissions.map(m => m.id);
+        } else {
+            // Get SDR's assigned missions
+            const assignments = await prisma.sDRAssignment.findMany({
+                where: {
+                    sdrId: session.user.id,
+                    mission: {
+                        isActive: true,
+                    },
                 },
-            },
-            select: {
-                missionId: true,
-            },
-        });
+                select: {
+                    missionId: true,
+                },
+            });
+            assignedMissionIds = assignments.map(a => a.missionId);
+        }
 
-        const assignedMissionIds = assignments.map(a => a.missionId);
-
-        // If missionId is provided, validate it's in assigned missions
+        // If missionId is provided, validate it's in accessible missions
         if (missionId && !assignedMissionIds.includes(missionId)) {
             return NextResponse.json(
                 { success: false, error: "Mission non accessible" },

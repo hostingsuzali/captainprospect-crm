@@ -128,7 +128,7 @@ Contraintes :
 // ============================================
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
- const session = await requireRole(['MANAGER', 'SDR', 'BUSINESS_DEVELOPER'], request);
+ const session = await requireRole(['MANAGER', 'SDR', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
  const { searchParams } = new URL(request.url);
  const { page, limit } = getPaginationParams(searchParams);
 
@@ -182,7 +182,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 // ============================================
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
- const session = await requireRole(['SDR', 'MANAGER', 'BUSINESS_DEVELOPER'], request);
+ const session = await requireRole(['SDR', 'MANAGER', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
  const data = await validateRequest(request, createActionSchema);
 
  // Validate result against effective config

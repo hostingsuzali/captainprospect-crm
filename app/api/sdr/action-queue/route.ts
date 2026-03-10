@@ -18,7 +18,7 @@ function escapeIlikePattern(raw: string): string {
 }
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    const session = await requireRole(["SDR", "BUSINESS_DEVELOPER"], request);
+    const session = await requireRole(["SDR", "BUSINESS_DEVELOPER", "BOOKER"], request);
     const { searchParams } = new URL(request.url);
     const missionId = searchParams.get("missionId");
     const listId = searchParams.get("listId");
@@ -36,9 +36,18 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const COOLDOWN_HOURS = 24;
     const cooldownDate = new Date(Date.now() - COOLDOWN_HOURS * 60 * 60 * 1000);
     const sdrId = session.user.id;
+    const isBooker = session.user.role === "BOOKER";
 
     const missionFilter = missionId ? `AND m.id = '${missionId.replace(/'/g, "''")}'` : "";
     const listFilter = listId ? `AND l.id = '${listId.replace(/'/g, "''")}'` : "";
+
+    // Booker: no SDRAssignment join; SDR/BD: join on SDRAssignment
+    const sdrAssignmentJoin = isBooker
+        ? ""
+        : `INNER JOIN "SDRAssignment" sa ON sa."missionId" = m.id`;
+    const sdrAssignmentWhere = isBooker
+        ? ""
+        : `AND sa."sdrId" = $1`;
 
     const rawResult = await prisma.$queryRawUnsafe<
         Array<{
@@ -92,10 +101,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             INNER JOIN "Mission" m ON l."missionId" = m.id
             INNER JOIN "Client" cl ON m."clientId" = cl.id
             INNER JOIN "Campaign" camp ON camp."missionId" = m.id
-            INNER JOIN "SDRAssignment" sa ON sa."missionId" = m.id
-            WHERE sa."sdrId" = $1
-              AND m."isActive" = true
+            ${sdrAssignmentJoin}
+            WHERE m."isActive" = true
               AND camp."isActive" = true
+              ${sdrAssignmentWhere}
               AND (
                   ('CALL' = ANY(m.channels) AND (c.phone IS NOT NULL AND c.phone != '' OR co.phone IS NOT NULL AND co.phone != '')) OR
                   ('EMAIL' = ANY(m.channels) AND c.email IS NOT NULL AND c.email != '') OR
@@ -129,10 +138,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             INNER JOIN "Mission" m ON l."missionId" = m.id
             INNER JOIN "Client" cl ON m."clientId" = cl.id
             INNER JOIN "Campaign" camp ON camp."missionId" = m.id
-            INNER JOIN "SDRAssignment" sa ON sa."missionId" = m.id
-            WHERE sa."sdrId" = $1
-              AND m."isActive" = true
+            ${sdrAssignmentJoin}
+            WHERE m."isActive" = true
               AND camp."isActive" = true
+              ${sdrAssignmentWhere}
               AND 'CALL' = ANY(m.channels)
               AND co.phone IS NOT NULL
               AND co.phone != ''
@@ -194,15 +203,18 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             LEFT JOIN last_actions_companies lac2 ON at.contact_id IS NULL AND at.company_id = lac2."companyId"
         )
         SELECT * FROM targets_with_last_action
-        WHERE (last_action_created IS NULL OR last_action_created < $2)
+        WHERE (last_action_created IS NULL OR last_action_created < $${isBooker ? 1 : 2})
         ${hasSearch ? `
         AND (
-            (contact_first_name IS NOT NULL AND contact_first_name ILIKE $3)
-            OR (contact_last_name IS NOT NULL AND contact_last_name ILIKE $3)
-            OR (company_name IS NOT NULL AND company_name ILIKE $3)
+            (contact_first_name IS NOT NULL AND contact_first_name ILIKE $${isBooker ? 2 : 3})
+            OR (contact_last_name IS NOT NULL AND contact_last_name ILIKE $${isBooker ? 2 : 3})
+            OR (company_name IS NOT NULL AND company_name ILIKE $${isBooker ? 2 : 3})
         )` : ""}
     `,
-        ...(hasSearch ? [sdrId, cooldownDate, `%${escapeIlikePattern(search)}%`] : [sdrId, cooldownDate])
+        ...(isBooker
+            ? (hasSearch ? [cooldownDate, `%${escapeIlikePattern(search)}%`] : [cooldownDate])
+            : (hasSearch ? [sdrId, cooldownDate, `%${escapeIlikePattern(search)}%`] : [sdrId, cooldownDate])
+        )
     );
 
     // Resolve config in parallel with result processing

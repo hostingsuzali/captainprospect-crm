@@ -44,7 +44,7 @@ export const GET = withErrorHandler(async (
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) => {
-    const session = await requireRole(['MANAGER', 'CLIENT', 'SDR', 'BUSINESS_DEVELOPER'], request);
+    const session = await requireRole(['MANAGER', 'CLIENT', 'SDR', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const { id } = await params;
 
     const mission = await prisma.mission.findUnique({
@@ -144,7 +144,7 @@ export const PUT = withErrorHandler(async (
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) => {
-    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
+    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const { id } = await params;
     const data = await validateRequest(request, updateMissionSchema);
 
@@ -209,13 +209,13 @@ export const PATCH = withErrorHandler(async (
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) => {
-    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
+    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const { id } = await params;
     const { sdrId } = await validateRequest(request, assignSdrSchema);
 
     // Verify user exists and has SDR or BUSINESS_DEVELOPER role
     const sdr = await prisma.user.findFirst({
-        where: { id: sdrId, role: { in: ['SDR', 'BUSINESS_DEVELOPER'] } },
+        where: { id: sdrId, role: { in: ['SDR', 'BUSINESS_DEVELOPER', 'BOOKER'] } },
     });
 
     if (!sdr) {
