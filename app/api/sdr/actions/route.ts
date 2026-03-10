@@ -40,19 +40,24 @@ export async function GET(request: NextRequest) {
         const voipProvider = searchParams.get("voipProvider");
 
         const sdrId = session.user.id;
+        const isBooker = role === "BOOKER";
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         type Where = {
-            sdrId: string;
+            sdrId?: string;
             createdAt?: { gte?: Date; lte?: Date };
             campaign?: { missionId?: string };
             result?: string;
             channel?: string;
             voipProvider?: string;
         };
-        const where: Where = { sdrId };
+        const where: Where = {};
+        // Booker sees ALL actions; SDR/BD sees only their own
+        if (!isBooker) {
+            where.sdrId = sdrId;
+        }
         if (period === "today") {
             where.createdAt = { ...where.createdAt, gte: today };
         }
@@ -83,10 +88,13 @@ export async function GET(request: NextRequest) {
         }
 
         const actions = await prisma.action.findMany({
-            where,
+            where: where as any,
             orderBy: { createdAt: "desc" },
             take: limit,
             include: {
+                sdr: {
+                    select: { id: true, name: true },
+                },
                 contact: {
                     select: {
                         id: true,

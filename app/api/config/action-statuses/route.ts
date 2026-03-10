@@ -10,7 +10,7 @@ import { statusConfigService } from "@/lib/services/StatusConfigService";
 // ============================================
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(["SDR", "MANAGER", "BUSINESS_DEVELOPER"], request);
+    await requireRole(["SDR", "MANAGER", "BUSINESS_DEVELOPER", "BOOKER"], request);
     const { searchParams } = new URL(request.url);
     const campaignId = searchParams.get("campaignId") || undefined;
     const missionId = searchParams.get("missionId") || undefined;

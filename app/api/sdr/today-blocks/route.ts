@@ -14,6 +14,20 @@ export async function GET() {
             );
         }
 
+        // Booker doesn't use planning — return empty blocks
+        const userRole = (session.user as { role?: string }).role;
+        if (userRole === 'BOOKER') {
+            return NextResponse.json({
+                success: true,
+                data: {
+                    todayBlocks: [],
+                    todayMissionIds: [],
+                    weekBlocks: [],
+                    hasBlocksToday: false,
+                },
+            });
+        }
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const tomorrow = new Date(today);

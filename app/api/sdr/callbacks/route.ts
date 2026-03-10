@@ -135,7 +135,7 @@ export async function GET(request: Request) {
             skip,
             ...(limit > 0 ? { take: limit } : {}),
             include: {
-                sdr: (isBusinessDeveloper || teamLeadMissionIds.length > 0)
+                sdr: (isBusinessDeveloper || isBooker || teamLeadMissionIds.length > 0)
                     ? { select: { id: true, name: true } }
                     : false,
                 contact: {
@@ -240,7 +240,7 @@ export async function GET(request: Request) {
                     client: action.campaign.mission.client,
                 } : null,
             };
-            if ((isBusinessDeveloper || teamLeadMissionIds.length > 0) && action.sdr) {
+            if ((isBusinessDeveloper || isBooker || teamLeadMissionIds.length > 0) && action.sdr) {
                 item.sdr = { id: action.sdr.id, name: action.sdr.name };
             }
             activeCallbacks.push(item);

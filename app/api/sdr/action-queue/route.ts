@@ -77,7 +77,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     >(
         `
         WITH sdr_contacts AS (
-            SELECT DISTINCT
+            -- One row per contact/company pair (even if multiple active campaigns exist)
+            SELECT DISTINCT ON (c.id, co.id)
                 c.id as contact_id,
                 co.id as company_id,
                 co.name as company_name,
@@ -113,9 +114,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               ${missionFilter}
               ${listFilter}
               ${channelFilter}
+            ORDER BY c.id, co.id
         ),
         sdr_companies AS (
-            SELECT DISTINCT
+            -- One row per company (when no eligible contacts exist), regardless of campaign count
+            SELECT DISTINCT ON (co.id)
                 NULL::text as contact_id,
                 co.id as company_id,
                 co.name as company_name,
@@ -157,6 +160,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               ${missionFilter}
               ${listFilter}
               ${channelFilter}
+            ORDER BY co.id
         ),
         all_targets AS (
             SELECT * FROM sdr_contacts
