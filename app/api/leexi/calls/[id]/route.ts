@@ -10,7 +10,7 @@ import { fetchLeexiCallById, isLeexiAvailable } from '@/lib/leexi/service';
 export const GET = withErrorHandler(async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {
   await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
 
-  if (!isLeexiAvailable()) {
+  if (!(await isLeexiAvailable())) {
     return errorResponse('Leexi non configuré', 503);
   }
 

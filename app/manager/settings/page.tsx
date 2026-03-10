@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import {
   Mail, RotateCcw, Save, Eye, Info,
   CheckCircle2, AlertCircle, Sparkles, Code2,
-  ChevronRight, Zap, Variable
+  ChevronRight, Zap, Variable, Key, ShieldCheck, Link2
 } from "lucide-react";
 import { RDV_TEMPLATE_VARIABLES } from "@/lib/email/templates/rdv-notification";
 
@@ -139,19 +139,149 @@ export default function ManagerSettingsPage() {
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Master password state
+  const [masterPasswordEnabled, setMasterPasswordEnabled] = useState<boolean | null>(null);
+  const [masterPasswordValue, setMasterPasswordValue] = useState("");
+  const [masterPasswordSaving, setMasterPasswordSaving] = useState(false);
+  const [masterPasswordError, setMasterPasswordError] = useState<string | null>(null);
+  const [masterPasswordSaved, setMasterPasswordSaved] = useState(false);
+
   useEffect(() => {
     setLoading(true);
-    fetch("/api/system-templates/rdv_notification")
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.success) {
-          setTemplate(json.data);
-          setSubject(json.data.subject);
-          setBodyHtml(json.data.bodyHtml);
-        }
-      })
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetch("/api/system-templates/rdv_notification").then((r) => r.json()),
+      fetch("/api/system-config/master-password").then((r) => r.json()),
+      fetch("/api/system-config/leexi").then((r) => r.json()),
+    ]).then(([tplRes, mpRes, leexiRes]) => {
+      if (tplRes.success) {
+        setTemplate(tplRes.data);
+        setSubject(tplRes.data.subject);
+        setBodyHtml(tplRes.data.bodyHtml);
+      }
+      if (mpRes.success) {
+        setMasterPasswordEnabled(mpRes.data.enabled);
+      }
+      // We only care if Leexi is enabled; keys never leave the server
+      if (leexiRes.success) {
+        setLeexiEnabled(leexiRes.data.enabled);
+        setLeexiSource(leexiRes.data.source);
+      }
+    }).finally(() => setLoading(false));
   }, []);
+
+  // Leexi config state
+  const [leexiEnabled, setLeexiEnabled] = useState<boolean | null>(null);
+  const [leexiSource, setLeexiSource] = useState<"settings" | "env" | "none" | null>(null);
+  const [leexiKeyId, setLeexiKeyId] = useState("");
+  const [leexiKeySecret, setLeexiKeySecret] = useState("");
+  const [leexiSaving, setLeexiSaving] = useState(false);
+  const [leexiError, setLeexiError] = useState<string | null>(null);
+  const [leexiSaved, setLeexiSaved] = useState(false);
+
+  async function handleSaveLeexiConfig() {
+    if (!leexiKeyId || !leexiKeySecret) {
+      setLeexiError("Renseignez l'identifiant et le secret API Leexi");
+      return;
+    }
+    setLeexiSaving(true);
+    setLeexiError(null);
+    setLeexiSaved(false);
+    try {
+      const res = await fetch("/api/system-config/leexi", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyId: leexiKeyId, keySecret: leexiKeySecret }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setLeexiEnabled(true);
+        setLeexiSource("settings");
+        setLeexiKeyId("");
+        setLeexiKeySecret("");
+        setLeexiSaved(true);
+        setTimeout(() => setLeexiSaved(false), 3000);
+      } else {
+        setLeexiError(json.error || "Erreur lors de la sauvegarde");
+      }
+    } catch {
+      setLeexiError("Erreur de connexion");
+    } finally {
+      setLeexiSaving(false);
+    }
+  }
+
+  async function handleDisableLeexiConfig() {
+    if (!window.confirm("Désactiver la connexion Leexi ? Les imports de sessions ne fonctionneront plus.")) return;
+    setLeexiSaving(true);
+    setLeexiError(null);
+    try {
+      const res = await fetch("/api/system-config/leexi", { method: "DELETE" });
+      const json = await res.json();
+      if (json.success) {
+        setLeexiEnabled(json.data.enabled);
+        setLeexiSource(json.data.source);
+        setLeexiSaved(true);
+        setTimeout(() => setLeexiSaved(false), 3000);
+      } else {
+        setLeexiError(json.error || "Erreur");
+      }
+    } catch {
+      setLeexiError("Erreur de connexion");
+    } finally {
+      setLeexiSaving(false);
+    }
+  }
+
+  async function handleSetMasterPassword() {
+    if (!masterPasswordValue || masterPasswordValue.length < 6) {
+      setMasterPasswordError("Le mot de passe doit faire au moins 6 caractères");
+      return;
+    }
+    setMasterPasswordSaving(true);
+    setMasterPasswordError(null);
+    setMasterPasswordSaved(false);
+    try {
+      const res = await fetch("/api/system-config/master-password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: masterPasswordValue }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setMasterPasswordEnabled(true);
+        setMasterPasswordValue("");
+        setMasterPasswordSaved(true);
+        setTimeout(() => setMasterPasswordSaved(false), 3000);
+      } else {
+        setMasterPasswordError(json.error || "Erreur lors de la sauvegarde");
+      }
+    } catch {
+      setMasterPasswordError("Erreur de connexion");
+    } finally {
+      setMasterPasswordSaving(false);
+    }
+  }
+
+  async function handleDisableMasterPassword() {
+    if (!window.confirm("Désactiver le mot de passe maître ? Vous ne pourrez plus vous connecter avec celui-ci.")) return;
+    setMasterPasswordSaving(true);
+    setMasterPasswordError(null);
+    try {
+      const res = await fetch("/api/system-config/master-password", { method: "DELETE" });
+      const json = await res.json();
+      if (json.success) {
+        setMasterPasswordEnabled(false);
+        setMasterPasswordSaved(true);
+        setTimeout(() => setMasterPasswordSaved(false), 3000);
+      } else {
+        setMasterPasswordError(json.error || "Erreur");
+      }
+    } catch {
+      setMasterPasswordError("Erreur de connexion");
+    } finally {
+      setMasterPasswordSaving(false);
+    }
+  }
 
   const previewHtml = bodyHtml
     .replaceAll("{{contactName}}", "Marie Dupont")
@@ -276,6 +406,181 @@ export default function ManagerSettingsPage() {
             )}
           </div>
         </div>
+
+        {/* Master Password */}
+        <Section
+          label="Mot de passe maître"
+          icon={Key}
+          badge={
+            masterPasswordEnabled === true ? (
+              <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-emerald-50 text-emerald-600 border border-emerald-200/80 rounded-full">
+                <ShieldCheck className="w-3 h-3" />
+                Activé
+              </span>
+            ) : masterPasswordEnabled === false ? (
+              <span className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full">
+                Désactivé
+              </span>
+            ) : null
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              Un mot de passe maître permet de se connecter à n&apos;importe quel compte en utilisant son email et ce mot de passe. Utilisation interne uniquement.
+            </p>
+            {masterPasswordEnabled ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex-1 min-w-[200px] max-w-md">
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Changer le mot de passe</label>
+                  <input
+                    type="password"
+                    value={masterPasswordValue}
+                    onChange={(e) => {
+                      setMasterPasswordValue(e.target.value);
+                      setMasterPasswordError(null);
+                    }}
+                    placeholder="Nouveau mot de passe (6+ caractères)"
+                    className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                  />
+                </div>
+                <div className="flex items-end gap-2">
+                  <button
+                    onClick={handleSetMasterPassword}
+                    disabled={masterPasswordSaving || !masterPasswordValue || masterPasswordValue.length < 6}
+                    className="px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 transition-colors"
+                  >
+                    {masterPasswordSaving ? "Enregistrement…" : "Mettre à jour"}
+                  </button>
+                  <button
+                    onClick={handleDisableMasterPassword}
+                    disabled={masterPasswordSaving}
+                    className="px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-red-600 border border-slate-200 rounded-xl hover:border-red-200 disabled:opacity-50 transition-colors"
+                  >
+                    Désactiver
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex-1 min-w-[200px] max-w-md">
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Mot de passe maître</label>
+                  <input
+                    type="password"
+                    value={masterPasswordValue}
+                    onChange={(e) => {
+                      setMasterPasswordValue(e.target.value);
+                      setMasterPasswordError(null);
+                    }}
+                    placeholder="6 caractères minimum"
+                    className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                  />
+                </div>
+                <button
+                  onClick={handleSetMasterPassword}
+                  disabled={masterPasswordSaving || !masterPasswordValue || masterPasswordValue.length < 6}
+                  className="px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 transition-colors"
+                >
+                  {masterPasswordSaving ? "Activation…" : "Activer"}
+                </button>
+              </div>
+            )}
+            {(masterPasswordError || masterPasswordSaved) && (
+              <p className={`text-sm ${masterPasswordError ? "text-red-600" : "text-emerald-600"}`}>
+                {masterPasswordError || "Paramètre enregistré"}
+              </p>
+            )}
+          </div>
+        </Section>
+
+        {/* Leexi API */}
+        <Section
+          label="Intégration Leexi (CR & sessions)"
+          icon={Link2}
+          badge={
+            leexiEnabled === true ? (
+              <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-emerald-50 text-emerald-600 border border-emerald-200/80 rounded-full">
+                <ShieldCheck className="w-3 h-3" />
+                Active
+              </span>
+            ) : leexiEnabled === false ? (
+              <span className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full">
+                Inactive
+              </span>
+            ) : null
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              Configurez la connexion à Leexi pour créer des sessions et compte-rendus directement depuis les transcriptions.
+              Les clés sont stockées côté serveur dans la configuration système, pas dans le navigateur.
+            </p>
+
+            {leexiSource === "env" && (
+              <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 flex items-start gap-2">
+                <span className="mt-0.5">⚠️</span>
+                <div>
+                  <p className="font-medium">Leexi est actuellement configuré via les variables d&apos;environnement.</p>
+                  <p>Vous pouvez surcharger cette configuration en enregistrant des clés ici.</p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1.2fr_auto] gap-3 items-end">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                  Identifiant API Leexi (KEY_ID)
+                </label>
+                <input
+                  type="text"
+                  value={leexiKeyId}
+                  onChange={(e) => {
+                    setLeexiKeyId(e.target.value);
+                    setLeexiError(null);
+                  }}
+                  placeholder="leexi_xxx..."
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                  Secret API Leexi (KEY_SECRET)
+                </label>
+                <input
+                  type="password"
+                  value={leexiKeySecret}
+                  onChange={(e) => {
+                    setLeexiKeySecret(e.target.value);
+                    setLeexiError(null);
+                  }}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleSaveLeexiConfig}
+                  disabled={leexiSaving || !leexiKeyId || !leexiKeySecret}
+                  className="px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 transition-colors"
+                >
+                  {leexiSaving ? "Enregistrement…" : "Enregistrer"}
+                </button>
+                <button
+                  onClick={handleDisableLeexiConfig}
+                  disabled={leexiSaving}
+                  className="px-4 py-2.5 text-xs font-medium text-slate-600 hover:text-red-600 border border-slate-200 rounded-xl hover:border-red-200 disabled:opacity-50 transition-colors"
+                >
+                  Désactiver
+                </button>
+              </div>
+            </div>
+
+            {(leexiError || leexiSaved) && (
+              <p className={`text-sm ${leexiError ? "text-red-600" : "text-emerald-600"}`}>
+                {leexiError || "Paramètres Leexi enregistrés"}
+              </p>
+            )}
+          </div>
+        </Section>
 
         {/* Subject */}
         <Section label="Objet de l'email" icon={Mail}>

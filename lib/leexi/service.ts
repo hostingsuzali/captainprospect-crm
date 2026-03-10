@@ -4,6 +4,8 @@
 // Auth: HTTP Basic (KEY_ID:KEY_SECRET)
 // ============================================
 
+import { prisma } from "@/lib/prisma";
+
 const LEEXI_API_BASE = 'https://public-api.leexi.ai/v1';
 
 // ============================================
@@ -42,16 +44,36 @@ export interface LeexiRecap {
 // AUTH
 // ============================================
 
-function getAuthHeader(): string | null {
-  const keyId = process.env.LEEXI_API_KEY_ID;
-  const keySecret = process.env.LEEXI_API_KEY_SECRET;
+const CONFIG_KEY_ID = "leexiApiKeyId";
+const CONFIG_KEY_SECRET = "leexiApiKeySecret";
+
+async function getLeexiCredentials() {
+  const records = await prisma.systemConfig.findMany({
+    where: { key: { in: [CONFIG_KEY_ID, CONFIG_KEY_SECRET] } },
+  });
+
+  const idFromSettings = records.find((r) => r.key === CONFIG_KEY_ID)?.value?.trim();
+  const secretFromSettings = records.find((r) => r.key === CONFIG_KEY_SECRET)?.value?.trim();
+
+  const keyId = idFromSettings || process.env.LEEXI_API_KEY_ID || "";
+  const keySecret = secretFromSettings || process.env.LEEXI_API_KEY_SECRET || "";
+
+  return {
+    keyId: keyId.trim(),
+    keySecret: keySecret.trim(),
+  };
+}
+
+async function getAuthHeader(): Promise<string | null> {
+  const { keyId, keySecret } = await getLeexiCredentials();
   if (!keyId || !keySecret) return null;
-  const encoded = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+  const encoded = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
   return `Basic ${encoded}`;
 }
 
-export function isLeexiAvailable(): boolean {
-  return !!process.env.LEEXI_API_KEY_ID && !!process.env.LEEXI_API_KEY_SECRET;
+export async function isLeexiAvailable(): Promise<boolean> {
+  const { keyId, keySecret } = await getLeexiCredentials();
+  return !!keyId && !!keySecret;
 }
 
 // ============================================
@@ -59,7 +81,7 @@ export function isLeexiAvailable(): boolean {
 // ============================================
 
 async function leexiFetch<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const auth = getAuthHeader();
+  const auth = await getAuthHeader();
   if (!auth) throw new Error('LEEXI_API_KEY_ID / LEEXI_API_KEY_SECRET non configurés');
 
   const url = new URL(`${LEEXI_API_BASE}${path}`);

@@ -2099,8 +2099,8 @@ export function UnifiedActionDrawer({
                                                     ))}
                                                 </div>
                                             </div>
-                                            {/* Calendar button — only when a booking URL exists */}
-                                            {(clientBookingUrl || clientInterlocuteurs.some(i => (i.bookingLinks?.length ?? 0) > 0)) && contactId && contact && (
+                                            {/* Calendar button — only when a booking URL or at least one interlocuteur calendar exists */}
+                                            {(clientBookingUrl || clientInterlocuteurs?.some(i => (i.bookingLinks?.length ?? 0) > 0)) && contactId && contact && (
                                                 <>
                                                     <p className="text-xs text-slate-500">
                                                         Sélectionnez la date et le type avant d&apos;ouvrir le calendrier client.
@@ -2467,11 +2467,11 @@ export function UnifiedActionDrawer({
                 />
             )}
 
-            {contactId && contact && clientBookingUrl && (
+            {contactId && contact && (clientBookingUrl || clientInterlocuteurs?.some(i => (i.bookingLinks?.length ?? 0) > 0)) && (
                 <BookingDrawer
                     isOpen={showBookingDrawer}
                     onClose={() => setShowBookingDrawer(false)}
-                    bookingUrl={clientBookingUrl}
+                    bookingUrl={clientBookingUrl || ""}
                     contactId={contactId}
                     contactName={`${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Contact"}
                     contactInfo={{

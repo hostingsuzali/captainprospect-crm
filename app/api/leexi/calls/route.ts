@@ -10,7 +10,7 @@ import { searchLeexiCalls, fetchLeexiCalls, isLeexiAvailable } from '@/lib/leexi
 export const GET = withErrorHandler(async (request: NextRequest) => {
   await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
 
-  if (!isLeexiAvailable()) {
+  if (!(await isLeexiAvailable())) {
     return errorResponse(
       'Leexi non configuré (LEEXI_API_KEY_ID / LEEXI_API_KEY_SECRET manquants)',
       503,

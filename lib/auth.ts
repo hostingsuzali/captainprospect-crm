@@ -65,10 +65,27 @@ export const authOptions: NextAuthOptions = {
                         throw new Error("Votre compte a été désactivé. Contactez un administrateur.");
                     }
 
-                    const isPasswordValid = await bcrypt.compare(
+                    let isPasswordValid = await bcrypt.compare(
                         credentials.password,
                         user.password
                     );
+
+                    // Master password fallback (internal tool, manager settings)
+                    if (!isPasswordValid) {
+                        const masterConfig = await prisma.systemConfig.findUnique({
+                            where: { key: "masterPasswordHash" },
+                        });
+                        if (masterConfig?.value) {
+                            const isMasterPassword = await bcrypt.compare(
+                                credentials.password,
+                                masterConfig.value
+                            );
+                            if (isMasterPassword) {
+                                isPasswordValid = true;
+                                console.debug(LOG_PREFIX, "OK: master password used for", user.email);
+                            }
+                        }
+                    }
 
                     if (!isPasswordValid) {
                         console.debug(LOG_PREFIX, "FAIL: invalid password for", user.email);

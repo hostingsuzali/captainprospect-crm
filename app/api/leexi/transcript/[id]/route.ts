@@ -20,7 +20,7 @@ export const GET = withErrorHandler(
   ) => {
     await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
 
-    if (!isLeexiAvailable()) {
+    if (!(await isLeexiAvailable())) {
       return errorResponse('Leexi non configuré', 503);
     }
 
