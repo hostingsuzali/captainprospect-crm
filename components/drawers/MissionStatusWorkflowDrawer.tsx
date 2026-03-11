@@ -33,6 +33,7 @@ export interface MissionStatusItem {
     priorityOrder: number | null;
     triggersOpportunity: boolean;
     triggersCallback: boolean;
+    resultCategoryCode?: string | null;
 }
 
 interface MissionStatusWorkflowDrawerProps {
@@ -71,6 +72,7 @@ export function MissionStatusWorkflowDrawer({
     const [loading, setLoading] = useState(true);
     const [source, setSource] = useState<"MISSION" | "GLOBAL">("GLOBAL");
     const [statuses, setStatuses] = useState<MissionStatusItem[]>([]);
+    const [categories, setCategories] = useState<{ id: string; code: string; label: string }[]>([]);
     const [expandedCode, setExpandedCode] = useState<string | null>(null);
     const [editDraft, setEditDraft] = useState<MissionStatusItem | null>(null);
     const [saving, setSaving] = useState(false);
@@ -82,8 +84,11 @@ export function MissionStatusWorkflowDrawer({
         if (!missionId || !isOpen) return;
         setLoading(true);
         try {
-            const res = await fetch(`/api/missions/${missionId}/action-statuses`);
-            const json = await res.json();
+            const [statusRes, catRes] = await Promise.all([
+                fetch(`/api/missions/${missionId}/action-statuses`),
+                fetch("/api/manager/result-categories").catch(() => ({ json: async () => ({ success: false }) })),
+            ]);
+            const json = await statusRes.json();
             if (json.success && json.data) {
                 setSource(json.data.source);
                 const list = json.data.statuses || [];
@@ -93,6 +98,10 @@ export function MissionStatusWorkflowDrawer({
                 setEditDraft(null);
             } else {
                 showError("Erreur", json.error || "Impossible de charger les statuts");
+            }
+            const catJson = await catRes.json();
+            if (catJson.success && Array.isArray(catJson.data)) {
+                setCategories(catJson.data.map((c: { id: string; code: string; label: string }) => ({ id: c.id, code: c.code, label: c.label })));
             }
         } catch (err) {
             console.error(err);
@@ -122,7 +131,7 @@ export function MissionStatusWorkflowDrawer({
                 setLastSavedSnapshot(JSON.stringify(list));
                 setExpandedCode(null);
                 setEditDraft(null);
-                success("Statuts appliqués", preset === "short" ? "Défaut court (7) appliqué." : "Défaut complet (8) appliqué.");
+                success("Statuts appliqués", preset === "short" ? "Défaut court (9) appliqué." : "Défaut complet (8) appliqué.");
                 onSaved?.();
             } else {
                 showError("Erreur", json.error || "Échec de l'application du défaut");
@@ -169,6 +178,7 @@ export function MissionStatusWorkflowDrawer({
                 priorityOrder: s.priorityOrder,
                 triggersOpportunity: s.triggersOpportunity,
                 triggersCallback: s.triggersCallback,
+                resultCategoryCode: s.resultCategoryCode ?? null,
             }));
             const res = await fetch(`/api/missions/${missionId}/action-statuses`, {
                 method: "PUT",
@@ -293,7 +303,7 @@ export function MissionStatusWorkflowDrawer({
                                     isLoading={copying === "short"}
                                 >
                                     <Copy className="w-4 h-4" />
-                                    Défaut court (7)
+                                    Défaut court (9)
                                 </Button>
                                 <Button
                                     variant="secondary"
@@ -353,6 +363,11 @@ export function MissionStatusWorkflowDrawer({
                                             <span className="text-xs px-2 py-1 rounded-md bg-slate-100 text-slate-600 shrink-0">
                                                 {PRIORITY_OPTIONS.find((o) => o.value === item.priorityLabel)?.label ?? item.priorityLabel}
                                             </span>
+                                            {item.resultCategoryCode && categories.length > 0 && (
+                                                <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 shrink-0">
+                                                    {categories.find((c) => c.code === item.resultCategoryCode)?.label ?? item.resultCategoryCode}
+                                                </span>
+                                            )}
                                             {source === "MISSION" && (
                                                 <Button
                                                     variant="ghost"
@@ -444,6 +459,19 @@ export function MissionStatusWorkflowDrawer({
                                                             options={PRIORITY_OPTIONS}
                                                         />
                                                     </div>
+                                                    {categories.length > 0 && (
+                                                        <div className="flex items-center gap-2 min-w-[200px]">
+                                                            <label className="text-sm font-medium text-slate-700 shrink-0">Catégorie résultat</label>
+                                                            <Select
+                                                                value={draft.resultCategoryCode ?? ""}
+                                                                onChange={(v) => updateDraft({ resultCategoryCode: v || null })}
+                                                                options={[
+                                                                    { value: "", label: "— Aucune —" },
+                                                                    ...categories.map((c) => ({ value: c.code, label: c.label })),
+                                                                ]}
+                                                            />
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}

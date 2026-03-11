@@ -24,6 +24,7 @@ import {
   LucideIcon,
   Database,
   FileDown,
+  Activity,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
 
@@ -474,6 +475,12 @@ export const CLIENT_NAV: NavSection[] = [
         href: "/client/portal/reporting",
         icon: FileDown,
         label: "Rapports",
+        permission: "pages.dashboard",
+      },
+      {
+        href: "/client/portal/activite",
+        icon: Activity,
+        label: "Activité",
         permission: "pages.dashboard",
       },
       {

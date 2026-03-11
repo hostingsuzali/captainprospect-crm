@@ -22,6 +22,7 @@ const statusDefSchema = z.object({
     priorityOrder: z.number().int().optional().nullable(),
     triggersOpportunity: z.boolean(),
     triggersCallback: z.boolean(),
+    resultCategoryCode: z.string().optional().nullable(),
 });
 const putBodySchema = z.object({ statuses: z.array(statusDefSchema) });
 
@@ -52,6 +53,7 @@ export const GET = withErrorHandler(async (request: NextRequest, { params }: Rou
                 priorityOrder: r.priorityOrder,
                 triggersOpportunity: r.triggersOpportunity,
                 triggersCallback: r.triggersCallback,
+                resultCategoryCode: r.resultCategoryCode,
             })),
         });
     }
@@ -73,6 +75,7 @@ export const GET = withErrorHandler(async (request: NextRequest, { params }: Rou
             priorityOrder: r.priorityOrder,
             triggersOpportunity: r.triggersOpportunity,
             triggersCallback: r.triggersCallback,
+            resultCategoryCode: r.resultCategoryCode,
         })),
     });
 });
@@ -112,6 +115,7 @@ export const PUT = withErrorHandler(async (request: NextRequest, { params }: Rou
                     priorityOrder: s.priorityOrder ?? undefined,
                     triggersOpportunity: s.triggersOpportunity,
                     triggersCallback: s.triggersCallback,
+                    resultCategoryCode: s.resultCategoryCode ?? undefined,
                     isActive: true,
                 },
             });
@@ -135,6 +139,7 @@ export const PUT = withErrorHandler(async (request: NextRequest, { params }: Rou
             priorityOrder: r.priorityOrder,
             triggersOpportunity: r.triggersOpportunity,
             triggersCallback: r.triggersCallback,
+            resultCategoryCode: r.resultCategoryCode,
         })),
     });
 });

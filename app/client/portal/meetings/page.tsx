@@ -831,12 +831,12 @@ export default function ClientPortalMeetingsPage() {
   const closeModal = useCallback(()=>setModal(null),[]);
 
   const submitFeedback = async ()=>{
-    if (!sel||!fbOut) return;
+    if (!sel||!fbOut||!fbRec) return;
     setFbSub(true);
     try {
       const r = await fetch(`/api/client/meetings/${sel.id}/feedback`,{
         method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({outcome:fbOut,recontactRequested:null,clientNote:fbNote||null}),
+        body:JSON.stringify({outcome:fbOut,recontactRequested:fbRec,clientNote:fbNote||null}),
       });
       const j=await r.json();
       if (j.success){ setFbDone(true); setMeetings(p=>p.map(m=>m.id===sel.id?{...m,meetingFeedback:j.data}:m)); toast.success("Retour enregistré","Votre avis a été transmis à l'équipe."); setTimeout(closeModal,1400); }
@@ -1050,8 +1050,8 @@ export default function ClientPortalMeetingsPage() {
       )}
       {modal==="feedback" && sel && (
         <FbModal m={sel} onClose={closeModal}
-          out={fbOut} note={fbNote} done={fbDone} sub={fbSub}
-          onOut={setFbOut} onNote={setFbNote} onSubmit={submitFeedback}
+          out={fbOut} rec={fbRec} note={fbNote} done={fbDone} sub={fbSub}
+          onOut={setFbOut} onRec={setFbRec} onNote={setFbNote} onSubmit={submitFeedback}
         />
       )}
       {modal==="reschedule" && sel && (
@@ -1466,10 +1466,10 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
 /* ═══════════════════════════════════════════════════════════════
    FEEDBACK MODAL
 ═══════════════════════════════════════════════════════════════ */
-function FbModal({ m, onClose, out, note, done, sub, onOut, onNote, onSubmit }: {
+function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, onSubmit }: {
   m:Meeting; onClose:()=>void;
-  out:string; note:string; done:boolean; sub:boolean;
-  onOut:(v:string)=>void; onNote:(v:string)=>void; onSubmit:()=>void;
+  out:string; rec:string; note:string; done:boolean; sub:boolean;
+  onOut:(v:string)=>void; onRec:(v:string)=>void; onNote:(v:string)=>void; onSubmit:()=>void;
 }) {
   const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
   const companyName = m.contact?.company?.name || "Entreprise inconnue";
@@ -1495,7 +1495,7 @@ function FbModal({ m, onClose, out, note, done, sub, onOut, onNote, onSubmit }: 
       footer={<>
         <span style={{fontSize:11,color:tk.ink4,marginRight:"auto"}}>* champs requis</span>
         <Btn onClick={onClose}>Annuler</Btn>
-        <Btn variant="primary" onClick={onSubmit} disabled={!out} loading={sub}>
+        <Btn variant="primary" onClick={onSubmit} disabled={!out||!rec} loading={sub}>
           <Send style={{width:13,height:13}} />Envoyer mon avis
         </Btn>
       </>}>
@@ -1515,6 +1515,17 @@ function FbModal({ m, onClose, out, note, done, sub, onOut, onNote, onSubmit }: 
               </button>
             );
           })}
+        </div>
+      </Sec>
+
+      <Sec label="Souhaitez-vous que l'on recontacte ce prospect ? *">
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {[{v:"YES",l:"Oui, à recontacter"},{v:"NO",l:"Non, clôturer"}].map(({v,l})=>(
+            <button key={v} type="button" aria-pressed={rec===v} onClick={()=>onRec(v)}
+              className={cn("cp-toggle",rec===v&&"sel")} style={{flex:1,minWidth:120}}>
+              {l}
+            </button>
+          ))}
         </div>
       </Sec>
 

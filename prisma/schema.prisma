@@ -45,6 +45,8 @@ enum CompletenessStatus {
 enum ActionResult {
   NO_RESPONSE
   BAD_CONTACT
+  BARRAGE_STANDARD   // Gatekeeper / standard barrier
+  NUMERO_KO          // Wrong number / number not valid
   INTERESTED
   CALLBACK_REQUESTED
   MEETING_BOOKED
@@ -818,12 +820,25 @@ model ActionStatusDefinition {
   priorityOrder      Int?               // Optional numeric override; derived from priorityLabel if null
   triggersOpportunity Boolean           @default(false)
   triggersCallback   Boolean            @default(false)
+  resultCategoryCode String?            // Links to ResultCategory.code for reporting/Activité grouping
   isActive           Boolean            @default(true)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
   @@unique([scopeType, scopeId, code])
   @@index([scopeType, scopeId])
+}
+
+// Result categories for grouping statuses in reports and client portal (Activité)
+model ResultCategory {
+  id          String   @id @default(cuid())
+  code        String   @unique  // e.g. MEETING_BOOKED, CALLBACK_REQUESTED, INTERESTED, NO_RESPONSE, DISQUALIFIED, OTHER
+  label       String   // Display label e.g. "RDV pris", "Rappel demandé"
+  color       String?  // Hex color for badges/charts
+  sortOrder   Int      @default(0)
+  description String? @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // Config-driven next steps: "after this result, suggest this action"

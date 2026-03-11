@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
 import {
   Mail, RotateCcw, Save, Eye, Info,
   CheckCircle2, AlertCircle, Sparkles, Code2,
-  ChevronRight, Zap, Variable, Key, ShieldCheck, Link2
+  ChevronRight, Zap, Variable, Key, ShieldCheck, Link2,
+  ListOrdered
 } from "lucide-react";
 import { RDV_TEMPLATE_VARIABLES } from "@/lib/email/templates/rdv-notification";
 
@@ -378,6 +380,21 @@ export default function ManagerSettingsPage() {
       `}</style>
 
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
+        {/* Quick link: Statuts et catégories */}
+        <Link
+          href="/manager/settings/statuses"
+          className="flex items-center gap-4 p-4 rounded-2xl border border-slate-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/30 transition-all group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
+            <ListOrdered className="w-5 h-5 text-indigo-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-slate-900 group-hover:text-indigo-700">Statuts et catégories de résultat</p>
+            <p className="text-sm text-slate-500">Gérer les catégories (RDV, Rappel, Intéressé…) et associer chaque statut d&apos;action à une catégorie pour les rapports et l&apos;Activité client.</p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-indigo-500 shrink-0" />
+        </Link>
+
         {/* Header */}
         <div className="flex items-start justify-between gap-6">
           <div className="space-y-1">

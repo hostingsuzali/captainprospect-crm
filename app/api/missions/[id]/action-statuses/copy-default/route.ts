@@ -35,6 +35,12 @@ export const POST = withErrorHandler(async (request: NextRequest, { params }: Ro
     const preset = parsed.success ? parsed.data.preset : "full";
     const list = preset === "short" ? MISSION_STATUS_PRESETS.SHORT : MISSION_STATUS_PRESETS.FULL;
 
+    const globalDefs = await prisma.actionStatusDefinition.findMany({
+        where: { scopeType: "GLOBAL", scopeId: "", isActive: true },
+        select: { code: true, resultCategoryCode: true },
+    });
+    const categoryByCode = new Map(globalDefs.map((d) => [d.code, d.resultCategoryCode]));
+
     await prisma.$transaction(async (tx) => {
         await tx.actionStatusDefinition.deleteMany({
             where: { scopeType: "MISSION", scopeId: missionId },
@@ -54,6 +60,7 @@ export const POST = withErrorHandler(async (request: NextRequest, { params }: Ro
                     priorityOrder: s.priorityOrder ?? undefined,
                     triggersOpportunity: s.triggersOpportunity,
                     triggersCallback: s.triggersCallback,
+                    resultCategoryCode: categoryByCode.get(s.code) ?? undefined,
                     isActive: true,
                 },
             });
@@ -78,6 +85,7 @@ export const POST = withErrorHandler(async (request: NextRequest, { params }: Ro
             priorityOrder: r.priorityOrder,
             triggersOpportunity: r.triggersOpportunity,
             triggersCallback: r.triggersCallback,
+            resultCategoryCode: r.resultCategoryCode,
         })),
     });
 });

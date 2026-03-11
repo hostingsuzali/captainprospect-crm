@@ -20,6 +20,8 @@ export type CompletenessStatus = "INCOMPLETE" | "PARTIAL" | "ACTIONABLE";
 export type ActionResult =
     | "NO_RESPONSE"
     | "BAD_CONTACT"
+    | "BARRAGE_STANDARD"
+    | "NUMERO_KO"
     | "INTERESTED"
     | "CALLBACK_REQUESTED"
     | "MEETING_BOOKED"
@@ -38,6 +40,8 @@ export type Urgency = "SHORT" | "MEDIUM" | "LONG";
 export const ACTION_RESULT_LABELS: Record<string, string> = {
     NO_RESPONSE: "Pas de réponse",
     BAD_CONTACT: "Standard / Mauvais contact",
+    BARRAGE_STANDARD: "Barrage standard",
+    NUMERO_KO: "NUMERO KO",
     INTERESTED: "Intéressé",
     CALLBACK_REQUESTED: "Rappel demandé",
     MEETING_BOOKED: "Meeting booké",

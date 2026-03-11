@@ -1,6 +1,6 @@
 /**
  * Presets for mission-scoped action status definitions.
- * - SHORT: 7 statuses (e.g. NRP, RDV, FAUX NUMERO, REFUS, MAIL DOC, RAPPEL, INVALIDE) with colors.
+ * - SHORT: 9 statuses (NRP, RDV, FAUX NUMERO, Barrage standard, NUMERO KO, REFUS, MAIL DOC, RAPPEL, INVALIDE).
  * - FULL: 8 statuses matching global defaults, with optional colors.
  */
 
@@ -21,10 +21,12 @@ export const MISSION_STATUS_PRESETS = {
         { code: "NO_RESPONSE", label: "NRP", color: "#F5F5DC", sortOrder: 1, requiresNote: false, priorityLabel: "RETRY" as const, priorityOrder: 4, triggersOpportunity: false, triggersCallback: false },
         { code: "MEETING_BOOKED", label: "RDV", color: "#90EE90", sortOrder: 2, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: true, triggersCallback: false },
         { code: "BAD_CONTACT", label: "FAUX NUMERO", color: "#FFB6C1", sortOrder: 3, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
-        { code: "DISQUALIFIED", label: "REFUS", color: "#FFA07A", sortOrder: 4, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
-        { code: "ENVOIE_MAIL", label: "MAIL DOC", color: "#87CEEB", sortOrder: 5, requiresNote: true, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
-        { code: "CALLBACK_REQUESTED", label: "RAPPEL", color: "#DDA0DD", sortOrder: 6, requiresNote: true, priorityLabel: "CALLBACK" as const, priorityOrder: 1, triggersOpportunity: false, triggersCallback: true },
-        { code: "MEETING_CANCELLED", label: "INVALIDE", color: "#D3D3D3", sortOrder: 7, requiresNote: false, priorityLabel: "RETRY" as const, priorityOrder: 4, triggersOpportunity: false, triggersCallback: false },
+        { code: "BARRAGE_STANDARD", label: "Barrage standard", color: "#FFE0B2", sortOrder: 4, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+        { code: "NUMERO_KO", label: "NUMERO KO", color: "#FFAB91", sortOrder: 5, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+        { code: "DISQUALIFIED", label: "REFUS", color: "#FFA07A", sortOrder: 6, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+        { code: "ENVOIE_MAIL", label: "MAIL DOC", color: "#87CEEB", sortOrder: 7, requiresNote: true, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+        { code: "CALLBACK_REQUESTED", label: "RAPPEL", color: "#DDA0DD", sortOrder: 8, requiresNote: true, priorityLabel: "CALLBACK" as const, priorityOrder: 1, triggersOpportunity: false, triggersCallback: true },
+        { code: "MEETING_CANCELLED", label: "INVALIDE", color: "#D3D3D3", sortOrder: 9, requiresNote: false, priorityLabel: "RETRY" as const, priorityOrder: 4, triggersOpportunity: false, triggersCallback: false },
     ] as PresetStatusItem[],
     FULL: [
         { code: "NO_RESPONSE", label: "Pas de réponse", color: "#E8E8E8", sortOrder: 1, requiresNote: false, priorityLabel: "RETRY" as const, priorityOrder: 4, triggersOpportunity: false, triggersCallback: false },
