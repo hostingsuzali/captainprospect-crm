@@ -18,6 +18,7 @@ import {
     Target,
 } from "lucide-react";
 import { useToast } from "@/components/ui";
+import { ACTION_RESULT_LABELS } from "@/lib/types";
 
 // ─── Types (aligned with /api/client/calls) ───────────────────────────────────
 interface CallItem {
@@ -125,9 +126,11 @@ function ResultBadge({
     result: string;
     resultMeta: Record<string, { label: string; color: string; bg: string; border: string }>;
 }) {
+    const meta = resultMeta[result];
+    const label = meta?.label ?? ACTION_RESULT_LABELS[result] ?? result;
     const m =
-        resultMeta[result] || {
-            label: result,
+        meta || {
+            label,
             color: "#64748b",
             bg: "#f8fafc",
             border: "#e2e8f0",
@@ -304,11 +307,12 @@ function DayBlock({
     calls.forEach((c) => {
         counts[c.result] = (counts[c.result] ?? 0) + 1;
     });
-    const meetings = counts["MEETING_BOOKED"] || 0;
-    const positive =
-        (counts["MEETING_BOOKED"] || 0) +
-        (counts["INTERESTED"] || 0) +
-        (counts["CALLBACK_REQUESTED"] || 0);
+    const displayStatuses = Array.from(
+        new Set([
+            ...statusOrder,
+            ...Object.keys(counts).filter((k) => counts[k] > 0),
+        ])
+    );
     const d = new Date(dk);
 
     return (
@@ -335,37 +339,35 @@ function DayBlock({
                         <span className="text-sm font-bold text-slate-800">
                             {calls.length} appel{calls.length > 1 ? "s" : ""}
                         </span>
-                        {meetings > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
-                                <CheckCircle2 className="w-3 h-3" />
-                                {meetings} RDV pris
-                            </span>
-                        )}
-                        <span className="text-[11px] text-slate-400">
-                            {positive} contact
-                            {positive !== 1 ? "s" : ""} positif
-                            {positive !== 1 ? "s" : ""}
-                        </span>
+                        <div className="flex flex-wrap gap-1.5 text-[11px] text-slate-500">
+                            {displayStatuses.map((k) => {
+                                const v = counts[k] ?? 0;
+                                if (!v) return null;
+                                return (
+                                    <span
+                                        key={k}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100"
+                                    >
+                                        <span
+                                            className="w-1.5 h-1.5 rounded-full"
+                                            style={{
+                                                background: resultMeta[k]?.color ?? "#64748b",
+                                            }}
+                                        />
+                                        <span className="font-semibold">
+                                            {v}{" "}
+                                            {resultMeta[k]?.label ??
+                                                ACTION_RESULT_LABELS[k] ??
+                                                k}
+                                        </span>
+                                    </span>
+                                );
+                            })}
+                        </div>
                     </div>
                     <div className="flex items-center gap-3">
                         <div className="flex-1 max-w-[200px]">
                             <MiniBar counts={counts} total={calls.length} statusOrder={statusOrder} resultMeta={resultMeta} />
-                        </div>
-                        <div className="flex gap-2 flex-wrap">
-                            {statusOrder.map((k) => {
-                                const v = counts[k] ?? 0;
-                                return (
-                                    <span
-                                        key={k}
-                                        className="text-[10px] font-semibold"
-                                        style={{
-                                            color: resultMeta[k]?.color ?? "#64748b",
-                                        }}
-                                    >
-                                        {v} {resultMeta[k]?.label ?? k}
-                                    </span>
-                                );
-                            })}
                         </div>
                     </div>
                 </div>
