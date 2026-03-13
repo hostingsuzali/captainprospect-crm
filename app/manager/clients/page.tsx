@@ -258,7 +258,7 @@ export default function ClientsPage() {
                         </div>
                         <div>
                             <p className="text-3xl font-bold text-slate-900">{totalMissions}</p>
-                            <p className="text-sm font-medium text-slate-500">Missions actives</p>
+                            <p className="text-sm font-medium text-slate-500">Missions totales</p>
                         </div>
                     </div>
                 </div>

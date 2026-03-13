@@ -66,9 +66,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
     // Role-based filtering
     if (session.user.role === 'CLIENT') {
+        // Clients only see missions for their own company
         where.client = { users: { some: { id: session.user.id } } };
-    } else if (session.user.role === 'SDR' || session.user.role === 'BUSINESS_DEVELOPER') {
-        // SDR and BD see missions they're assigned to
+    } else if (session.user.role === 'SDR') {
+        // SDRs only see missions they're assigned to
         where.sdrAssignments = { some: { sdrId: session.user.id } };
     }
 

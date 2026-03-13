@@ -176,7 +176,7 @@ export function withErrorHandler<T = any>(
 
 export function getPaginationParams(searchParams: URLSearchParams) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-    const limit = Math.min(5000, Math.max(1, parseInt(searchParams.get('limit') || '20')));
+    const limit = Math.min(5000, Math.max(1, parseInt(searchParams.get('limit') || '30')));
     const skip = (page - 1) * limit;
     return { page, limit, skip };
 }

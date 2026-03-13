@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "postinstall": "node scripts/postinstall.mjs",
-    "dev": "PUPPETEER_SKIP_DOWNLOAD=true next dev -p 5000 -H 0.0.0.0",
+    "dev": "cross-env PUPPETEER_SKIP_DOWNLOAD=true next dev -p 5000 -H 0.0.0.0",
     "build": "prisma generate && next build",
     "start": "next start -p 5000 -H 0.0.0.0",
     "lint": "eslint",
@@ -68,6 +68,7 @@
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",

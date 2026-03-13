@@ -2393,6 +2393,8 @@ export function UnifiedActionDrawer({
                         phone: contact.phone,
                         title: contact.title,
                         companyName: company?.name ?? undefined,
+                        companyEmail: company?.email ?? undefined,
+                        companyPhone: company?.phone ?? undefined,
                     }}
                     rdvDate={rdvDate ? new Date(rdvDate).toISOString() : undefined}
                     meetingType={meetingType || undefined}

@@ -108,14 +108,20 @@ export default function MissionsPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [channelFilter, setChannelFilter] = useState<string>("all");
+    const [page, setPage] = useState<number>(1);
+    const [total, setTotal] = useState<number>(0);
     const [selectedMissionForDrawer, setSelectedMissionForDrawer] = useState<Mission | null>(null);
     const [showNewMissionDialog, setShowNewMissionDialog] = useState(false);
     const { error: showError } = useToast();
+
+    const pageSize = 10;
 
     const fetchMissions = async () => {
         setIsLoading(true);
         try {
             const params = new URLSearchParams();
+            params.set("page", String(page));
+            params.set("limit", String(pageSize));
             if (statusFilter !== "all") {
                 params.set("isActive", statusFilter === "active" ? "true" : "false");
             }
@@ -123,6 +129,11 @@ export default function MissionsPage() {
             const json = await res.json();
             if (json.success) {
                 setMissions(json.data);
+                if (json.pagination?.total != null) {
+                    setTotal(json.pagination.total);
+                } else {
+                    setTotal(json.data.length);
+                }
             } else {
                 showError("Erreur", json.error || "Impossible de charger les missions");
             }
@@ -136,7 +147,7 @@ export default function MissionsPage() {
 
     useEffect(() => {
         fetchMissions();
-    }, [statusFilter]);
+    }, [statusFilter, page]);
 
     const filteredMissions = missions.filter(mission => {
         const matchesSearch = !searchQuery ||
@@ -147,11 +158,15 @@ export default function MissionsPage() {
     });
 
     const stats = {
-        total: missions.length,
+        total: total || missions.length,
         active: missions.filter(m => m.isActive).length,
         paused: missions.filter(m => !m.isActive).length,
         totalMembers: missions.reduce((acc, m) => acc + (m._count?.sdrAssignments || 0), 0),
     };
+
+    const totalPages = Math.max(1, Math.ceil((total || missions.length || 1) / pageSize));
+    const startItem = total === 0 ? 0 : (page - 1) * pageSize + 1;
+    const endItem = total === 0 ? 0 : Math.min(total, startItem + (filteredMissions.length || missions.length) - 1);
 
     if (isLoading && missions.length === 0) {
         return (
@@ -288,7 +303,10 @@ export default function MissionsPage() {
                     ].map(opt => (
                         <button
                             key={opt.value}
-                            onClick={() => setStatusFilter(opt.value)}
+                            onClick={() => {
+                                setStatusFilter(opt.value);
+                                setPage(1);
+                            }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === opt.value
                                 ? "bg-white text-slate-900 shadow-sm"
                                 : "text-slate-500 hover:text-slate-700"
@@ -322,7 +340,7 @@ export default function MissionsPage() {
 
                 {/* Result count */}
                 <div className="text-xs text-slate-400 font-medium ml-auto hidden sm:block">
-                    {filteredMissions.length} / {missions.length} mission{missions.length !== 1 ? "s" : ""}
+                    {filteredMissions.length} / {total || missions.length} mission{(total || missions.length) !== 1 ? "s" : ""}
                 </div>
             </div>
 
@@ -348,170 +366,221 @@ export default function MissionsPage() {
                     )}
                 </div>
             ) : (
-                <div className="grid gap-3">
-                    {filteredMissions.map((mission, index) => {
-                        const channelsList = mission.channels?.length ? mission.channels : [mission.channel];
-                        const channel = CHANNEL_CONFIG[mission.channel];
-                        const ChannelIcon = channel.icon;
-                        const daysActive = getDaysActive(mission.startDate);
-                        const memberCount = mission._count.sdrAssignments;
-                        const listCount = mission._count.lists;
-                        const campaignCount = mission._count.campaigns;
-
-                        return (
-                            <div
-                                key={mission.id}
-                                onClick={() => setSelectedMissionForDrawer(mission)}
-                                className="group relative bg-white border border-slate-200 rounded-2xl overflow-hidden cursor-pointer hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-500/8 transition-all duration-300 hover:-translate-y-0.5"
-                                style={{ animationDelay: `${index * 40}ms` }}
-                            >
-                                {/* Active status left bar */}
-                                <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl transition-all duration-300 ${mission.isActive ? "bg-gradient-to-b from-emerald-400 to-emerald-600" : "bg-gradient-to-b from-slate-200 to-slate-300"}`} />
-
-                                {/* Hover shimmer */}
-                                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none bg-gradient-to-r from-indigo-500/3 via-transparent to-transparent" />
-
-                                <div className="flex items-center gap-5 px-6 py-5 pl-7">
-
-                                    {/* Client logo / avatar */}
-                                    <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br ${channel.color} flex items-center justify-center text-xl font-bold text-white flex-shrink-0 shadow-md group-hover:scale-105 transition-transform duration-300`}>
-                                        {mission.client?.name?.[0] || "M"}
-                                        {/* Channel icon badge */}
-                                        <div className={`absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full ${channel.bgLight} border-2 border-white flex items-center justify-center shadow-sm`}>
-                                            <ChannelIcon className={`w-3 h-3 ${channel.textColor}`} />
-                                        </div>
-                                    </div>
-
-                                    {/* Main info */}
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2.5 mb-1 flex-wrap">
-                                            <h3 className="font-bold text-slate-900 group-hover:text-indigo-700 transition-colors text-base truncate">
-                                                {mission.name}
-                                            </h3>
-                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide ${mission.isActive
-                                                ? "bg-emerald-100 text-emerald-700"
-                                                : "bg-slate-100 text-slate-500"
-                                                }`}>
-                                                <span className={`w-1.5 h-1.5 rounded-full ${mission.isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
-                                                {mission.isActive ? "Actif" : "Pause"}
-                                            </span>
-                                        </div>
-
-                                        <p className="text-sm text-slate-500 truncate mb-3">
-                                            {mission.client?.name}
-                                            {mission.objective && (
-                                                <span className="text-slate-400"> · {mission.objective}</span>
-                                            )}
-                                        </p>
-
-                                        {/* Meta row */}
-                                        <div className="flex items-center flex-wrap gap-x-5 gap-y-1">
-                                            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                                                <Target className="w-3.5 h-3.5 text-slate-400" />
-                                                <span>{campaignCount} campagne{campaignCount !== 1 ? "s" : ""}</span>
+                <>
+                    <div className="grid gap-3">
+                        {isLoading
+                            ? Array.from({ length: pageSize }).map((_, index) => (
+                                <div
+                                    key={`skeleton-${index}`}
+                                    className="relative bg-white border border-slate-200 rounded-2xl overflow-hidden animate-pulse"
+                                >
+                                    <div className="flex items-center gap-5 px-6 py-5 pl-7">
+                                        <div className="relative w-14 h-14 rounded-2xl bg-slate-100 flex-shrink-0" />
+                                        <div className="flex-1 min-w-0 space-y-3">
+                                            <div className="h-4 bg-slate-100 rounded w-1/3" />
+                                            <div className="h-3 bg-slate-100 rounded w-1/2" />
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-3 bg-slate-100 rounded w-16" />
+                                                <div className="h-3 bg-slate-100 rounded w-16" />
+                                                <div className="h-3 bg-slate-100 rounded w-24" />
                                             </div>
-                                            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                                                <ListChecks className="w-3.5 h-3.5 text-slate-400" />
-                                                <span>{listCount} liste{listCount !== 1 ? "s" : ""}</span>
-                                            </div>
-                                            {daysActive !== null && (
-                                                <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                                                    <Activity className="w-3.5 h-3.5 text-slate-400" />
-                                                    <span>{daysActive}j actif</span>
-                                                </div>
-                                            )}
-                                            {mission.startDate && (
-                                                <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                                                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                                                    <span>
-                                                        {new Date(mission.startDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
-                                                        {mission.endDate
-                                                            ? ` → ${new Date(mission.endDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}`
-                                                            : " → en cours"}
-                                                    </span>
-                                                </div>
-                                            )}
                                         </div>
-                                    </div>
-
-                                    {/* Right side: avatars + channel badge + arrow */}
-                                    <div className="flex items-center gap-5 flex-shrink-0">
-                                        {/* Team avatars */}
-                                        <div className="hidden md:flex flex-col items-end gap-1">
-                                            {mission.sdrAssignments && mission.sdrAssignments.length > 0 ? (
-                                                <>
-                                                    <div className="flex -space-x-2">
-                                                        {mission.sdrAssignments.slice(0, 4).map((a, i) => (
-                                                            <div
-                                                                key={a.sdr.id}
-                                                                className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
-                                                                style={{ zIndex: 10 - i }}
-                                                                title={a.sdr.name}
-                                                            >
-                                                                {a.sdr.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}
-                                                            </div>
-                                                        ))}
-                                                        {mission.sdrAssignments.length > 4 && (
-                                                            <div className="w-7 h-7 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[10px] font-semibold text-slate-600 shadow-sm z-0">
-                                                                +{mission.sdrAssignments.length - 4}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <span className="text-[10px] text-slate-400 font-medium">
-                                                        {memberCount} membre{memberCount !== 1 ? "s" : ""}
-                                                    </span>
-                                                </>
-                                            ) : (
-                                                <div className="flex items-center gap-1 text-xs text-slate-300">
-                                                    <Users className="w-3.5 h-3.5" />
-                                                    <span className="italic">Aucun</span>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Channel pill(s) */}
-                                        <div className="hidden lg:flex items-center gap-1.5 flex-wrap">
-                                            {channelsList.length === 1 ? (
-                                                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold ${channel.bgLight} ${channel.textColor} border border-current/10`}>
-                                                    <ChannelIcon className="w-3.5 h-3.5" />
-                                                    {channel.label}
-                                                </div>
-                                            ) : (
-                                                channelsList.map((ch) => {
-                                                    const cfg = CHANNEL_CONFIG[ch];
-                                                    const Icon = cfg?.icon ?? ChannelIcon;
-                                                    return (
-                                                        <div key={ch} className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold ${cfg?.bgLight ?? channel.bgLight} ${cfg?.textColor ?? channel.textColor} border border-current/10`}>
-                                                            <Icon className="w-3 h-3" />
-                                                            {cfg?.label ?? ch}
-                                                        </div>
-                                                    );
-                                                })
-                                            )}
-                                        </div>
-
-                                        {/* Arrow */}
-                                        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-slate-50 group-hover:bg-indigo-600 border border-slate-100 group-hover:border-indigo-600 transition-all duration-300 shadow-sm">
-                                            <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors duration-300" />
-                                        </div>
+                                        <div className="w-9 h-9 rounded-xl bg-slate-100 flex-shrink-0" />
                                     </div>
                                 </div>
+                            ))
+                            : filteredMissions.map((mission, index) => {
+                                const channelsList = mission.channels?.length ? mission.channels : [mission.channel];
+                                const channel = CHANNEL_CONFIG[mission.channel];
+                                const ChannelIcon = channel.icon;
+                                const daysActive = getDaysActive(mission.startDate);
+                                const memberCount = mission._count.sdrAssignments;
+                                const listCount = mission._count.lists;
+                                const campaignCount = mission._count.campaigns;
 
-                                {/* Bottom progress bar — visual only, represents activity ratio */}
-                                {mission.isActive && (
-                                    <div className="px-7 pb-3">
-                                        <div className="h-0.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-violet-500 transition-all duration-700"
-                                                style={{ width: `${Math.min(100, ((listCount + campaignCount) / Math.max(1, listCount + campaignCount + 2)) * 100)}%` }}
-                                            />
+                                return (
+                                    <div
+                                        key={mission.id}
+                                        onClick={() => setSelectedMissionForDrawer(mission)}
+                                        className="group relative bg-white border border-slate-200 rounded-2xl overflow-hidden cursor-pointer hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-500/8 transition-all duration-300 hover:-translate-y-0.5"
+                                        style={{ animationDelay: `${index * 40}ms` }}
+                                    >
+                                        {/* Active status left bar */}
+                                        <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl transition-all duration-300 ${mission.isActive ? "bg-gradient-to-b from-emerald-400 to-emerald-600" : "bg-gradient-to-b from-slate-200 to-slate-300"}`} />
+
+                                        {/* Hover shimmer */}
+                                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none bg-gradient-to-r from-indigo-500/3 via-transparent to-transparent" />
+
+                                        <div className="flex items-center gap-5 px-6 py-5 pl-7">
+
+                                            {/* Client logo / avatar */}
+                                            <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br ${channel.color} flex items-center justify-center text-xl font-bold text-white flex-shrink-0 shadow-md group-hover:scale-105 transition-transform duration-300`}>
+                                                {mission.client?.name?.[0] || "M"}
+                                                {/* Channel icon badge */}
+                                                <div className={`absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full ${channel.bgLight} border-2 border-white flex items-center justify-center shadow-sm`}>
+                                                    <ChannelIcon className={`w-3 h-3 ${channel.textColor}`} />
+                                                </div>
+                                            </div>
+
+                                            {/* Main info */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2.5 mb-1 flex-wrap">
+                                                    <h3 className="font-bold text-slate-900 group-hover:text-indigo-700 transition-colors text-base truncate">
+                                                        {mission.name}
+                                                    </h3>
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide ${mission.isActive
+                                                        ? "bg-emerald-100 text-emerald-700"
+                                                        : "bg-slate-100 text-slate-500"
+                                                        }`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${mission.isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
+                                                        {mission.isActive ? "Actif" : "Pause"}
+                                                    </span>
+                                                </div>
+
+                                                <p className="text-sm text-slate-500 truncate mb-3">
+                                                    {mission.client?.name}
+                                                    {mission.objective && (
+                                                        <span className="text-slate-400"> · {mission.objective}</span>
+                                                    )}
+                                                </p>
+
+                                                {/* Meta row */}
+                                                <div className="flex items-center flex-wrap gap-x-5 gap-y-1">
+                                                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                        <Target className="w-3.5 h-3.5 text-slate-400" />
+                                                        <span>{campaignCount} campagne{campaignCount !== 1 ? "s" : ""}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                        <ListChecks className="w-3.5 h-3.5 text-slate-400" />
+                                                        <span>{listCount} liste{listCount !== 1 ? "s" : ""}</span>
+                                                    </div>
+                                                    {daysActive !== null && (
+                                                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                            <Activity className="w-3.5 h-3.5 text-slate-400" />
+                                                            <span>{daysActive}j actif</span>
+                                                        </div>
+                                                    )}
+                                                    {mission.startDate && (
+                                                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                                            <span>
+                                                                {new Date(mission.startDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
+                                                                {mission.endDate
+                                                                    ? ` → ${new Date(mission.endDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}`
+                                                                    : " → en cours"}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Right side: avatars + channel badge + arrow */}
+                                            <div className="flex items-center gap-5 flex-shrink-0">
+                                                {/* Team avatars */}
+                                                <div className="hidden md:flex flex-col items-end gap-1">
+                                                    {mission.sdrAssignments && mission.sdrAssignments.length > 0 ? (
+                                                        <>
+                                                            <div className="flex -space-x-2">
+                                                                {mission.sdrAssignments.slice(0, 4).map((a, i) => (
+                                                                    <div
+                                                                        key={a.sdr.id}
+                                                                        className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+                                                                        style={{ zIndex: 10 - i }}
+                                                                        title={a.sdr.name}
+                                                                    >
+                                                                        {a.sdr.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}
+                                                                    </div>
+                                                                ))}
+                                                                {mission.sdrAssignments.length > 4 && (
+                                                                    <div className="w-7 h-7 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[10px] font-semibold text-slate-600 shadow-sm z-0">
+                                                                        +{mission.sdrAssignments.length - 4}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-[10px] text-slate-400 font-medium">
+                                                                {memberCount} membre{memberCount !== 1 ? "s" : ""}
+                                                            </span>
+                                                        </>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1 text-xs text-slate-300">
+                                                            <Users className="w-3.5 h-3.5" />
+                                                            <span className="italic">Aucun</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Channel pill(s) */}
+                                                <div className="hidden lg:flex items-center gap-1.5 flex-wrap">
+                                                    {channelsList.length === 1 ? (
+                                                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold ${channel.bgLight} ${channel.textColor} border border-current/10`}>
+                                                            <ChannelIcon className="w-3.5 h-3.5" />
+                                                            {channel.label}
+                                                        </div>
+                                                    ) : (
+                                                        channelsList.map((ch) => {
+                                                            const cfg = CHANNEL_CONFIG[ch];
+                                                            const Icon = cfg?.icon ?? ChannelIcon;
+                                                            return (
+                                                                <div key={ch} className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold ${cfg?.bgLight ?? channel.bgLight} ${cfg?.textColor ?? channel.textColor} border border-current/10`}>
+                                                                    <Icon className="w-3 h-3" />
+                                                                    {cfg?.label ?? ch}
+                                                                </div>
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
+
+                                                {/* Arrow */}
+                                                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-slate-50 group-hover:bg-indigo-600 border border-slate-100 group-hover:border-indigo-600 transition-all duration-300 shadow-sm">
+                                                    <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors duration-300" />
+                                                </div>
+                                            </div>
                                         </div>
+
+                                        {/* Bottom progress bar — visual only, represents activity ratio */}
+                                        {mission.isActive && (
+                                            <div className="px-7 pb-3">
+                                                <div className="h-0.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-violet-500 transition-all duration-700"
+                                                        style={{ width: `${Math.min(100, ((listCount + campaignCount) / Math.max(1, listCount + campaignCount + 2)) * 100)}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+                                );
+                            })}
+                    </div>
+
+                    {/* Pagination controls */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between mt-4 text-xs text-slate-500">
+                            <span>
+                                Affichage {startItem}-{endItem} sur {total} missions
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                    disabled={page === 1 || isLoading}
+                                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Précédent
+                                </button>
+                                <span className="px-2">
+                                    Page {page} / {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                    disabled={page === totalPages || isLoading}
+                                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Suivant
+                                </button>
                             </div>
-                        );
-                    })}
-                </div>
+                        </div>
+                    )}
+                </>
             )}
 
             <MissionQuickViewDrawer
