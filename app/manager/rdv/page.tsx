@@ -536,6 +536,11 @@ export default function ManagerRdvPage() {
   const [companyForm, setCompanyForm] = useState<{ name: string; industry: string; country: string; website: string; size: string; phone: string }>({ name: "", industry: "", country: "", website: "", size: "", phone: "" });
   const [editContactSaving, setEditContactSaving] = useState(false);
   const [editCompanySaving, setEditCompanySaving] = useState(false);
+  const [linkContactOpen, setLinkContactOpen] = useState(false);
+  const [linkContactSearch, setLinkContactSearch] = useState("");
+  const [linkContactResults, setLinkContactResults] = useState<Array<{ id: string; firstName: string | null; lastName: string | null; email: string | null; phone: string | null; title: string | null; company: { id: string; name: string } | null }>>([]);
+  const [linkContactLoading, setLinkContactLoading] = useState(false);
+  const [linkContactSaving, setLinkContactSaving] = useState(false);
 
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<"month" | "week">("month");
@@ -680,6 +685,9 @@ export default function ManagerRdvPage() {
       meetingJoinUrl: resolved.meetingJoinUrl || "",
       meetingPhone: resolved.meetingPhone || "",
     });
+    setLinkContactOpen(false);
+    setLinkContactSearch("");
+    setLinkContactResults([]);
     if (m.feedback) {
       setFeedbackOutcome(m.feedback.outcome);
       setFeedbackRecontact(m.feedback.recontact);
@@ -1636,7 +1644,7 @@ export default function ManagerRdvPage() {
                       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "14px 16px", background: "var(--surface)" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "var(--ink3)", textTransform: "uppercase" }}>Entreprise</span>
-                          {selectedMeeting.company && (
+                          {selectedMeeting.company ? (
                             <button
                               type="button"
                               className="rdv-btn rdv-btn-ghost"
@@ -1648,27 +1656,42 @@ export default function ManagerRdvPage() {
                             >
                               <Pencil size={12} /> Modifier
                             </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="rdv-btn rdv-btn-ghost"
+                              style={{ fontSize: 12, padding: "5px 10px" }}
+                              onClick={() => { setLinkContactSearch(""); setLinkContactResults([]); setLinkContactOpen(true); }}
+                            >
+                              <ArrowUpRight size={12} /> Lier un contact
+                            </button>
                           )}
                         </div>
-                        <div style={{ color: "var(--ink)", fontWeight: 600, fontSize: 14 }}>{selectedMeeting.company?.name || "—"}</div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
-                          {selectedMeeting.company?.industry && <div style={{ fontSize: 12, color: "var(--ink3)" }}>🏭 {selectedMeeting.company.industry}</div>}
-                          {selectedMeeting.company?.country && <div style={{ fontSize: 12, color: "var(--ink3)" }}>🌍 {selectedMeeting.company.country}</div>}
-                          {selectedMeeting.company?.size && <div style={{ fontSize: 12, color: "var(--ink3)" }}>👥 {selectedMeeting.company.size} salariés</div>}
-                          {selectedMeeting.company?.phone && <div style={{ fontSize: 12, color: "var(--ink3)" }}>📞 {selectedMeeting.company.phone}</div>}
-                          {selectedMeeting.company?.website && (
-                            <a href={selectedMeeting.company.website.startsWith("http") ? selectedMeeting.company.website : `https://${selectedMeeting.company.website}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", display: "flex", alignItems: "center", gap: 4 }}>
-                              <ExternalLink size={11} /> {selectedMeeting.company.website}
-                            </a>
-                          )}
-                        </div>
+                        {selectedMeeting.company ? (
+                          <div>
+                            <div style={{ color: "var(--ink)", fontWeight: 600, fontSize: 14 }}>{selectedMeeting.company.name}</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
+                              {selectedMeeting.company.industry && <div style={{ fontSize: 12, color: "var(--ink3)" }}>🏭 {selectedMeeting.company.industry}</div>}
+                              {selectedMeeting.company.country && <div style={{ fontSize: 12, color: "var(--ink3)" }}>🌍 {selectedMeeting.company.country}</div>}
+                              {selectedMeeting.company.size && <div style={{ fontSize: 12, color: "var(--ink3)" }}>👥 {selectedMeeting.company.size} salariés</div>}
+                              {selectedMeeting.company.phone && <div style={{ fontSize: 12, color: "var(--ink3)" }}>📞 {selectedMeeting.company.phone}</div>}
+                              {selectedMeeting.company.website && (
+                                <a href={selectedMeeting.company.website.startsWith("http") ? selectedMeeting.company.website : `https://${selectedMeeting.company.website}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", display: "flex", alignItems: "center", gap: 4 }}>
+                                  <ExternalLink size={11} /> {selectedMeeting.company.website}
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 13, color: "var(--ink3)", fontStyle: "italic" }}>Aucune entreprise liée — liez un contact pour associer son entreprise.</div>
+                        )}
                       </div>
 
                       {/* CONTACT */}
                       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "14px 16px", background: "var(--surface)" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "var(--ink3)", textTransform: "uppercase" }}>Contact</span>
-                          {selectedMeeting.contact && (
+                          {selectedMeeting.contact ? (
                             <button
                               type="button"
                               className="rdv-btn rdv-btn-ghost"
@@ -1680,32 +1703,47 @@ export default function ManagerRdvPage() {
                             >
                               <Pencil size={12} /> Modifier
                             </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="rdv-btn rdv-btn-ghost"
+                              style={{ fontSize: 12, padding: "5px 10px" }}
+                              onClick={() => { setLinkContactSearch(""); setLinkContactResults([]); setLinkContactOpen(true); }}
+                            >
+                              <ArrowUpRight size={12} /> Lier un contact
+                            </button>
                           )}
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                          <Avatar name={contactName(selectedMeeting.contact)} size={36} />
+                        {selectedMeeting.contact ? (
                           <div>
-                            <div style={{ color: "var(--ink)", fontWeight: 600, fontSize: 14 }}>{contactName(selectedMeeting.contact)}</div>
-                            {selectedMeeting.contact?.title && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{selectedMeeting.contact.title}</div>}
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                              <Avatar name={contactName(selectedMeeting.contact)} size={36} />
+                              <div>
+                                <div style={{ color: "var(--ink)", fontWeight: 600, fontSize: 14 }}>{contactName(selectedMeeting.contact)}</div>
+                                {selectedMeeting.contact.title && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{selectedMeeting.contact.title}</div>}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                              {selectedMeeting.contact.email && (
+                                <a href={`mailto:${selectedMeeting.contact.email}`} style={{ fontSize: 12, color: "var(--ink2)", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
+                                  <Mail size={12} style={{ color: "var(--ink3)" }} /> {selectedMeeting.contact.email}
+                                </a>
+                              )}
+                              {selectedMeeting.contact.phone && (
+                                <a href={`tel:${selectedMeeting.contact.phone}`} style={{ fontSize: 12, color: "var(--ink2)", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
+                                  <Phone size={12} style={{ color: "var(--ink3)" }} /> {selectedMeeting.contact.phone}
+                                </a>
+                              )}
+                              {selectedMeeting.contact.linkedin && (
+                                <a href={selectedMeeting.contact.linkedin} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
+                                  <Linkedin size={12} /> LinkedIn
+                                </a>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          {selectedMeeting.contact?.email && (
-                            <a href={`mailto:${selectedMeeting.contact.email}`} style={{ fontSize: 12, color: "var(--ink2)", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
-                              <Mail size={12} style={{ color: "var(--ink3)" }} /> {selectedMeeting.contact.email}
-                            </a>
-                          )}
-                          {selectedMeeting.contact?.phone && (
-                            <a href={`tel:${selectedMeeting.contact.phone}`} style={{ fontSize: 12, color: "var(--ink2)", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
-                              <Phone size={12} style={{ color: "var(--ink3)" }} /> {selectedMeeting.contact.phone}
-                            </a>
-                          )}
-                          {selectedMeeting.contact?.linkedin && (
-                            <a href={selectedMeeting.contact.linkedin} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
-                              <Linkedin size={12} /> LinkedIn
-                            </a>
-                          )}
-                        </div>
+                        ) : (
+                          <div style={{ fontSize: 13, color: "var(--ink3)", fontStyle: "italic" }}>Aucun contact lié à ce RDV.</div>
+                        )}
                       </div>
                       {selectedMeeting.note && <DetailRow label="Note SDR"><span style={{ color: "var(--ink2)", whiteSpace: "pre-wrap" }}>{selectedMeeting.note}</span></DetailRow>}
                       <DetailRow label="Créé le">{new Date(selectedMeeting.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</DetailRow>
@@ -2048,6 +2086,82 @@ export default function ManagerRdvPage() {
                 }}>
                   {editCompanySaving ? "Enregistrement…" : "Enregistrer"}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Link Contact modal */}
+        {linkContactOpen && selectedMeeting && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !linkContactSaving && setLinkContactOpen(false)}>
+            <div style={{ background: "var(--surface)", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", gap: 16 }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>Lier un contact au RDV</div>
+              <div style={{ position: "relative" }}>
+                <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--ink3)" }} />
+                <input
+                  className="rdv-input"
+                  style={{ width: "100%", paddingLeft: 32 }}
+                  placeholder="Rechercher par nom, email, entreprise…"
+                  value={linkContactSearch}
+                  autoFocus
+                  onChange={async (e) => {
+                    const q = e.target.value;
+                    setLinkContactSearch(q);
+                    if (q.trim().length < 2) { setLinkContactResults([]); return; }
+                    setLinkContactLoading(true);
+                    try {
+                      const res = await fetch(`/api/contacts?search=${encodeURIComponent(q.trim())}&limit=10`);
+                      const json = await res.json().catch(() => null);
+                      setLinkContactResults(json?.data?.items ?? json?.data ?? []);
+                    } catch { setLinkContactResults([]); }
+                    finally { setLinkContactLoading(false); }
+                  }}
+                />
+              </div>
+              {linkContactLoading && <div style={{ fontSize: 13, color: "var(--ink3)", textAlign: "center" }}>Recherche…</div>}
+              {!linkContactLoading && linkContactSearch.trim().length >= 2 && linkContactResults.length === 0 && (
+                <div style={{ fontSize: 13, color: "var(--ink3)", textAlign: "center" }}>Aucun contact trouvé.</div>
+              )}
+              {linkContactResults.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
+                  {linkContactResults.map((c) => {
+                    const name = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "Sans nom";
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={linkContactSaving}
+                        style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface2)", cursor: "pointer", textAlign: "left", width: "100%", opacity: linkContactSaving ? 0.6 : 1 }}
+                        onClick={async () => {
+                          setLinkContactSaving(true);
+                          try {
+                            const res = await fetch(`/api/manager/rdv/${selectedMeeting.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contactId: c.id }) });
+                            const json = await res.json().catch(() => null);
+                            if (res.ok && json?.success) {
+                              const companyData = c.company ? { id: c.company.id, name: c.company.name, industry: null, country: null, size: null, website: null, phone: null } : null;
+                              const contactPatch = { id: c.id, firstName: c.firstName ?? null, lastName: c.lastName ?? null, email: c.email ?? null, phone: c.phone ?? null, title: c.title ?? null, linkedin: null, customData: null };
+                              setSelectedMeeting((prev) => prev ? { ...prev, contact: contactPatch, company: companyData } : null);
+                              setMeetings((prev) => prev.map((m) => m.id === selectedMeeting.id ? { ...m, contact: contactPatch, company: companyData } : m));
+                              setLinkContactOpen(false);
+                            }
+                          } finally { setLinkContactSaving(false); }
+                        }}
+                      >
+                        <Avatar name={name} size={32} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                          {c.title && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{c.title}</div>}
+                          {c.company && <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 500 }}>{c.company.name}</div>}
+                          {c.email && <div style={{ fontSize: 11, color: "var(--ink3)" }}>{c.email}</div>}
+                        </div>
+                        <ArrowUpRight size={14} style={{ color: "var(--ink3)", flexShrink: 0 }} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button className="rdv-btn rdv-btn-ghost" onClick={() => setLinkContactOpen(false)} disabled={linkContactSaving}>Annuler</button>
               </div>
             </div>
           </div>

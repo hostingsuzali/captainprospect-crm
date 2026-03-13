@@ -21,6 +21,7 @@ const updateSchema = z.object({
   result: z.enum(["MEETING_BOOKED", "MEETING_CANCELLED"]).optional(),
   confirmationStatus: z.enum(["PENDING", "CONFIRMED", "CANCELLED"]).optional(),
   sdrId: z.string().cuid().optional(),
+  contactId: z.string().cuid().optional().nullable(),
   meetingAddress: z.string().optional(),
   meetingJoinUrl: z.string().optional(),
   meetingPhone: z.string().optional(),
@@ -45,6 +46,7 @@ export const PUT = withErrorHandler(
 
     const actionUpdate: Record<string, unknown> = {};
     if (body.note !== undefined) actionUpdate.note = body.note;
+    if (body.contactId !== undefined) actionUpdate.contactId = body.contactId;
     if (body.callbackDate !== undefined) actionUpdate.callbackDate = new Date(body.callbackDate);
     if (body.meetingType !== undefined) actionUpdate.meetingType = body.meetingType;
     if (body.result !== undefined) actionUpdate.result = body.result;
