@@ -522,6 +522,13 @@ export default function ManagerRdvPage() {
   const [ficheLoading, setFicheLoading] = useState(false);
   const [ficheError, setFicheError] = useState<string | null>(null);
   const [ficheManualTranscript, setFicheManualTranscript] = useState("");
+  const [ficheForm, setFicheForm] = useState({ contexte: "", besoinsProblemes: "", solutionsEnPlace: "", objectionsFreins: "", notesImportantes: "" });
+  const [ficheSaving, setFicheSaving] = useState(false);
+  const [ficheSaved, setFicheSaved] = useState(false);
+
+  const [detailEditMode, setDetailEditMode] = useState(false);
+  const [detailForm, setDetailForm] = useState({ callbackDate: "", meetingType: "", meetingAddress: "", meetingJoinUrl: "", meetingPhone: "" });
+  const [detailSaving, setDetailSaving] = useState(false);
 
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [editCompanyOpen, setEditCompanyOpen] = useState(false);
@@ -648,8 +655,8 @@ export default function ManagerRdvPage() {
   }, [panelOpen]);
 
   const openPanel = useCallback((m: Meeting) => {
-    // Resolve from current meetings so contact/company and latest data always show in panel (list, board, calendar)
-    setSelectedMeeting(meetingsRef.current.find((x) => x.id === m.id) ?? m);
+    const resolved = meetingsRef.current.find((x) => x.id === m.id) ?? m;
+    setSelectedMeeting(resolved);
     setPanelTab("detail");
     setPanelOpen(true);
     setManagerNote("");
@@ -657,6 +664,22 @@ export default function ManagerRdvPage() {
     setFicheLoading(false);
     setFicheError(null);
     setFicheManualTranscript("");
+    setFicheSaved(false);
+    setFicheForm({
+      contexte: (resolved.rdvFiche?.contexte as string) || "",
+      besoinsProblemes: (resolved.rdvFiche?.besoinsProblemes as string) || "",
+      solutionsEnPlace: (resolved.rdvFiche?.solutionsEnPlace as string) || "",
+      objectionsFreins: (resolved.rdvFiche?.objectionsFreins as string) || "",
+      notesImportantes: (resolved.rdvFiche?.notesImportantes as string) || "",
+    });
+    setDetailEditMode(false);
+    setDetailForm({
+      callbackDate: resolved.callbackDate ? new Date(resolved.callbackDate).toISOString().slice(0, 16) : "",
+      meetingType: resolved.meetingType || "",
+      meetingAddress: resolved.meetingAddress || "",
+      meetingJoinUrl: resolved.meetingJoinUrl || "",
+      meetingPhone: resolved.meetingPhone || "",
+    });
     if (m.feedback) {
       setFeedbackOutcome(m.feedback.outcome);
       setFeedbackRecontact(m.feedback.recontact);
@@ -1447,15 +1470,81 @@ export default function ManagerRdvPage() {
                 <div style={{ padding: 28 }}>
                   {panelTab === "detail" && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                      {/* Edit / Save / Cancel for logistics */}
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                        {!detailEditMode ? (
+                          <button className="rdv-btn rdv-btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }} onClick={() => setDetailEditMode(true)}>
+                            <Pencil size={13} /> Éditer
+                          </button>
+                        ) : (
+                          <>
+                            <button className="rdv-btn rdv-btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }} onClick={() => { setDetailEditMode(false); setDetailForm({ callbackDate: selectedMeeting.callbackDate ? new Date(selectedMeeting.callbackDate).toISOString().slice(0, 16) : "", meetingType: selectedMeeting.meetingType || "", meetingAddress: selectedMeeting.meetingAddress || "", meetingJoinUrl: selectedMeeting.meetingJoinUrl || "", meetingPhone: selectedMeeting.meetingPhone || "" }); }}>
+                              Annuler
+                            </button>
+                            <button
+                              className="rdv-btn rdv-btn-primary"
+                              style={{ fontSize: 12, padding: "6px 12px" }}
+                              disabled={detailSaving}
+                              onClick={async () => {
+                                setDetailSaving(true);
+                                const payload: Record<string, unknown> = {};
+                                if (detailForm.callbackDate) payload.callbackDate = new Date(detailForm.callbackDate).toISOString();
+                                if (detailForm.meetingType) payload.meetingType = detailForm.meetingType;
+                                payload.meetingAddress = detailForm.meetingAddress;
+                                payload.meetingJoinUrl = detailForm.meetingJoinUrl;
+                                payload.meetingPhone = detailForm.meetingPhone;
+                                await updateMeeting(selectedMeeting.id, payload);
+                                setSelectedMeeting({
+                                  ...selectedMeeting,
+                                  callbackDate: detailForm.callbackDate ? new Date(detailForm.callbackDate).toISOString() : selectedMeeting.callbackDate,
+                                  meetingType: (detailForm.meetingType as Meeting["meetingType"]) || selectedMeeting.meetingType,
+                                  meetingAddress: detailForm.meetingAddress || null,
+                                  meetingJoinUrl: detailForm.meetingJoinUrl || null,
+                                  meetingPhone: detailForm.meetingPhone || null,
+                                });
+                                setDetailEditMode(false);
+                                setDetailSaving(false);
+                              }}
+                            >
+                              <Check size={13} /> {detailSaving ? "Enregistrement…" : "Sauvegarder"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+
                       <DetailRow label="Date & heure">
-                        <span style={{ color: dateProximityColor(selectedMeeting.callbackDate), fontWeight: 500 }}>
-                          {selectedMeeting.callbackDate ? new Date(selectedMeeting.callbackDate).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
-                        </span>
+                        {detailEditMode ? (
+                          <input
+                            type="datetime-local"
+                            className="rdv-input"
+                            style={{ fontSize: 13, padding: "6px 10px", width: "100%" }}
+                            value={detailForm.callbackDate}
+                            onChange={(e) => setDetailForm((f) => ({ ...f, callbackDate: e.target.value }))}
+                          />
+                        ) : (
+                          <span style={{ color: dateProximityColor(selectedMeeting.callbackDate), fontWeight: 500 }}>
+                            {selectedMeeting.callbackDate ? new Date(selectedMeeting.callbackDate).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+                          </span>
+                        )}
                       </DetailRow>
                       <DetailRow label="Type de RDV">
-                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          {meetingTypeIcon(selectedMeeting.meetingType)} {meetingTypeLabel(selectedMeeting.meetingType)}
-                        </span>
+                        {detailEditMode ? (
+                          <select
+                            className="rdv-input"
+                            style={{ fontSize: 13, padding: "6px 10px", width: "100%" }}
+                            value={detailForm.meetingType}
+                            onChange={(e) => setDetailForm((f) => ({ ...f, meetingType: e.target.value }))}
+                          >
+                            <option value="">— Sélectionner —</option>
+                            <option value="VISIO">📹 Visio</option>
+                            <option value="PHYSIQUE">📍 Physique</option>
+                            <option value="TELEPHONIQUE">📞 Téléphonique</option>
+                          </select>
+                        ) : (
+                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {meetingTypeIcon(selectedMeeting.meetingType)} {meetingTypeLabel(selectedMeeting.meetingType)}
+                          </span>
+                        )}
                       </DetailRow>
                       <DetailRow label="Catégorie">
                         <div style={{ display: "flex", gap: 6 }}>
@@ -1484,14 +1573,56 @@ export default function ManagerRdvPage() {
                           ))}
                         </div>
                       </DetailRow>
-                      {selectedMeeting.meetingJoinUrl && (
+                      {(detailEditMode || selectedMeeting.meetingJoinUrl) && (
                         <DetailRow label="Lien visio">
-                          <a href={selectedMeeting.meetingJoinUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontSize: 13, display: "flex", alignItems: "center", gap: 4, fontWeight: 500 }}>
-                            Rejoindre <ExternalLink size={12} />
-                          </a>
+                          {detailEditMode ? (
+                            <input
+                              type="url"
+                              className="rdv-input"
+                              style={{ fontSize: 13, padding: "6px 10px", width: "100%" }}
+                              placeholder="https://meet.google.com/…"
+                              value={detailForm.meetingJoinUrl}
+                              onChange={(e) => setDetailForm((f) => ({ ...f, meetingJoinUrl: e.target.value }))}
+                            />
+                          ) : (
+                            <a href={selectedMeeting.meetingJoinUrl!} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontSize: 13, display: "flex", alignItems: "center", gap: 4, fontWeight: 500 }}>
+                              Rejoindre <ExternalLink size={12} />
+                            </a>
+                          )}
                         </DetailRow>
                       )}
-                      {selectedMeeting.meetingAddress && <DetailRow label="Adresse"><span style={{ color: "var(--ink2)" }}>{selectedMeeting.meetingAddress}</span></DetailRow>}
+                      {(detailEditMode || selectedMeeting.meetingAddress) && (
+                        <DetailRow label="Adresse">
+                          {detailEditMode ? (
+                            <input
+                              type="text"
+                              className="rdv-input"
+                              style={{ fontSize: 13, padding: "6px 10px", width: "100%" }}
+                              placeholder="Adresse de la réunion…"
+                              value={detailForm.meetingAddress}
+                              onChange={(e) => setDetailForm((f) => ({ ...f, meetingAddress: e.target.value }))}
+                            />
+                          ) : (
+                            <span style={{ color: "var(--ink2)" }}>{selectedMeeting.meetingAddress}</span>
+                          )}
+                        </DetailRow>
+                      )}
+                      {(detailEditMode || selectedMeeting.meetingPhone) && (
+                        <DetailRow label="Téléphone RDV">
+                          {detailEditMode ? (
+                            <input
+                              type="tel"
+                              className="rdv-input"
+                              style={{ fontSize: 13, padding: "6px 10px", width: "100%" }}
+                              placeholder="+33 6 00 00 00 00"
+                              value={detailForm.meetingPhone}
+                              onChange={(e) => setDetailForm((f) => ({ ...f, meetingPhone: e.target.value }))}
+                            />
+                          ) : (
+                            <a href={`tel:${selectedMeeting.meetingPhone}`} style={{ color: "var(--ink2)" }}>{selectedMeeting.meetingPhone}</a>
+                          )}
+                        </DetailRow>
+                      )}
                       <DetailRow label="SDR">
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <Avatar name={selectedMeeting.sdr.name} size={26} />
@@ -1542,51 +1673,95 @@ export default function ManagerRdvPage() {
 
                   {panelTab === "fiche" && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>Fiche RDV (extraction IA)</div>
-                        <button
-                          className="rdv-btn rdv-btn-primary"
-                          style={{ fontSize: 12, padding: "8px 12px" }}
-                          disabled={ficheLoading}
-                          onClick={async () => {
-                            const auto = transcriptToText(selectedMeeting.voipTranscript);
-                            const transcription = (ficheManualTranscript || auto || "").trim();
-                            if (!transcription) {
-                              setFicheError("Aucune transcription détectée. Collez une transcription ci-dessous, puis relancez.");
-                              return;
-                            }
-                            setFicheLoading(true);
-                            setFicheError(null);
-                            try {
-                              const res = await fetch("/api/ai/mistral/rdv-fiche", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ transcription }),
-                              });
-                              const json = await res.json().catch(() => null);
-                              if (!res.ok || !json?.success) {
-                                setFicheError(json?.error || "Impossible de générer la fiche.");
+                      {/* Header row: title + AI generate + save */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>Fiche RDV</div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          {ficheSaved && (
+                            <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 500 }}>Sauvegardé ✓</span>
+                          )}
+                          <button
+                            className="rdv-btn rdv-btn-ghost"
+                            style={{ fontSize: 12, padding: "6px 12px" }}
+                            disabled={ficheLoading}
+                            onClick={async () => {
+                              const auto = transcriptToText(selectedMeeting.voipTranscript);
+                              const transcription = (ficheManualTranscript || auto || "").trim();
+                              if (!transcription) {
+                                setFicheError("Aucune transcription détectée. Collez une transcription ci-dessous, puis relancez.");
                                 return;
                               }
-                              const fiche = json.data?.fiche;
-                              await updateMeeting(selectedMeeting.id, { rdvFiche: fiche });
-                              setSelectedMeeting({ ...selectedMeeting, rdvFiche: fiche, rdvFicheUpdatedAt: new Date().toISOString() });
-                            } catch (e) {
-                              console.error(e);
-                              setFicheError("Erreur réseau lors de la génération.");
-                            } finally {
-                              setFicheLoading(false);
-                            }
-                          }}
-                        >
-                          {ficheLoading ? <RefreshCw size={14} style={{ animation: "spin 1s linear infinite" }} /> : <FileText size={14} />}
-                          Générer
-                        </button>
+                              setFicheLoading(true);
+                              setFicheError(null);
+                              try {
+                                const res = await fetch("/api/ai/mistral/rdv-fiche", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ transcription }),
+                                });
+                                const json = await res.json().catch(() => null);
+                                if (!res.ok || !json?.success) {
+                                  setFicheError(json?.error || "Impossible de générer la fiche.");
+                                  return;
+                                }
+                                const fiche = json.data?.fiche;
+                                setFicheForm({
+                                  contexte: fiche?.contexte || "",
+                                  besoinsProblemes: fiche?.besoinsProblemes || "",
+                                  solutionsEnPlace: fiche?.solutionsEnPlace || "",
+                                  objectionsFreins: fiche?.objectionsFreins || "",
+                                  notesImportantes: fiche?.notesImportantes || "",
+                                });
+                                await updateMeeting(selectedMeeting.id, { rdvFiche: fiche });
+                                setSelectedMeeting({ ...selectedMeeting, rdvFiche: fiche, rdvFicheUpdatedAt: new Date().toISOString() });
+                                setFicheSaved(true);
+                                setTimeout(() => setFicheSaved(false), 3000);
+                              } catch (e) {
+                                console.error(e);
+                                setFicheError("Erreur réseau lors de la génération.");
+                              } finally {
+                                setFicheLoading(false);
+                              }
+                            }}
+                          >
+                            {ficheLoading ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <FileText size={13} />}
+                            Générer IA
+                          </button>
+                          <button
+                            className="rdv-btn rdv-btn-primary"
+                            style={{ fontSize: 12, padding: "6px 12px" }}
+                            disabled={ficheSaving}
+                            onClick={async () => {
+                              setFicheSaving(true);
+                              setFicheError(null);
+                              try {
+                                const fiche = {
+                                  contexte: ficheForm.contexte,
+                                  besoinsProblemes: ficheForm.besoinsProblemes,
+                                  solutionsEnPlace: ficheForm.solutionsEnPlace,
+                                  objectionsFreins: ficheForm.objectionsFreins,
+                                  notesImportantes: ficheForm.notesImportantes,
+                                };
+                                await updateMeeting(selectedMeeting.id, { rdvFiche: fiche });
+                                setSelectedMeeting({ ...selectedMeeting, rdvFiche: fiche, rdvFicheUpdatedAt: new Date().toISOString() });
+                                setFicheSaved(true);
+                                setTimeout(() => setFicheSaved(false), 3000);
+                              } catch (e) {
+                                console.error(e);
+                                setFicheError("Erreur lors de la sauvegarde.");
+                              } finally {
+                                setFicheSaving(false);
+                              }
+                            }}
+                          >
+                            <Check size={13} /> {ficheSaving ? "Enregistrement…" : "Sauvegarder"}
+                          </button>
+                        </div>
                       </div>
 
                       {selectedMeeting.rdvFicheUpdatedAt && (
                         <div style={{ fontSize: 12, color: "var(--ink3)" }}>
-                          Dernière mise à jour: {new Date(selectedMeeting.rdvFicheUpdatedAt).toLocaleString("fr-FR")}
+                          Dernière mise à jour : {new Date(selectedMeeting.rdvFicheUpdatedAt).toLocaleString("fr-FR")}
                         </div>
                       )}
 
@@ -1596,14 +1771,15 @@ export default function ManagerRdvPage() {
                         </div>
                       )}
 
+                      {/* Transcript paste area — only shown if no auto transcript */}
                       {transcriptToText(selectedMeeting.voipTranscript) === "" && (
                         <div>
                           <div style={{ fontSize: 12, color: "var(--ink3)", fontWeight: 600, marginBottom: 8 }}>
-                            Transcription (à coller)
+                            Transcription (à coller pour génération IA)
                           </div>
                           <textarea
                             className="rdv-input"
-                            style={{ width: "100%", minHeight: 120, resize: "vertical" }}
+                            style={{ width: "100%", minHeight: 100, resize: "vertical" }}
                             value={ficheManualTranscript}
                             onChange={(e) => setFicheManualTranscript(e.target.value)}
                             placeholder="Collez ici la transcription complète (Agent/Prospect)…"
@@ -1611,21 +1787,26 @@ export default function ManagerRdvPage() {
                         </div>
                       )}
 
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {/* Editable fiche fields */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                         {([
-                          ["Contexte", selectedMeeting.rdvFiche?.contexte],
-                          ["Besoins / Problèmes identifiés", selectedMeeting.rdvFiche?.besoinsProblemes],
-                          ["Solutions en place", selectedMeeting.rdvFiche?.solutionsEnPlace],
-                          ["Objections / Freins", selectedMeeting.rdvFiche?.objectionsFreins],
-                          ["Notes importantes", selectedMeeting.rdvFiche?.notesImportantes],
-                        ] as const).map(([label, value]) => (
-                          <div key={label} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "var(--surface)" }}>
+                          ["contexte", "Contexte"],
+                          ["besoinsProblemes", "Besoins / Problèmes identifiés"],
+                          ["solutionsEnPlace", "Solutions en place"],
+                          ["objectionsFreins", "Objections / Freins"],
+                          ["notesImportantes", "Notes importantes"],
+                        ] as const).map(([field, label]) => (
+                          <div key={field} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "var(--surface)" }}>
                             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "var(--ink3)", textTransform: "uppercase", marginBottom: 8 }}>
                               {label}
                             </div>
-                            <div style={{ fontSize: 13, color: value ? "var(--ink2)" : "var(--ink3)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-                              {value?.toString().trim() || "—"}
-                            </div>
+                            <textarea
+                              className="rdv-input"
+                              style={{ width: "100%", minHeight: 80, resize: "vertical", border: "1px solid var(--border2)", borderRadius: 8, fontSize: 13, lineHeight: 1.6, padding: "8px 10px", background: "var(--surface2)" }}
+                              value={ficheForm[field]}
+                              onChange={(e) => setFicheForm((f) => ({ ...f, [field]: e.target.value }))}
+                              placeholder={`Saisir ${label.toLowerCase()}…`}
+                            />
                           </div>
                         ))}
                       </div>
