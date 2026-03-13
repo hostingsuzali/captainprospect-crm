@@ -2122,44 +2122,65 @@ export default function ManagerRdvPage() {
               {!linkContactLoading && linkContactSearch.trim().length >= 2 && linkContactResults.length === 0 && (
                 <div style={{ fontSize: 13, color: "var(--ink3)", textAlign: "center" }}>Aucun contact trouvé.</div>
               )}
-              {linkContactResults.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
-                  {linkContactResults.map((c) => {
-                    const name = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "Sans nom";
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        disabled={linkContactSaving}
-                        style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface2)", cursor: "pointer", textAlign: "left", width: "100%", opacity: linkContactSaving ? 0.6 : 1 }}
-                        onClick={async () => {
-                          setLinkContactSaving(true);
-                          try {
-                            const res = await fetch(`/api/manager/rdv/${selectedMeeting.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contactId: c.id }) });
-                            const json = await res.json().catch(() => null);
-                            if (res.ok && json?.success) {
-                              const companyData = c.company ? { id: c.company.id, name: c.company.name, industry: null, country: null, size: null, website: null, phone: null } : null;
-                              const contactPatch = { id: c.id, firstName: c.firstName ?? null, lastName: c.lastName ?? null, email: c.email ?? null, phone: c.phone ?? null, title: c.title ?? null, linkedin: null, customData: null };
-                              setSelectedMeeting((prev) => prev ? { ...prev, contact: contactPatch, company: companyData } : null);
-                              setMeetings((prev) => prev.map((m) => m.id === selectedMeeting.id ? { ...m, contact: contactPatch, company: companyData } : m));
-                              setLinkContactOpen(false);
-                            }
-                          } finally { setLinkContactSaving(false); }
-                        }}
-                      >
-                        <Avatar name={name} size={32} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
-                          {c.title && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{c.title}</div>}
-                          {c.company && <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 500 }}>{c.company.name}</div>}
-                          {c.email && <div style={{ fontSize: 11, color: "var(--ink3)" }}>{c.email}</div>}
+              {linkContactResults.length > 0 && (() => {
+                // Group contacts by company
+                const groups: { companyId: string | null; companyName: string; contacts: typeof linkContactResults }[] = [];
+                const seen = new Map<string, number>();
+                for (const c of linkContactResults) {
+                  const key = c.company?.id ?? "__none__";
+                  const label = c.company?.name ?? "Sans entreprise";
+                  if (!seen.has(key)) { seen.set(key, groups.length); groups.push({ companyId: c.company?.id ?? null, companyName: label, contacts: [] }); }
+                  groups[seen.get(key)!].contacts.push(c);
+                }
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 340, overflowY: "auto" }}>
+                    {groups.map((g) => (
+                      <div key={g.companyId ?? "__none__"} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+                        {/* Company header */}
+                        <div style={{ padding: "8px 14px", background: "var(--surface2)", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", letterSpacing: "0.02em" }}>{g.companyName}</span>
+                          <span style={{ fontSize: 11, color: "var(--ink3)", marginLeft: "auto" }}>{g.contacts.length} contact{g.contacts.length > 1 ? "s" : ""}</span>
                         </div>
-                        <ArrowUpRight size={14} style={{ color: "var(--ink3)", flexShrink: 0 }} />
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+                        {/* Contact rows */}
+                        {g.contacts.map((c, i) => {
+                          const name = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "Sans nom";
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              disabled={linkContactSaving}
+                              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: i % 2 === 0 ? "var(--surface)" : "var(--surface2)", cursor: "pointer", textAlign: "left", width: "100%", borderBottom: i < g.contacts.length - 1 ? "1px solid var(--border)" : "none", opacity: linkContactSaving ? 0.6 : 1, border: "none" }}
+                              onClick={async () => {
+                                setLinkContactSaving(true);
+                                try {
+                                  const res = await fetch(`/api/manager/rdv/${selectedMeeting.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contactId: c.id }) });
+                                  const json = await res.json().catch(() => null);
+                                  if (res.ok && json?.success) {
+                                    const companyData = c.company ? { id: c.company.id, name: c.company.name, industry: null, country: null, size: null, website: null, phone: null } : null;
+                                    const contactPatch = { id: c.id, firstName: c.firstName ?? null, lastName: c.lastName ?? null, email: c.email ?? null, phone: c.phone ?? null, title: c.title ?? null, linkedin: null, customData: null };
+                                    setSelectedMeeting((prev) => prev ? { ...prev, contact: contactPatch, company: companyData } : null);
+                                    setMeetings((prev) => prev.map((m) => m.id === selectedMeeting.id ? { ...m, contact: contactPatch, company: companyData } : m));
+                                    setLinkContactOpen(false);
+                                  }
+                                } finally { setLinkContactSaving(false); }
+                              }}
+                            >
+                              <Avatar name={name} size={28} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                                {c.title && <div style={{ fontSize: 11, color: "var(--ink3)" }}>{c.title}</div>}
+                                {c.email && <div style={{ fontSize: 11, color: "var(--ink3)" }}>{c.email}</div>}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, flexShrink: 0 }}>Lier →</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button className="rdv-btn rdv-btn-ghost" onClick={() => setLinkContactOpen(false)} disabled={linkContactSaving}>Annuler</button>
               </div>
