@@ -2101,7 +2101,7 @@ export default function ManagerRdvPage() {
                 <input
                   className="rdv-input"
                   style={{ width: "100%", paddingLeft: 32 }}
-                  placeholder="Rechercher par nom, email, entreprise…"
+                  placeholder="Rechercher par nom, email ou nom d'entreprise…"
                   value={linkContactSearch}
                   autoFocus
                   onChange={async (e) => {
