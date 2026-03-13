@@ -72,6 +72,8 @@ interface QuickEmailModalProps {
     company?: Company | null;
     missionId?: string | null;
     missionName?: string | null;
+    /** Preferred mailbox id (e.g. client default mailbox) */
+    preferredMailboxId?: string;
 }
 
 // ============================================
@@ -86,6 +88,7 @@ export function QuickEmailModal({
     company,
     missionId,
     missionName,
+    preferredMailboxId,
 }: QuickEmailModalProps) {
     // State
     const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
@@ -98,6 +101,7 @@ export function QuickEmailModal({
     const [bodyHtml, setBodyHtml] = useState<string>("");
 
     const [isLoadingMailboxes, setIsLoadingMailboxes] = useState(false);
+    const [fetchMailboxError, setFetchMailboxError] = useState(false);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [showPreview, setShowPreview] = useState(true);
@@ -162,29 +166,59 @@ export function QuickEmailModal({
                 : recipientInput.trim() + EMAIL_DOMAINS[0]
             : "";
 
-    // Fetch mailboxes
-    useEffect(() => {
-        if (!isOpen) return;
+    // Fetch mailboxes with retry logic for stability
+    const mailboxesFetchedRef = useRef(false);
 
-        const fetchMailboxes = async () => {
-            setIsLoadingMailboxes(true);
-            try {
-                const res = await fetch("/api/email/mailboxes");
-                const json = await res.json();
-                if (json.success) {
-                    setMailboxes(json.data || []);
-                    if (json.data?.length > 0 && !selectedMailboxId) {
-                        setSelectedMailboxId(json.data[0].id);
-                    }
+    const doFetchMailboxes = useCallback(async (retryCount = 0): Promise<void> => {
+        setIsLoadingMailboxes(true);
+        setFetchMailboxError(false);
+        try {
+            const res = await fetch("/api/email/mailboxes?includeShared=true");
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            if (json.success) {
+                const list: Mailbox[] = json.data || [];
+                setMailboxes(list);
+                if (list.length > 0) {
+                    const preferred = preferredMailboxId && list.find((mb) => mb.id === preferredMailboxId);
+                    setSelectedMailboxId(preferred ? preferred.id : list[0].id);
+                } else {
+                    setSelectedMailboxId("");
                 }
-            } catch (err) {
-                console.error("Failed to fetch mailboxes:", err);
-            } finally {
-                setIsLoadingMailboxes(false);
+                mailboxesFetchedRef.current = true;
+            } else {
+                throw new Error(json.error || "Fetch failed");
             }
-        };
-        fetchMailboxes();
-    }, [isOpen]);
+        } catch (err) {
+            console.error("Failed to fetch mailboxes:", err);
+            if (retryCount < 2) {
+                // Retry with exponential backoff
+                await new Promise((r) => setTimeout(r, 500 * (retryCount + 1)));
+                return doFetchMailboxes(retryCount + 1);
+            }
+            setFetchMailboxError(true);
+        } finally {
+            setIsLoadingMailboxes(false);
+        }
+    }, [preferredMailboxId]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            mailboxesFetchedRef.current = false;
+            return;
+        }
+        doFetchMailboxes();
+    }, [isOpen, doFetchMailboxes]);
+
+    // When preferredMailboxId changes after mailboxes are already loaded,
+    // just update the selection without re-fetching
+    useEffect(() => {
+        if (!preferredMailboxId || mailboxes.length === 0) return;
+        const preferred = mailboxes.find((mb) => mb.id === preferredMailboxId);
+        if (preferred) {
+            setSelectedMailboxId(preferred.id);
+        }
+    }, [preferredMailboxId, mailboxes]);
 
     // Fetch mission templates
     useEffect(() => {
@@ -343,7 +377,7 @@ export function QuickEmailModal({
     if (!isOpen) return null;
 
     const selectedMailbox = mailboxes.find(m => m.id === selectedMailboxId);
-    const hasNoMailboxes = !isLoadingMailboxes && mailboxes.length === 0;
+    const hasNoMailboxes = !isLoadingMailboxes && !fetchMailboxError && mailboxes.length === 0;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -392,6 +426,22 @@ export function QuickEmailModal({
                         </div>
                         <h3 className="text-xl font-semibold text-slate-900 mb-2">Email envoyé !</h3>
                         <p className="text-slate-500">Votre email a été envoyé avec succès</p>
+                    </div>
+                ) : fetchMailboxError ? (
+                    <div className="flex-1 flex flex-col items-center justify-center py-16 px-6">
+                        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                            <AlertCircle className="w-8 h-8 text-red-500" />
+                        </div>
+                        <h3 className="text-xl font-semibold text-slate-900 mb-2">Connexion interrompue</h3>
+                        <p className="text-slate-500 text-center mb-4">
+                            Impossible de charger vos boîtes mail. Vérifiez votre connexion et réessayez.
+                        </p>
+                        <button
+                            onClick={() => doFetchMailboxes()}
+                            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-500 transition-colors"
+                        >
+                            Réessayer
+                        </button>
                     </div>
                 ) : hasNoMailboxes ? (
                     <div className="flex-1 flex flex-col items-center justify-center py-16 px-6">
@@ -454,17 +504,30 @@ export function QuickEmailModal({
                                 {isLoadingMailboxes ? (
                                     <div className="h-11 bg-slate-100 rounded-xl animate-pulse" />
                                 ) : (
-                                    <select
-                                        value={selectedMailboxId}
-                                        onChange={(e) => setSelectedMailboxId(e.target.value)}
-                                        className="w-full h-11 px-4 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                                    >
-                                        {mailboxes.map((mb) => (
-                                            <option key={mb.id} value={mb.id}>
-                                                {mb.displayName ? `${mb.displayName} <${mb.email}>` : mb.email}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <>
+                                        <select
+                                            value={selectedMailboxId}
+                                            onChange={(e) => setSelectedMailboxId(e.target.value)}
+                                            className={cn(
+                                                "w-full h-11 px-4 bg-white border rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all",
+                                                !selectedMailboxId && error
+                                                    ? "border-red-300 focus:ring-red-500"
+                                                    : "border-slate-200"
+                                            )}
+                                        >
+                                            <option value="">Sélectionner une boîte mail…</option>
+                                            {mailboxes.map((mb) => (
+                                                <option key={mb.id} value={mb.id}>
+                                                    {mb.displayName ? `${mb.displayName} <${mb.email}>` : mb.email}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {!selectedMailboxId && error && (
+                                            <p className="text-xs text-red-600 mt-1">
+                                                Choisissez une boîte mail d&apos;envoi.
+                                            </p>
+                                        )}
+                                    </>
                                 )}
                             </div>
 
@@ -496,10 +559,18 @@ export function QuickEmailModal({
                                         onFocus={() => setShowDomainSuggestions(true)}
                                         onBlur={handleRecipientBlur}
                                         placeholder={recipientEmail ? "Ajouter un destinataire" : "email@example.com"}
-                                        className="flex-1 min-w-[120px] h-8 bg-transparent text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none"
+                                        className={cn(
+                                            "flex-1 min-w-[120px] h-8 bg-transparent text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none",
+                                            !effectiveRecipient && error && "placeholder:text-red-400"
+                                        )}
                                         autoComplete="off"
                                     />
                                 </div>
+                                {!effectiveRecipient && error && (
+                                    <p className="text-xs text-red-600 mt-1">
+                                        Ajoutez au moins une adresse email de destinataire.
+                                    </p>
+                                )}
                                 {suggestedEmails.length > 0 && (
                                     <div
                                         className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden"

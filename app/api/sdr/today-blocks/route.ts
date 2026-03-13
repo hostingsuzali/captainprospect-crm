@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
+import { DateTime } from 'luxon';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+
+/** App timezone for "today" so Vercel (UTC) and localhost match the same calendar day. */
+const APP_TIMEZONE = 'Europe/Paris';
 
 export async function GET() {
     try {
@@ -28,15 +32,19 @@ export async function GET() {
             });
         }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+        // Use app timezone so "today" is the same calendar day on Vercel (UTC) and localhost.
+        // Build date range as UTC midnight for the Paris calendar day so PostgreSQL DATE
+        // comparison is consistent regardless of DB session timezone (Vercel vs localhost).
+        const nowInAppTz = DateTime.now().setZone(APP_TIMEZONE);
+        const todayStr = nowInAppTz.toFormat('yyyy-MM-dd');
+        const tomorrowStr = nowInAppTz.plus({ days: 1 }).toFormat('yyyy-MM-dd');
+        const startOfToday = new Date(`${todayStr}T00:00:00.000Z`);
+        const startOfTomorrow = new Date(`${tomorrowStr}T00:00:00.000Z`);
 
         const blocks = await prisma.scheduleBlock.findMany({
             where: {
                 sdrId: session.user.id,
-                date: { gte: today, lt: tomorrow },
+                date: { gte: startOfToday, lt: startOfTomorrow },
                 status: { not: 'CANCELLED' },
                 OR: [
                     { suggestionStatus: null },
@@ -56,12 +64,11 @@ export async function GET() {
             orderBy: [{ startTime: 'asc' }],
         });
 
-        // Also fetch this week's blocks for context
-        const weekStart = new Date(today);
-        const dow = weekStart.getDay();
-        weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1));
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekEnd.getDate() + 5);
+        // This week (Mon–Fri) in app timezone — use UTC midnight for Paris dates for consistent DB comparison
+        const weekStartDt = nowInAppTz.startOf('week');
+        const weekEndDt = weekStartDt.plus({ days: 5 });
+        const weekStart = new Date(`${weekStartDt.toFormat('yyyy-MM-dd')}T00:00:00.000Z`);
+        const weekEnd = new Date(`${weekEndDt.toFormat('yyyy-MM-dd')}T00:00:00.000Z`);
 
         const weekBlocks = await prisma.scheduleBlock.findMany({
             where: {

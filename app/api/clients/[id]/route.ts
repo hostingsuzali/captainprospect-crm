@@ -25,6 +25,8 @@ const updateClientSchema = z.object({
     rdvEmailNotificationsEnabled: z.boolean().optional(),
     /** Persona / ICP (Ideal Customer Profile) — stored in onboardingData.icp */
     icp: z.string().optional(),
+    /** Default outbound mailbox for this client (stored in onboardingData.defaultMailboxId) */
+    defaultMailboxId: z.string().optional().or(z.literal('')),
 });
 
 // ============================================
@@ -106,7 +108,7 @@ export const PUT = withErrorHandler(async (
     const data = await validateRequest(request, updateClientSchema);
 
     // Clean up empty strings for client fields
-    const { icp, ...rest } = data;
+    const { icp, defaultMailboxId, ...rest } = data;
     const cleanData = {
         ...rest,
         email: data.email || undefined,
@@ -121,13 +123,20 @@ export const PUT = withErrorHandler(async (
             data: cleanData,
         });
 
-        if (icp !== undefined) {
+        if (icp !== undefined || defaultMailboxId !== undefined) {
             const existing = await tx.clientOnboarding.findUnique({
                 where: { clientId: id },
                 select: { onboardingData: true },
             });
             const prevData = (existing?.onboardingData as Record<string, unknown>) || {};
-            const merged = { ...prevData, icp: icp.trim() === '' ? undefined : icp };
+            const merged: Record<string, unknown> = { ...prevData };
+
+            if (icp !== undefined) {
+                merged.icp = icp.trim() === '' ? undefined : icp;
+            }
+            if (defaultMailboxId !== undefined) {
+                merged.defaultMailboxId = defaultMailboxId === '' ? undefined : defaultMailboxId;
+            }
 
             await tx.clientOnboarding.upsert({
                 where: { clientId: id },

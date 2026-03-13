@@ -116,7 +116,7 @@ export function NewThreadModal({
         }
     }, [defaultChannelType, defaultAnchorId]);
 
-    // CLIENT: load missions or contactable SDRs when entering recipient step (no search)
+    // CLIENT: load missions or contactable managers when entering recipient step (no search)
     useEffect(() => {
         if (!isOpen || userRole !== "CLIENT" || step !== "recipient" || !channelType) {
             return;
@@ -142,14 +142,14 @@ export function NewThreadModal({
                     }));
                     if (!cancelled) setSearchResults(items);
                 } else {
-                    const res = await fetch("/api/client/contactable-sdrs");
+                    const res = await fetch("/api/client/contactable-managers");
                     if (!res.ok || cancelled) return;
                     const json = await res.json();
-                    const list = json.sdrs || [];
-                    const items: SelectableItem[] = list.map((s: { id: string; name: string }) => ({
-                        id: s.id,
-                        name: s.name,
-                        subtitle: "SDR",
+                    const list = json.managers || [];
+                    const items: SelectableItem[] = list.map((m: { id: string; name: string }) => ({
+                        id: m.id,
+                        name: m.name,
+                        subtitle: "Manager",
                     }));
                     if (!cancelled) setSearchResults(items);
                 }
@@ -365,24 +365,28 @@ export function NewThreadModal({
                 {/* Step 1: Select type */}
                 {step === "type" && (
                     <div className="grid gap-2">
-                        {availableChannelOptions.map((opt) => (
-                            <button
-                                key={opt.type}
-                                onClick={() => handleSelectType(opt.type)}
-                                className="flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition-all text-left group"
-                            >
-                                <div className={cn(
-                                    "w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
-                                    "bg-slate-100 group-hover:bg-indigo-100"
-                                )}>
-                                    <opt.icon className="w-6 h-6 text-slate-600 group-hover:text-indigo-600" />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="font-semibold text-slate-900">{opt.label}</p>
-                                    <p className="text-sm text-slate-500">{opt.description}</p>
-                                </div>
-                            </button>
-                        ))}
+                        {availableChannelOptions.map((opt) => {
+                            const label = userRole === "CLIENT" && opt.type === "DIRECT" ? "Message direct à un manager" : opt.label;
+                            const description = userRole === "CLIENT" && opt.type === "DIRECT" ? "Contacter un manager" : opt.description;
+                            return (
+                                <button
+                                    key={opt.type}
+                                    onClick={() => handleSelectType(opt.type)}
+                                    className="flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition-all text-left group"
+                                >
+                                    <div className={cn(
+                                        "w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
+                                        "bg-slate-100 group-hover:bg-indigo-100"
+                                    )}>
+                                        <opt.icon className="w-6 h-6 text-slate-600 group-hover:text-indigo-600" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="font-semibold text-slate-900">{label}</p>
+                                        <p className="text-sm text-slate-500">{description}</p>
+                                    </div>
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
 
@@ -417,16 +421,16 @@ export function NewThreadModal({
                             )}
                             {!isSearching && searchResults.length === 0 && (userRole === "CLIENT" || !searchQuery) && (
                                 <div className="text-center py-8">
-                                    {userRole === "CLIENT" ? (
-                                        <>
-                                            <Target className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                                            <p className="text-sm text-slate-500">
-                                                {channelType === "MISSION"
-                                                    ? "Aucune mission en cours."
-                                                    : "Aucun SDR assigné à vos missions."}
-                                            </p>
-                                        </>
-                                    ) : (
+                                            {userRole === "CLIENT" ? (
+                                                <>
+                                                    <Target className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                                                    <p className="text-sm text-slate-500">
+                                                        {channelType === "MISSION"
+                                                            ? "Aucune mission en cours."
+                                                            : "Aucun manager disponible."}
+                                                    </p>
+                                                </>
+                                            ) : (
                                         <>
                                             <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                                             <p className="text-sm text-slate-500">

@@ -8,7 +8,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole, withErrorHandler, validateRequest } from '@/lib/api-utils';
-import { createClientPortalNotification, sendNewRdvEmailNotification } from '@/lib/notifications';
 import { z } from 'zod';
 
 // ============================================
@@ -208,6 +207,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             campaignId: campaign.id,
             channel: contact.company.list.mission.channel,
             result: 'MEETING_BOOKED',
+            // SAS RDV: client notification is sent only once confirmed (manual or auto after 24h)
+            confirmationStatus: 'PENDING',
             note: bookingNote,
             callbackDate: scheduledAt ?? undefined,
             meetingType: meetingType ?? null,
@@ -226,28 +227,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             },
         },
     });
-
-    const clientId = contact.company.list.mission.clientId;
-    if (clientId) {
-        await createClientPortalNotification(clientId, {
-            title: 'Nouveau RDV réservé',
-            message: 'Un nouveau rendez-vous a été réservé pour une de vos missions.',
-            type: 'success',
-            link: '/client/portal/meetings',
-        });
-
-        void sendNewRdvEmailNotification(clientId, {
-            contactFirstName: contact.firstName,
-            contactLastName: contact.lastName,
-            companyName: contact.company?.name ?? undefined,
-            missionName: contact.company.list.mission.name,
-            scheduledAt: scheduledAt ?? undefined,
-            meetingType: meetingType ?? undefined,
-            meetingJoinUrl: resolvedMeetingJoinUrl ?? undefined,
-            meetingAddress: meetingAddress ?? undefined,
-            meetingPhone: meetingPhone ?? undefined,
-        });
-    }
 
     return NextResponse.json({
         success: true,

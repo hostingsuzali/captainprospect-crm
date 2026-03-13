@@ -76,12 +76,16 @@ export function ClientDrawer({
         portalShowCallHistory: false,
         portalShowDatabase: false,
         rdvEmailNotificationsEnabled: true,
+        defaultMailboxId: "",
     });
+    const [mailboxes, setMailboxes] = useState<Array<{ id: string; email: string; displayName: string | null }>>([]);
+    const [isLoadingMailboxes, setIsLoadingMailboxes] = useState(false);
 
     // Reset form when client changes
     useEffect(() => {
         if (client) {
-            setFormData({
+            setFormData((prev) => ({
+                ...prev,
                 name: client.name || "",
                 industry: client.industry || "",
                 email: client.email || "",
@@ -90,10 +94,50 @@ export function ClientDrawer({
                 portalShowCallHistory: (client as any).portalShowCallHistory ?? false,
                 portalShowDatabase: (client as any).portalShowDatabase ?? false,
                 rdvEmailNotificationsEnabled: (client as any).rdvEmailNotificationsEnabled ?? true,
-            });
+            }));
             setIsEditing(false);
+
+            // Fetch client onboarding data (for default mailbox)
+            (async () => {
+                try {
+                    const res = await fetch(`/api/clients/${client.id}`);
+                    const json = await res.json();
+                    if (json.success) {
+                        const onboardingData = (json.data?.onboarding?.onboardingData ?? {}) as { defaultMailboxId?: string };
+                        setFormData((prev) => ({
+                            ...prev,
+                            defaultMailboxId: onboardingData.defaultMailboxId ?? "",
+                        }));
+                    }
+                } catch {
+                    // ignore, optional enhancement
+                }
+            })();
         }
     }, [client]);
+
+    // Load available mailboxes for managers (owned + shared)
+    useEffect(() => {
+        if (!isOpen) return;
+        setIsLoadingMailboxes(true);
+        fetch("/api/email/mailboxes?includeShared=true")
+            .then((r) => r.json())
+            .then((json) => {
+                if (json.success && Array.isArray(json.data)) {
+                    setMailboxes(
+                        json.data.map((mb: { id: string; email: string; displayName: string | null }) => ({
+                            id: mb.id,
+                            email: mb.email,
+                            displayName: mb.displayName,
+                        }))
+                    );
+                }
+            })
+            .catch(() => {
+                // silent fail, mailbox selection is optional
+            })
+            .finally(() => setIsLoadingMailboxes(false));
+    }, [isOpen]);
 
     // ============================================
     // SAVE HANDLER
@@ -382,6 +426,49 @@ export function ClientDrawer({
                                         }
                                     />
                                 </label>
+                            </div>
+
+                            <div className="mt-4 border-t border-slate-200 pt-4 space-y-3">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                    Boîte mail par défaut
+                                </p>
+                                {isLoadingMailboxes ? (
+                                    <p className="text-xs text-slate-400">Chargement des boîtes mail…</p>
+                                ) : mailboxes.length === 0 ? (
+                                    <p className="text-xs text-slate-500">
+                                        Aucune boîte mail disponible. Configurez-les dans{" "}
+                                        <a
+                                            href="/manager/email/mailboxes"
+                                            className="text-indigo-600 hover:underline"
+                                        >
+                                            la page Boîtes mail
+                                        </a>.
+                                    </p>
+                                ) : (
+                                    <>
+                                        <select
+                                            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700"
+                                            value={formData.defaultMailboxId}
+                                            onChange={(e) =>
+                                                setFormData((prev) => ({
+                                                    ...prev,
+                                                    defaultMailboxId: e.target.value,
+                                                }))
+                                            }
+                                        >
+                                            <option value="">Aucune (le SDR choisit sa boîte mail)</option>
+                                            {mailboxes.map((mb) => (
+                                                <option key={mb.id} value={mb.id}>
+                                                    {mb.displayName ? `${mb.displayName} <${mb.email}>` : mb.email}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-[11px] text-slate-500">
+                                            Cette boîte mail sera proposée par défaut aux SDRs pour les emails liés
+                                            aux missions de ce client.
+                                        </p>
+                                    </>
+                                )}
                             </div>
                         </div>
                     ) : (

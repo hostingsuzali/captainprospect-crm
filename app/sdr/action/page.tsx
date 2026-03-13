@@ -809,7 +809,7 @@ export default function SDRActionPage() {
                             phone: ct.phone,
                             title: ct.title,
                             linkedin: ct.linkedin,
-                            status: ct.status ?? "PARTIAL",
+                            status: (ct.status ?? "PARTIAL") as any,
                             companyId: ct.companyId,
                         })),
                         _count: { contacts: co._count?.contacts ?? co.contacts?.length ?? 0 },
@@ -912,7 +912,7 @@ export default function SDRActionPage() {
     const [unifiedDrawerMissionId, setUnifiedDrawerMissionId] = useState<string | undefined>();
     const [unifiedDrawerMissionName, setUnifiedDrawerMissionName] = useState<string | undefined>();
     const [unifiedDrawerClientBookingUrl, setUnifiedDrawerClientBookingUrl] = useState<string>("");
-    const [unifiedDrawerInterlocuteurs, setUnifiedDrawerInterlocuteurs] = useState<NextAction["clientInterlocuteurs"]>([]);
+    const [unifiedDrawerInterlocuteurs, setUnifiedDrawerInterlocuteurs] = useState<any[]>([]);
     /** Row used to open the drawer (for email modal context when "Envoie mail" is selected in drawer) */
     const [drawerRow, setDrawerRow] = useState<QueueItem | null>(null);
     const prevUnifiedDrawerOpenRef = useRef(false);
@@ -981,6 +981,8 @@ export default function SDRActionPage() {
         setUnifiedDrawerClientBookingUrl("");
     };
 
+    const [emailModalPreferredMailboxId, setEmailModalPreferredMailboxId] = useState<string | null>(null);
+
     const openEmailModalFromDrawer = () => {
         if (drawerRow) {
             setEmailModalContact(drawerRow.contact ? {
@@ -1002,6 +1004,42 @@ export default function SDRActionPage() {
         }
         setEmailModalMissionId(unifiedDrawerMissionId ?? null);
         setEmailModalMissionName(unifiedDrawerMissionName ?? null);
+        setEmailModalPreferredMailboxId(null);
+
+        if (unifiedDrawerMissionId) {
+            (async () => {
+                try {
+                    // Load mission to get clientId
+                    const missionRes = await fetch(`/api/missions/${unifiedDrawerMissionId}`);
+                    const missionJson = await missionRes.json();
+                    if (!missionJson.success) return;
+
+                    // Mission-level default mailbox has priority
+                    const missionDefaultMailboxId = missionJson.data?.defaultMailboxId as string | undefined;
+                    if (missionDefaultMailboxId) {
+                        setEmailModalPreferredMailboxId(missionDefaultMailboxId);
+                        return;
+                    }
+
+                    if (!missionJson.data?.client?.id) return;
+                    const clientId = missionJson.data.client.id as string;
+
+                    // Load client onboarding data to get default mailbox id
+                    const clientRes = await fetch(`/api/clients/${clientId}`);
+                    const clientJson = await clientRes.json();
+                    if (!clientJson.success) return;
+                    const onboardingData = (clientJson.data?.onboarding?.onboardingData ?? {}) as {
+                        defaultMailboxId?: string;
+                    };
+                    if (onboardingData.defaultMailboxId) {
+                        setEmailModalPreferredMailboxId(onboardingData.defaultMailboxId);
+                    }
+                } catch {
+                    // optional enhancement; silently ignore failures
+                }
+            })();
+        }
+
         setShowQuickEmailModal(true);
     };
 
@@ -1218,7 +1256,40 @@ export default function SDRActionPage() {
             setEmailModalCompany(!contact && currentAction.company ? { id: currentAction.company.id, name: currentAction.company.name, phone: currentAction.company.phone } : null);
             setEmailModalMissionId(selectedMissionId ?? null);
             setEmailModalMissionName(currentAction.missionName ?? null);
+            setEmailModalPreferredMailboxId(null);
             setPendingEmailAction({ cardMode: true, result: selectedResult });
+
+            // Fetch preferred mailbox from mission/client
+            if (selectedMissionId) {
+                (async () => {
+                    try {
+                        const missionRes = await fetch(`/api/missions/${selectedMissionId}`);
+                        const missionJson = await missionRes.json();
+                        if (!missionJson.success) return;
+
+                        const missionDefaultMailboxId = missionJson.data?.defaultMailboxId as string | undefined;
+                        if (missionDefaultMailboxId) {
+                            setEmailModalPreferredMailboxId(missionDefaultMailboxId);
+                            return;
+                        }
+
+                        if (!missionJson.data?.client?.id) return;
+                        const clientId = missionJson.data.client.id as string;
+                        const clientRes = await fetch(`/api/clients/${clientId}`);
+                        const clientJson = await clientRes.json();
+                        if (!clientJson.success) return;
+                        const onboardingData = (clientJson.data?.onboarding?.onboardingData ?? {}) as {
+                            defaultMailboxId?: string;
+                        };
+                        if (onboardingData.defaultMailboxId) {
+                            setEmailModalPreferredMailboxId(onboardingData.defaultMailboxId);
+                        }
+                    } catch {
+                        // silently ignore
+                    }
+                })();
+            }
+
             setShowQuickEmailModal(true);
             return;
         }
@@ -1984,12 +2055,14 @@ export default function SDRActionPage() {
                         setEmailModalCompany(null);
                         setEmailModalMissionId(null);
                         setEmailModalMissionName(null);
+                        setEmailModalPreferredMailboxId(null);
                     }}
                     onSent={handleEmailSent}
                     contact={emailModalContact}
                     company={emailModalCompany}
                     missionId={emailModalMissionId}
                     missionName={emailModalMissionName}
+                    preferredMailboxId={emailModalPreferredMailboxId ?? undefined}
                 />
 
                 {/* Stats modal: summary + list of contacts with status (click to open drawer) */}
@@ -2865,12 +2938,14 @@ export default function SDRActionPage() {
                     setEmailModalCompany(null);
                     setEmailModalMissionId(null);
                     setEmailModalMissionName(null);
+                    setEmailModalPreferredMailboxId(null);
                 }}
                 onSent={handleEmailSent}
                 contact={emailModalContact}
                 company={emailModalCompany}
                 missionId={emailModalMissionId}
                 missionName={emailModalMissionName}
+                preferredMailboxId={emailModalPreferredMailboxId ?? undefined}
             />
 
             {/* Stats modal (card view) */}

@@ -10,6 +10,7 @@ import {
 } from "@/lib/api-utils";
 import { z } from "zod";
 import { detectMeetingCategoryFromNote } from "@/lib/services/ActionService";
+import { createClientPortalNotification, sendNewRdvEmailNotification } from "@/lib/notifications";
 
 const updateSchema = z.object({
   note: z.string().optional(),
@@ -18,6 +19,7 @@ const updateSchema = z.object({
   meetingType: z.enum(["VISIO", "PHYSIQUE", "TELEPHONIQUE"]).optional(),
   meetingCategory: z.enum(["EXPLORATOIRE", "BESOIN"]).nullable().optional(),
   result: z.enum(["MEETING_BOOKED", "MEETING_CANCELLED"]).optional(),
+  confirmationStatus: z.enum(["PENDING", "CONFIRMED", "CANCELLED"]).optional(),
   sdrId: z.string().cuid().optional(),
   meetingAddress: z.string().optional(),
   meetingJoinUrl: z.string().optional(),
@@ -26,6 +28,7 @@ const updateSchema = z.object({
   feedbackOutcome: z.enum(["POSITIVE", "NEUTRAL", "NEGATIVE", "NO_SHOW"]).optional(),
   feedbackRecontact: z.enum(["YES", "NO", "MAYBE"]).optional(),
   feedbackNote: z.string().optional(),
+  rdvFiche: z.record(z.string(), z.any()).nullable().optional(),
 });
 
 export const PUT = withErrorHandler(
@@ -33,7 +36,7 @@ export const PUT = withErrorHandler(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
   ) => {
-    await requireRole(["MANAGER"], request);
+    const session = await requireRole(["MANAGER"], request);
     const { id } = await params;
     const body = await validateRequest(request, updateSchema);
 
@@ -45,11 +48,27 @@ export const PUT = withErrorHandler(
     if (body.callbackDate !== undefined) actionUpdate.callbackDate = new Date(body.callbackDate);
     if (body.meetingType !== undefined) actionUpdate.meetingType = body.meetingType;
     if (body.result !== undefined) actionUpdate.result = body.result;
+    if (body.confirmationStatus !== undefined) {
+      actionUpdate.confirmationStatus = body.confirmationStatus;
+      actionUpdate.confirmationUpdatedAt = new Date();
+      if (body.confirmationStatus === "CONFIRMED") {
+        actionUpdate.confirmedAt = new Date();
+        actionUpdate.confirmedById = session.user.id;
+      }
+      if (body.confirmationStatus !== "CONFIRMED") {
+        actionUpdate.confirmedAt = null;
+        actionUpdate.confirmedById = null;
+      }
+    }
     if (body.sdrId !== undefined) actionUpdate.sdrId = body.sdrId;
     if (body.meetingAddress !== undefined) actionUpdate.meetingAddress = body.meetingAddress;
     if (body.meetingJoinUrl !== undefined) actionUpdate.meetingJoinUrl = body.meetingJoinUrl;
     if (body.meetingPhone !== undefined) actionUpdate.meetingPhone = body.meetingPhone;
     if (body.cancellationReason !== undefined) actionUpdate.cancellationReason = body.cancellationReason;
+    if (body.rdvFiche !== undefined) {
+      actionUpdate.rdvFiche = body.rdvFiche;
+      actionUpdate.rdvFicheUpdatedAt = new Date();
+    }
     if (body.meetingCategory !== undefined) {
       actionUpdate.meetingCategory = body.meetingCategory;
     } else if (body.note !== undefined && !action.meetingCategory) {
@@ -67,6 +86,35 @@ export const PUT = withErrorHandler(
         meetingFeedback: true,
       },
     });
+
+    // SAS RDV: notify client ONLY when RDV becomes CONFIRMED
+    if (
+      body.confirmationStatus === "CONFIRMED" &&
+      action.confirmationStatus !== "CONFIRMED" &&
+      updated.result === "MEETING_BOOKED"
+    ) {
+      const clientId = updated.campaign?.mission?.clientId;
+      if (clientId) {
+        await createClientPortalNotification(clientId, {
+          title: "Nouveau RDV confirmé",
+          message: "Un rendez-vous a été confirmé pour une de vos missions.",
+          type: "success",
+          link: "/client/portal/meetings",
+        });
+
+        void sendNewRdvEmailNotification(clientId, {
+          contactFirstName: updated.contact?.firstName ?? null,
+          contactLastName: updated.contact?.lastName ?? null,
+          companyName: updated.contact?.company?.name ?? null,
+          missionName: updated.campaign?.mission?.name ?? null,
+          scheduledAt: updated.callbackDate ?? null,
+          meetingType: (updated.meetingType as any) ?? null,
+          meetingJoinUrl: updated.meetingJoinUrl ?? null,
+          meetingAddress: updated.meetingAddress ?? null,
+          meetingPhone: updated.meetingPhone ?? null,
+        });
+      }
+    }
 
     if (
       body.feedbackOutcome !== undefined ||

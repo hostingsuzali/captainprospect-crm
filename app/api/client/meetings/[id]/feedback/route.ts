@@ -15,6 +15,30 @@ export const GET = withErrorHandler(async (
     const session = await requireRole(['CLIENT'], request);
     const { id: actionId } = await params;
 
+    const action = await prisma.action.findUnique({
+        where: { id: actionId },
+        include: {
+            campaign: {
+                include: {
+                    mission: {
+                        include: { client: { include: { users: { select: { id: true } } } } },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!action) throw new NotFoundError('Action not found');
+
+    if (action.confirmationStatus !== 'CONFIRMED') {
+        throw new AuthError("Ce rendez-vous n'est pas encore confirmé", 403);
+    }
+
+    const clientUserIds = action.campaign.mission.client.users.map((u) => u.id);
+    if (!clientUserIds.includes(session.user.id)) {
+        throw new AuthError('Not authorized to access feedback for this meeting', 403);
+    }
+
     const feedback = await prisma.meetingFeedback.findUnique({
         where: { actionId },
     });
@@ -60,6 +84,10 @@ export const POST = withErrorHandler(async (
     });
 
     if (!action) throw new NotFoundError('Action not found');
+
+    if (action.confirmationStatus !== 'CONFIRMED') {
+        throw new AuthError("Ce rendez-vous n'est pas encore confirmé", 403);
+    }
 
     const clientUserIds = action.campaign.mission.client.users.map((u) => u.id);
     if (!clientUserIds.includes(session.user.id)) {

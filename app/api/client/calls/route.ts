@@ -41,7 +41,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         prisma.action.findMany({
             where,
             orderBy: { createdAt: "desc" },
-            take: 500,
             select: {
                 id: true,
                 createdAt: true,

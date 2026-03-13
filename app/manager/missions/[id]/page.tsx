@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { EditMissionDialog } from "./_components/EditMissionDialog";
+import { MailboxManagerDialog } from "@/components/email/inbox/MailboxManagerDialog";
 
 // ============================================
 // TYPES
@@ -86,6 +87,7 @@ interface Mission {
         meetingsBooked: number;
         opportunities: number;
     };
+    defaultMailboxId?: string | null;
 }
 
 interface AssignableUser {
@@ -199,6 +201,10 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [aiActiveTab, setAiActiveTab] = useState<ScriptSectionKey>("intro");
     const [aiSuggestions, setAiSuggestions] = useState<Partial<Record<ScriptSectionKey, string[]>>>({});
     const [aiSelectedIndex, setAiSelectedIndex] = useState<Record<ScriptSectionKey, number>>({ intro: 0, discovery: 0, objection: 0, closing: 0 });
+    const [mailboxes, setMailboxes] = useState<Array<{ id: string; email: string; displayName: string | null }>>([]);
+    const [isLoadingMailboxes, setIsLoadingMailboxes] = useState(false);
+    const [showMailboxModal, setShowMailboxModal] = useState(false);
+    const [showMailboxManager, setShowMailboxManager] = useState(false);
 
 
     // ============================================
@@ -229,6 +235,35 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     useEffect(() => {
         fetchMission();
     }, [resolvedParams.id]);
+
+    // Load mailboxes for mission-level default mailbox
+    const refetchMailboxes = async () => {
+        if (!mission) return;
+        setIsLoadingMailboxes(true);
+        try {
+            const res = await fetch("/api/email/mailboxes?includeShared=true", { cache: "no-store" });
+            const json = await res.json();
+            if (json.success && Array.isArray(json.data)) {
+                setMailboxes(
+                    json.data.map((mb: { id: string; email: string; displayName: string | null }) => ({
+                        id: mb.id,
+                        email: mb.email,
+                        displayName: mb.displayName,
+                    }))
+                );
+            }
+        } catch {
+            // optional, ignore errors
+        } finally {
+            setIsLoadingMailboxes(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!mission) return;
+        refetchMailboxes();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mission?.id]);
 
 
     // ============================================
@@ -746,6 +781,41 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                             {mission.endDate ? new Date(mission.endDate).toLocaleDateString("fr-FR") : "En cours"}
                                         </dd>
                                     </div>
+                                    <div>
+                                        <dt className="text-slate-500 font-medium">Boîte mail par défaut</dt>
+                                        <dd className="text-slate-900 mt-0.5 flex items-center gap-3">
+                                            {isLoadingMailboxes ? (
+                                                <span className="text-slate-400 text-sm">Chargement…</span>
+                                            ) : mailboxes.length === 0 ? (
+                                                <span className="text-slate-400 text-xs">
+                                                    Aucune boîte mail disponible. Configurez-les dans{" "}
+                                                    <a href="/manager/email/mailboxes" className="text-indigo-600 hover:underline">
+                                                        Boîtes mail
+                                                    </a>.
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <span className="text-sm">
+                                                        {(() => {
+                                                            if (!mission.defaultMailboxId) {
+                                                                return "Hériter du client / choix SDR";
+                                                            }
+                                                            const mb = mailboxes.find(m => m.id === mission.defaultMailboxId);
+                                                            if (!mb) return "Boîte mail introuvable";
+                                                            return mb.displayName ? `${mb.displayName} <${mb.email}>` : mb.email;
+                                                        })()}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowMailboxModal(true)}
+                                                        className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700"
+                                                    >
+                                                        Configurer…
+                                                    </button>
+                                                </>
+                                            )}
+                                        </dd>
+                                    </div>
                                 </dl>
                             </div>
 
@@ -764,6 +834,69 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                             Gérer
                                             <ChevronRight className="w-3.5 h-3.5" />
                                         </button>
+                                    </div>
+                                </div>
+
+                                {/* Email accounts / mailboxes */}
+                                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <Mail className="w-4 h-4 text-indigo-500" />
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-slate-900">Comptes email</h3>
+                                                <p className="text-xs text-slate-500">
+                                                    {isLoadingMailboxes
+                                                        ? "Chargement…"
+                                                        : `${mailboxes.length} boîte${mailboxes.length > 1 ? "s" : ""} disponible${mailboxes.length > 1 ? "s" : ""}`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowMailboxManager(true)}
+                                            className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                                        >
+                                            Gérer
+                                            <ChevronRight className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+
+                                    <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                                        {mailboxes.length === 0 ? (
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="text-xs text-slate-600">
+                                                    Aucune boîte mail connectée. Connectez Gmail/Outlook ou configurez IMAP/SMTP.
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowMailboxManager(true)}
+                                                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                                                >
+                                                    Connecter
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="text-xs text-slate-600">
+                                                    Boîte par défaut mission :{" "}
+                                                    <span className="font-semibold text-slate-800">
+                                                        {(() => {
+                                                            if (!mission.defaultMailboxId) return "Hériter du client / choix SDR";
+                                                            const mb = mailboxes.find((m) => m.id === mission.defaultMailboxId);
+                                                            if (!mb) return "Introuvable";
+                                                            return mb.displayName ? `${mb.displayName} <${mb.email}>` : mb.email;
+                                                        })()}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowMailboxModal(true)}
+                                                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                                                >
+                                                    Configurer
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -1295,6 +1428,116 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                     </button>
                 </ModalFooter>
             </Modal>
+
+            {/* Mission mailbox configuration dialog */}
+            <Modal
+                isOpen={showMailboxModal}
+                onClose={() => setShowMailboxModal(false)}
+                title="Boîte mail par défaut de la mission"
+                description="Choisissez la boîte mail utilisée par défaut pour les emails envoyés dans cette mission. Les SDRs peuvent toujours choisir une autre boîte si nécessaire."
+                size="md"
+            >
+                {isLoadingMailboxes ? (
+                    <div className="py-6 text-sm text-slate-500">Chargement des boîtes mail…</div>
+                ) : mailboxes.length === 0 ? (
+                    <div className="py-6 space-y-3">
+                        <p className="text-sm text-slate-600">
+                            Aucune boîte mail disponible pour le moment.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowMailboxModal(false);
+                                setShowMailboxManager(true);
+                            }}
+                            className="inline-flex items-center gap-2 h-9 px-4 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+                        >
+                            <Mail className="w-4 h-4" />
+                            Connecter une boîte mail
+                        </button>
+                        <p className="text-xs text-slate-500">
+                            Vous pourrez ensuite revenir choisir la boîte mail par défaut de la mission.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="space-y-3 py-2">
+                        <label className="block text-sm font-medium text-slate-700">
+                            Sélectionner une boîte mail
+                        </label>
+                        <select
+                            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700"
+                            value={mission.defaultMailboxId ?? ""}
+                            onChange={(e) => {
+                                const value = e.target.value;
+                                setMission((prev) => prev ? { ...prev, defaultMailboxId: value || null } : prev);
+                            }}
+                        >
+                            <option value="">Hériter du client / choix SDR</option>
+                            {mailboxes.map((mb) => (
+                                <option key={mb.id} value={mb.id}>
+                                    {mb.displayName ? `${mb.displayName} <${mb.email}>` : mb.email}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-[11px] text-slate-500">
+                            Cette boîte mail sera proposée par défaut pour les emails envoyés depuis cette mission.
+                        </p>
+                    </div>
+                )}
+                <ModalFooter>
+                    <button
+                        onClick={() => setShowMailboxModal(false)}
+                        className="h-9 px-4 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    >
+                        Fermer
+                    </button>
+                    {!isLoadingMailboxes && mailboxes.length > 0 && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setShowMailboxManager(true)}
+                                className="h-9 px-4 text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+                            >
+                                Gérer les boîtes mail…
+                            </button>
+                            <button
+                                onClick={async () => {
+                                try {
+                                    const res = await fetch(`/api/missions/${mission.id}`, {
+                                        method: "PUT",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ defaultMailboxId: mission.defaultMailboxId ?? "" }),
+                                    });
+                                    const json = await res.json();
+                                    if (json.success) {
+                                        success("Boîte mail mise à jour", "La boîte mail par défaut de la mission a été mise à jour.");
+                                        setShowMailboxModal(false);
+                                    } else {
+                                        showError("Erreur", json.error || "Impossible de mettre à jour la boîte mail");
+                                    }
+                                } catch {
+                                    showError("Erreur", "Impossible de mettre à jour la boîte mail");
+                                }
+                                }}
+                                className="h-9 px-4 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+                            >
+                                Enregistrer
+                            </button>
+                        </>
+                    )}
+                </ModalFooter>
+            </Modal>
+
+            <MailboxManagerDialog
+                isOpen={showMailboxManager}
+                onClose={() => {
+                    setShowMailboxManager(false);
+                    refetchMailboxes();
+                }}
+                onMailboxAdded={() => {
+                    refetchMailboxes();
+                }}
+            />
 
             <EditMissionDialog
                 isOpen={showEditMissionDialog}

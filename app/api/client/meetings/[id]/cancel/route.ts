@@ -48,6 +48,10 @@ export const POST = withErrorHandler(async (
         throw new NotFoundError("Action introuvable");
     }
 
+    if (action.confirmationStatus !== "CONFIRMED") {
+        throw new AuthError("Ce rendez-vous n'est pas encore confirmé", 403);
+    }
+
     if (action.result !== "MEETING_BOOKED") {
         return errorResponse("Ce rendez-vous est déjà annulé", 400);
     }

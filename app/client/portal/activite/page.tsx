@@ -446,7 +446,7 @@ function MissionSection({
                                 {missionName}
                             </p>
                             <p className="text-xs text-slate-500 mt-0.5">
-                                Campagne{campaigns.length > 1 ? "s" : ""} :{" "}
+                                Mission{campaigns.length > 1 ? "s" : ""} :{" "}
                                 {campaigns.join(", ")}
                             </p>
                         </div>

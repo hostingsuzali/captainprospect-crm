@@ -625,6 +625,7 @@ async function processBatch(
             result: ActionResult;
             note?: string | null;
             createdAt?: Date;
+            callbackDate?: Date;
         }[] = [];
 
         const statusMap = new Map<string, ActionResult>();

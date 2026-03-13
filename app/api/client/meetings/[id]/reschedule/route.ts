@@ -50,6 +50,10 @@ export const POST = withErrorHandler(async (
         throw new NotFoundError("Action introuvable");
     }
 
+    if (action.confirmationStatus !== "CONFIRMED") {
+        throw new AuthError("Ce rendez-vous n'est pas encore confirmé", 403);
+    }
+
     const client = action.campaign.mission.client;
     if (!client) {
         throw new NotFoundError("Client introuvable pour ce rendez-vous");

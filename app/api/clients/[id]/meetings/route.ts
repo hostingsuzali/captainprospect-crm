@@ -60,6 +60,8 @@ export const GET = withErrorHandler(async (
 
     const meetingWhere: Record<string, unknown> = {
         result: { in: ['MEETING_BOOKED', 'MEETING_CANCELLED'] },
+        // SAS RDV: clients see meetings only once confirmed
+        confirmationStatus: 'CONFIRMED',
         campaign: {
             missionId: { in: missionIds },
         },

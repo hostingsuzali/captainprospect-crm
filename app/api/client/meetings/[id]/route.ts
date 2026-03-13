@@ -39,6 +39,10 @@ export const DELETE = withErrorHandler(async (
         throw new NotFoundError("Action introuvable");
     }
 
+    if (action.confirmationStatus !== "CONFIRMED") {
+        throw new AuthError("Ce rendez-vous n'est pas encore confirmé", 403);
+    }
+
     if (action.result !== "MEETING_BOOKED" && action.result !== "MEETING_CANCELLED") {
         return new Response(
             JSON.stringify({ success: false, error: "Seuls les rendez-vous peuvent être supprimés" }),

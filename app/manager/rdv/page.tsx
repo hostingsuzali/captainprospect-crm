@@ -45,6 +45,7 @@ import {
   ChevronUp,
   GripVertical,
   RefreshCw,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -83,6 +84,19 @@ const DESIGN_TOKENS = `
 interface Meeting {
   id: string;
   result: string;
+  confirmationStatus?: "PENDING" | "CONFIRMED" | "CANCELLED";
+  confirmationUpdatedAt?: string | null;
+  confirmedAt?: string | null;
+  confirmedById?: string | null;
+  rdvFiche?: {
+    contexte?: string;
+    besoinsProblemes?: string;
+    solutionsEnPlace?: string;
+    objectionsFreins?: string;
+    notesImportantes?: string;
+    [k: string]: unknown;
+  } | null;
+  rdvFicheUpdatedAt?: string | null;
   callbackDate: string | null;
   meetingType: string | null;
   meetingCategory: string | null;
@@ -90,6 +104,8 @@ interface Meeting {
   meetingJoinUrl: string | null;
   meetingPhone: string | null;
   note: string | null;
+  voipSummary?: string | null;
+  voipTranscript?: any;
   cancellationReason: string | null;
   createdAt: string;
   duration: number | null;
@@ -110,6 +126,7 @@ interface Meeting {
     country: string | null;
     size: string | null;
     website: string | null;
+    phone?: string | null;
   } | null;
   campaign: { id: string; name: string };
   mission: { id: string; name: string };
@@ -147,12 +164,13 @@ interface FilterOption {
   count?: number;
 }
 
-type ViewMode = "list" | "board" | "calendar";
+type ViewMode = "list" | "calendar";
 type StatusFilter = "all" | "upcoming" | "past" | "cancelled";
 type DatePreset = "today" | "7days" | "30days" | "3months" | "custom";
 type MeetingTypeFilter = "VISIO" | "PHYSIQUE" | "TELEPHONIQUE";
 type MeetingCategoryFilter = "EXPLORATOIRE" | "BESOIN";
 type OutcomeFilter = "POSITIVE" | "NEUTRAL" | "NEGATIVE" | "NO_SHOW" | "NONE";
+type ConfirmationFilter = "all" | "PENDING" | "CONFIRMED" | "CANCELLED";
 
 /* ═══════════════════════════════════════════
    HELPERS
@@ -182,6 +200,47 @@ function meetingStatus(m: Meeting): "upcoming" | "past" | "cancelled" {
 function statusLabel(s: string): string {
   const map: Record<string, string> = { upcoming: "À venir", past: "Passé", cancelled: "Annulé" };
   return map[s] || s;
+}
+
+function confirmationLabel(s: ConfirmationFilter): string {
+  const map: Record<string, string> = {
+    all: "Tous",
+    PENDING: "À confirmer",
+    CONFIRMED: "Confirmé",
+    CANCELLED: "Annulé",
+  };
+  return map[s] || s;
+}
+
+function confirmationColor(s: ConfirmationFilter): string {
+  if (s === "CONFIRMED") return "var(--green)";
+  if (s === "CANCELLED") return "var(--red)";
+  if (s === "PENDING") return "var(--amber)";
+  return "var(--ink3)";
+}
+
+function confirmationBg(s: ConfirmationFilter): string {
+  if (s === "CONFIRMED") return "var(--greenLight)";
+  if (s === "CANCELLED") return "var(--redLight)";
+  if (s === "PENDING") return "var(--amberLight)";
+  return "var(--surface2)";
+}
+
+function transcriptToText(voipTranscript: any): string {
+  const segments = Array.isArray(voipTranscript)
+    ? voipTranscript
+    : Array.isArray(voipTranscript?.segments)
+      ? voipTranscript.segments
+      : null;
+  if (!segments) return "";
+  return segments
+    .map((s: any) => {
+      const speaker = s?.speaker === "agent" ? "Agent" : s?.speaker === "prospect" ? "Prospect" : "Speaker";
+      const text = typeof s?.text === "string" ? s.text.trim() : "";
+      return text ? `${speaker}: ${text}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 function statusColor(s: string): string {
@@ -358,6 +417,66 @@ function Skeleton({ w, h, r = 8 }: { w: string | number; h: string | number; r?:
   );
 }
 
+const SearchInput = memo(function SearchInput({
+  initialSearch,
+  onDebouncedSearch,
+}: {
+  initialSearch: string;
+  onDebouncedSearch: (v: string) => void;
+}) {
+  const [search, setSearch] = useState(initialSearch);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => onDebouncedSearch(search), 200);
+    return () => clearTimeout(t);
+  }, [search, onDebouncedSearch]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+      <div style={{ position: "relative", width: "100%", maxWidth: 520 }}>
+        <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--ink3)" }} />
+        <input
+          ref={searchRef}
+          className="rdv-input"
+          style={{ width: "100%", paddingLeft: 40, paddingRight: 64, background: "var(--surface2)", borderColor: "transparent" }}
+          placeholder="Rechercher un contact, entreprise, SDR…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <kbd
+          style={{
+            position: "absolute",
+            right: 12,
+            top: "50%",
+            transform: "translateY(-50%)",
+            background: "var(--surface)",
+            border: "1px solid var(--border2)",
+            borderRadius: 6,
+            padding: "2px 8px",
+            fontSize: 11,
+            color: "var(--ink3)",
+            fontFamily: "inherit",
+          }}
+        >
+          ⌘K
+        </kbd>
+      </div>
+    </div>
+  );
+});
+
 /* ═══════════════════════════════════════════
    MAIN PAGE COMPONENT
    ═══════════════════════════════════════════ */
@@ -373,13 +492,13 @@ export default function ManagerRdvPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [panelTab, setPanelTab] = useState<"detail" | "feedback" | "note" | "history">("detail");
+  const [panelTab, setPanelTab] = useState<"detail" | "fiche" | "feedback" | "note" | "history">("detail");
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [confirmationFilter, setConfirmationFilter] = useState<ConfirmationFilter>("PENDING");
   const [datePreset, setDatePreset] = useState<DatePreset>("30days");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -400,18 +519,23 @@ export default function ManagerRdvPage() {
   const [feedbackRecontact, setFeedbackRecontact] = useState<string | null>(null);
   const [feedbackNote, setFeedbackNote] = useState("");
 
+  const [ficheLoading, setFicheLoading] = useState(false);
+  const [ficheError, setFicheError] = useState<string | null>(null);
+  const [ficheManualTranscript, setFicheManualTranscript] = useState("");
+
+  const [editContactOpen, setEditContactOpen] = useState(false);
+  const [editCompanyOpen, setEditCompanyOpen] = useState(false);
+  const [contactForm, setContactForm] = useState<{ firstName: string; lastName: string; title: string; email: string; phone: string; linkedin: string }>({ firstName: "", lastName: "", title: "", email: "", phone: "", linkedin: "" });
+  const [companyForm, setCompanyForm] = useState<{ name: string; industry: string; country: string; website: string; size: string; phone: string }>({ name: "", industry: "", country: "", website: "", size: "", phone: "" });
+  const [editContactSaving, setEditContactSaving] = useState(false);
+  const [editCompanySaving, setEditCompanySaving] = useState(false);
+
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<"month" | "week">("month");
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
   const noteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 200);
-    return () => clearTimeout(t);
-  }, [search]);
 
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -435,6 +559,7 @@ export default function ManagerRdvPage() {
       selectedMissions.forEach((id) => p.append("missionIds[]", id));
       selectedSdrs.forEach((id) => p.append("sdrIds[]", id));
       if (statusFilter !== "all") p.append("status[]", statusFilter);
+      if (confirmationFilter !== "all") p.append("confirmationStatus[]", confirmationFilter);
       selectedMeetingTypes.forEach((t) => p.append("meetingType[]", t));
       selectedMeetingCategories.forEach((c) => p.append("meetingCategory[]", c));
       selectedOutcomes.forEach((o) => {
@@ -444,7 +569,7 @@ export default function ManagerRdvPage() {
       p.set("limit", "50");
       return p.toString();
     },
-    [debouncedSearch, dateRange, selectedClients, selectedMissions, selectedSdrs, statusFilter, selectedMeetingTypes, selectedMeetingCategories, selectedOutcomes]
+    [debouncedSearch, dateRange, selectedClients, selectedMissions, selectedSdrs, statusFilter, confirmationFilter, selectedMeetingTypes, selectedMeetingCategories, selectedOutcomes]
   );
 
   const fetchMeetings = useCallback(
@@ -485,6 +610,17 @@ export default function ManagerRdvPage() {
     },
     [buildQuery]
   );
+  
+  const meetingsRef = useRef(meetings);
+  const fetchMeetingsRef = useRef(fetchMeetings);
+
+  useEffect(() => {
+    meetingsRef.current = meetings;
+  }, [meetings]);
+
+  useEffect(() => {
+    fetchMeetingsRef.current = fetchMeetings;
+  }, [fetchMeetings]);
 
   useEffect(() => { fetchMeetings(); }, [fetchMeetings]);
 
@@ -503,10 +639,6 @@ export default function ManagerRdvPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
       if (e.key === "Escape" && panelOpen) {
         setPanelOpen(false);
       }
@@ -516,11 +648,15 @@ export default function ManagerRdvPage() {
   }, [panelOpen]);
 
   const openPanel = useCallback((m: Meeting) => {
-    setSelectedMeeting(m);
+    // Resolve from current meetings so contact/company and latest data always show in panel (list, board, calendar)
+    setSelectedMeeting(meetingsRef.current.find((x) => x.id === m.id) ?? m);
     setPanelTab("detail");
     setPanelOpen(true);
     setManagerNote("");
     setNoteStatus("idle");
+    setFicheLoading(false);
+    setFicheError(null);
+    setFicheManualTranscript("");
     if (m.feedback) {
       setFeedbackOutcome(m.feedback.outcome);
       setFeedbackRecontact(m.feedback.recontact);
@@ -541,9 +677,11 @@ export default function ManagerRdvPage() {
   }, []);
 
   const toggleSelectAll = useCallback(() => {
-    if (selectedIds.size === meetings.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(meetings.map((m) => m.id)));
-  }, [meetings, selectedIds.size]);
+    setSelectedIds((prev) => {
+      if (prev.size === meetingsRef.current.length) return new Set();
+      return new Set(meetingsRef.current.map((m) => m.id));
+    });
+  }, []);
 
   const updateMeeting = useCallback(
     async (id: string, data: Record<string, unknown>) => {
@@ -553,12 +691,12 @@ export default function ManagerRdvPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         });
-        if (res.ok) fetchMeetings();
+        if (res.ok) fetchMeetingsRef.current();
       } catch (e) {
         console.error("Update failed:", e);
       }
     },
-    [fetchMeetings]
+    []
   );
 
   const saveNote = useCallback(
@@ -587,6 +725,7 @@ export default function ManagerRdvPage() {
     let c = 0;
     if (debouncedSearch) c++;
     if (statusFilter !== "all") c++;
+    if (confirmationFilter !== "all") c++;
     if (selectedClients.size > 0) c++;
     if (selectedMissions.size > 0) c++;
     if (selectedSdrs.size > 0) c++;
@@ -594,10 +733,10 @@ export default function ManagerRdvPage() {
     if (selectedMeetingCategories.size > 0) c++;
     if (selectedOutcomes.size > 0) c++;
     return c;
-  }, [debouncedSearch, statusFilter, selectedClients, selectedMissions, selectedSdrs, selectedMeetingTypes, selectedMeetingCategories, selectedOutcomes]);
+  }, [debouncedSearch, statusFilter, confirmationFilter, selectedClients, selectedMissions, selectedSdrs, selectedMeetingTypes, selectedMeetingCategories, selectedOutcomes]);
 
   const clearAllFilters = useCallback(() => {
-    setSearch(""); setDebouncedSearch(""); setStatusFilter("all"); setDatePreset("30days");
+    setDebouncedSearch(""); setStatusFilter("all"); setConfirmationFilter("PENDING"); setDatePreset("30days");
     setDateFrom(""); setDateTo(""); setSelectedClients(new Set()); setSelectedMissions(new Set());
     setSelectedSdrs(new Set()); setSelectedMeetingTypes(new Set()); setSelectedMeetingCategories(new Set()); setSelectedOutcomes(new Set());
   }, []);
@@ -609,17 +748,6 @@ export default function ManagerRdvPage() {
     return parts.join("_");
   }, [statusFilter, selectedClients]);
 
-  const boardColumns = useMemo(() => {
-    const cols: Record<string, Meeting[]> = { upcoming: [], past: [], feedback: [], cancelled: [] };
-    for (const m of meetings) {
-      const s = meetingStatus(m);
-      if (s === "cancelled") cols.cancelled.push(m);
-      else if (m.feedback) cols.feedback.push(m);
-      else if (s === "upcoming") cols.upcoming.push(m);
-      else cols.past.push(m);
-    }
-    return cols;
-  }, [meetings]);
 
   const calendarMeetings = useMemo(() => {
     const map = new Map<string, Meeting[]>();
@@ -724,43 +852,14 @@ export default function ManagerRdvPage() {
           }}
         >
           <h1 className="rdv-serif" style={{ fontSize: 26, color: "var(--ink)", margin: 0, whiteSpace: "nowrap" }}>
-            Rendez-vous
+            SAS RDV
           </h1>
 
-          <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-            <div style={{ position: "relative", width: "100%", maxWidth: 520 }}>
-              <Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--ink3)" }} />
-              <input
-                ref={searchRef}
-                className="rdv-input"
-                style={{ width: "100%", paddingLeft: 40, paddingRight: 64, background: "var(--surface2)", borderColor: "transparent" }}
-                placeholder="Rechercher un contact, entreprise, SDR…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <kbd
-                style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border2)",
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  color: "var(--ink3)",
-                  fontFamily: "inherit",
-                }}
-              >
-                ⌘K
-              </kbd>
-            </div>
-          </div>
+          <SearchInput initialSearch={debouncedSearch} onDebouncedSearch={setDebouncedSearch} />
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 10, overflow: "hidden", padding: 2 }}>
-              {([["list", List], ["board", LayoutGrid], ["calendar", CalendarDays]] as const).map(([v, Icon]) => (
+              {([["list", List], ["calendar", CalendarDays]] as const).map(([v, Icon]) => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
@@ -810,42 +909,46 @@ export default function ManagerRdvPage() {
         </div>
 
         {/* ═══ ZONE 2: INTELLIGENCE STRIP ═══ */}
-        <div style={{ display: "flex", gap: 16, padding: "20px 32px", flexShrink: 0, overflowX: "auto" }}>
-          {loading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} style={{ flex: 1, minWidth: 200 }}>
-                <Skeleton w="100%" h={100} r={16} />
-              </div>
-            ))
-          ) : (
-            [
-              { label: "Total RDV", value: aggregates?.totalCount ?? 0, color: "var(--accent)", filterAction: () => { setStatusFilter("all"); }, active: statusFilter === "all" },
-              { label: "À venir", value: aggregates?.upcomingCount ?? 0, color: "var(--green)", filterAction: () => { setStatusFilter(statusFilter === "upcoming" ? "all" : "upcoming"); }, active: statusFilter === "upcoming" },
-              { label: "Taux de conversion", value: aggregates?.conversionRate ?? 0, color: "var(--blue)", suffix: "%", filterAction: () => {}, active: false },
-              { label: "Moy. par SDR", value: aggregates?.avgPerSdr ?? 0, color: "var(--amber)", filterAction: () => {}, active: false },
-              { label: "Cette semaine", value: aggregates?.meetingsThisWeek ?? 0, color: "var(--accent)", filterAction: () => { setDatePreset("7days"); }, active: datePreset === "7days" },
-            ].map((card) => (
-              <div
-                key={card.label}
-                className={`rdv-metric-card ${card.active ? "active" : ""}`}
-                style={{ flex: 1, minWidth: 200 }}
-                onClick={card.filterAction}
-              >
-                <div style={{ position: "absolute", left: 0, top: 16, bottom: 16, width: 4, borderRadius: "0 3px 3px 0", background: card.color }} />
-                <div style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.1, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-                  <AnimatedNumber value={card.value} />
-                  {card.suffix || ""}
+        {useMemo(() => (
+          <div style={{ display: "flex", gap: 16, padding: "20px 32px", flexShrink: 0, overflowX: "auto" }}>
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} style={{ flex: 1, minWidth: 200 }}>
+                  <Skeleton w="100%" h={100} r={16} />
                 </div>
-                <div style={{ fontSize: 13, color: "var(--ink3)", marginTop: 6, fontWeight: 500 }}>{card.label}</div>
-              </div>
-            ))
-          )}
-        </div>
+              ))
+            ) : (
+              [
+                { label: "Total RDV", value: aggregates?.totalCount ?? 0, color: "var(--accent)", filterAction: () => { setStatusFilter("all"); }, active: statusFilter === "all" },
+                { label: "À venir", value: aggregates?.upcomingCount ?? 0, color: "var(--green)", filterAction: () => { setStatusFilter(statusFilter === "upcoming" ? "all" : "upcoming"); }, active: statusFilter === "upcoming" },
+                { label: "Taux de conversion", value: aggregates?.conversionRate ?? 0, color: "var(--blue)", suffix: "%", filterAction: () => {}, active: false },
+                { label: "Moy. par SDR", value: aggregates?.avgPerSdr ?? 0, color: "var(--amber)", filterAction: () => {}, active: false },
+                { label: "Cette semaine", value: aggregates?.meetingsThisWeek ?? 0, color: "var(--accent)", filterAction: () => { setDatePreset("7days"); }, active: datePreset === "7days" },
+              ].map((card) => (
+                <div
+                  key={card.label}
+                  className={`rdv-metric-card ${card.active ? "active" : ""}`}
+                  style={{ flex: 1, minWidth: 200 }}
+                  onClick={card.filterAction}
+                >
+                  <div style={{ position: "absolute", left: 0, top: 16, bottom: 16, width: 4, borderRadius: "0 3px 3px 0", background: card.color }} />
+                  <div style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.1, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                    <AnimatedNumber value={card.value} />
+                    {card.suffix || ""}
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--ink3)", marginTop: 6, fontWeight: 500 }}>{card.label}</div>
+                </div>
+              ))
+            )}
+          </div>
+        ), [loading, aggregates, statusFilter, datePreset])}
 
         {/* ═══ ZONE 3: MAIN WORKSPACE ═══ */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
           {/* FILTER SIDEBAR */}
-          {sidebarOpen && (
+          {useMemo(() => (
+            <>
+              {sidebarOpen && (
             <div
               className="rdv-scrollbar"
               style={{
@@ -949,6 +1052,27 @@ export default function ManagerRdvPage() {
                 ))}
               </FilterSection>
 
+              <FilterSection title="Confirmation">
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {(["all", "PENDING", "CONFIRMED", "CANCELLED"] as const).map((key) => (
+                    <button
+                      key={key}
+                      className="rdv-pill"
+                      style={{
+                        cursor: "pointer",
+                        padding: "5px 14px",
+                        background: confirmationFilter === key ? confirmationBg(key) : "var(--surface2)",
+                        color: confirmationFilter === key ? confirmationColor(key) : "var(--ink3)",
+                        border: `1px solid ${confirmationFilter === key ? confirmationColor(key) : "transparent"}`,
+                      }}
+                      onClick={() => setConfirmationFilter(key)}
+                    >
+                      {confirmationLabel(key)}
+                    </button>
+                  ))}
+                </div>
+              </FilterSection>
+
               <FilterSection title="Statut">
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {([["all", "Tous"], ["upcoming", "À venir"], ["past", "Passés"], ["cancelled", "Annulés"]] as const).map(([key, label]) => (
@@ -998,8 +1122,9 @@ export default function ManagerRdvPage() {
                     </button>
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {debouncedSearch && <FilterChip label={`"${debouncedSearch}"`} onRemove={() => { setSearch(""); setDebouncedSearch(""); }} />}
+                    {debouncedSearch && <FilterChip label={`"${debouncedSearch}"`} onRemove={() => { setDebouncedSearch(""); }} />}
                     {statusFilter !== "all" && <FilterChip label={statusLabel(statusFilter)} onRemove={() => setStatusFilter("all")} />}
+                    {confirmationFilter !== "all" && <FilterChip label={confirmationLabel(confirmationFilter)} onRemove={() => setConfirmationFilter("all")} />}
                     {Array.from(selectedClients).map((id) => {
                       const c = clientOptions.find((o) => o.id === id);
                       return c ? <FilterChip key={id} label={c.name} onRemove={() => setSelectedClients((p) => { const n = new Set(p); n.delete(id); return n; })} /> : null;
@@ -1033,7 +1158,9 @@ export default function ManagerRdvPage() {
                 </span>
               )}
             </button>
-          )}
+              )}
+            </>
+          ), [sidebarOpen, activeFilterCount, datePreset, dateFrom, dateTo, clientOptions, selectedClients, missionOptions, selectedMissions, sdrOptions, selectedSdrs, confirmationFilter, statusFilter, selectedMeetingTypes, selectedMeetingCategories, selectedOutcomes, debouncedSearch, clearAllFilters])}
 
           {/* MAIN CONTENT */}
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", transition: "margin-right 0.35s cubic-bezier(0.16,1,0.3,1)", marginRight: panelOpen ? 480 : 0 }}>
@@ -1059,6 +1186,7 @@ export default function ManagerRdvPage() {
                   <div style={{ width: 44, textAlign: "center" }}>Type</div>
                   <div style={{ width: 90, textAlign: "center" }}>Catégorie</div>
                   <div style={{ width: 80, textAlign: "center" }}>Statut</div>
+                  <div style={{ width: 110, textAlign: "center" }}>Confirmation</div>
                   <div style={{ width: 44, textAlign: "center" }}>FB</div>
                   <div style={{ width: 48 }} />
                 </div>
@@ -1095,57 +1223,7 @@ export default function ManagerRdvPage() {
               </>
             )}
 
-            {view === "board" && (
-              <div style={{ flex: 1, display: "flex", gap: 20, padding: 24, overflowX: "auto" }}>
-                {([
-                  { key: "upcoming", label: "À venir", color: "var(--green)" },
-                  { key: "past", label: "Passé", color: "var(--blue)" },
-                  { key: "feedback", label: "Feedback reçu", color: "var(--amber)" },
-                  { key: "cancelled", label: "Annulé", color: "var(--red)" },
-                ] as const).map((col) => (
-                  <div key={col.key} className="rdv-board-col">
-                    <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: col.color }} />
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{col.label}</span>
-                      <span style={{ fontSize: 12, color: "var(--ink3)", marginLeft: "auto", background: "var(--surface2)", borderRadius: 10, padding: "2px 8px", fontWeight: 600 }}>
-                        {boardColumns[col.key]?.length ?? 0}
-                      </span>
-                    </div>
-                    <div className="rdv-scrollbar" style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                      {loading ? (
-                        Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} w="100%" h={88} r={12} />)
-                      ) : (
-                        (boardColumns[col.key] ?? []).map((m) => (
-                          <div key={m.id} className="rdv-board-card" onClick={() => openPanel(m)}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                              <Avatar name={contactName(m.contact)} size={32} />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {contactName(m.contact)}
-                                </div>
-                                <div style={{ fontSize: 12, color: "var(--ink3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {m.company?.name || "—"}
-                                </div>
-                              </div>
-                              {m.meetingCategory && (
-                                <span className="rdv-pill" style={{ background: categoryBg(m.meetingCategory), color: categoryColor(m.meetingCategory), padding: "2px 8px", fontSize: 10 }}>
-                                  {categoryLabel(m.meetingCategory)}
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink3)" }}>
-                              <Clock size={12} />
-                              {m.callbackDate ? new Date(m.callbackDate).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
-                              <span style={{ marginLeft: "auto", fontWeight: 500 }}>{m.sdr.name}</span>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+
 
             {view === "calendar" && (
               <div style={{ flex: 1, padding: 24, overflowY: "auto" }}>
@@ -1208,15 +1286,44 @@ export default function ManagerRdvPage() {
                             {isExpanded && (
                               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
                                 {dayMeetings.map((m) => (
-                                  <div key={m.id} className="rdv-board-card" onClick={(e) => { e.stopPropagation(); openPanel(m); }} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                    <div style={{ width: 4, height: 36, borderRadius: 2, background: statusColor(meetingStatus(m)), flexShrink: 0 }} />
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{contactName(m.contact)}</div>
-                                      <div style={{ fontSize: 12, color: "var(--ink3)" }}>
-                                        {m.company?.name || "—"} · {m.callbackDate ? new Date(m.callbackDate).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                  <div key={m.id} className="rdv-board-card" onClick={(e) => { e.stopPropagation(); openPanel(m); }} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                      <div style={{ width: 4, height: 36, borderRadius: 2, background: statusColor(meetingStatus(m)), flexShrink: 0 }} />
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{contactName(m.contact)}</div>
+                                        <div style={{ fontSize: 12, color: "var(--ink3)" }}>
+                                          {m.company?.name || "—"} · {m.callbackDate ? new Date(m.callbackDate).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                        </div>
                                       </div>
+                                      {meetingTypeIcon(m.meetingType)}
                                     </div>
-                                    {meetingTypeIcon(m.meetingType)}
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                                      {m.confirmationStatus !== "CONFIRMED" && (
+                                        <button type="button" className="rdv-btn" style={{ fontSize: 10, padding: "4px 8px", background: "var(--greenLight)", color: "var(--green)", border: "1px solid rgba(5,150,105,0.2)" }} onClick={() => { updateMeeting(m.id, { confirmationStatus: "CONFIRMED" }); setSelectedMeeting((prev) => prev?.id === m.id ? { ...prev, confirmationStatus: "CONFIRMED", confirmedAt: new Date().toISOString() } : prev); setMeetings((prev) => prev.map((x) => x.id === m.id ? { ...x, confirmationStatus: "CONFIRMED", confirmedAt: new Date().toISOString() } : x)); }}>
+                                          <Check size={10} /> Confirmer
+                                        </button>
+                                      )}
+                                      {m.confirmationStatus !== "CANCELLED" && (
+                                        <button type="button" className="rdv-btn" style={{ fontSize: 10, padding: "4px 8px", background: "var(--redLight)", color: "var(--red)", border: "1px solid rgba(220,38,38,0.2)" }} onClick={() => { updateMeeting(m.id, { confirmationStatus: "CANCELLED" }); setSelectedMeeting((prev) => prev?.id === m.id ? { ...prev, confirmationStatus: "CANCELLED", confirmedAt: null, confirmedById: null } : prev); setMeetings((prev) => prev.map((x) => x.id === m.id ? { ...x, confirmationStatus: "CANCELLED", confirmedAt: null, confirmedById: null } : x)); }}>
+                                          <X size={10} /> Annuler
+                                        </button>
+                                      )}
+                                      {m.contact?.email && (
+                                        <a href={`mailto:${m.contact.email}`} className="rdv-btn rdv-btn-ghost" style={{ fontSize: 10, padding: "4px 8px", textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>
+                                          <Mail size={10} /> Email
+                                        </a>
+                                      )}
+                                      {m.contact?.phone && (
+                                        <a href={`tel:${m.contact.phone}`} className="rdv-btn rdv-btn-ghost" style={{ fontSize: 10, padding: "4px 8px", textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>
+                                          <Phone size={10} /> Appeler
+                                        </a>
+                                      )}
+                                      {m.contact?.linkedin && (
+                                        <a href={m.contact.linkedin} target="_blank" rel="noreferrer" className="rdv-btn rdv-btn-ghost" style={{ fontSize: 10, padding: "4px 8px", textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>
+                                          <Linkedin size={10} /> LinkedIn
+                                        </a>
+                                      )}
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -1259,6 +1366,19 @@ export default function ManagerRdvPage() {
                     <span className="rdv-pill" style={{ background: statusBg(meetingStatus(selectedMeeting)), color: statusColor(meetingStatus(selectedMeeting)), padding: "4px 14px" }}>
                       {statusLabel(meetingStatus(selectedMeeting))}
                     </span>
+                    {selectedMeeting.confirmationStatus && (
+                      <span
+                        className="rdv-pill"
+                        style={{
+                          background: confirmationBg(selectedMeeting.confirmationStatus as ConfirmationFilter),
+                          color: confirmationColor(selectedMeeting.confirmationStatus as ConfirmationFilter),
+                          padding: "4px 14px",
+                          border: `1px solid ${confirmationColor(selectedMeeting.confirmationStatus as ConfirmationFilter)}`,
+                        }}
+                      >
+                        {confirmationLabel(selectedMeeting.confirmationStatus as ConfirmationFilter)}
+                      </span>
+                    )}
                     <span className="rdv-pill" style={{ background: "var(--surface2)", color: "var(--ink2)", padding: "4px 14px" }}>
                       {meetingTypeIcon(selectedMeeting.meetingType)} {meetingTypeLabel(selectedMeeting.meetingType)}
                     </span>
@@ -1274,6 +1394,30 @@ export default function ManagerRdvPage() {
                   </div>
 
                   <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+                    {selectedMeeting.confirmationStatus !== "CONFIRMED" && (
+                      <button
+                        className="rdv-btn"
+                        style={{ fontSize: 12, padding: "6px 12px", background: "var(--greenLight)", color: "var(--green)", border: "1px solid rgba(5,150,105,0.2)" }}
+                        onClick={() => {
+                          updateMeeting(selectedMeeting.id, { confirmationStatus: "CONFIRMED" });
+                          setSelectedMeeting({ ...selectedMeeting, confirmationStatus: "CONFIRMED", confirmedAt: new Date().toISOString() });
+                        }}
+                      >
+                        <Check size={13} /> Confirmer
+                      </button>
+                    )}
+                    {selectedMeeting.confirmationStatus !== "CANCELLED" && (
+                      <button
+                        className="rdv-btn"
+                        style={{ fontSize: 12, padding: "6px 12px", background: "var(--redLight)", color: "var(--red)", border: "1px solid rgba(220,38,38,0.2)" }}
+                        onClick={() => {
+                          updateMeeting(selectedMeeting.id, { confirmationStatus: "CANCELLED" });
+                          setSelectedMeeting({ ...selectedMeeting, confirmationStatus: "CANCELLED", confirmedAt: null, confirmedById: null });
+                        }}
+                      >
+                        <X size={13} /> Annuler
+                      </button>
+                    )}
                     {selectedMeeting.contact?.email && (
                       <a href={`mailto:${selectedMeeting.contact.email}`} className="rdv-btn rdv-btn-ghost" style={{ fontSize: 12, padding: "6px 12px", textDecoration: "none" }}>
                         <Mail size={13} /> Email
@@ -1292,7 +1436,7 @@ export default function ManagerRdvPage() {
                   </div>
 
                   <div style={{ display: "flex", gap: 0, borderBottom: "none" }}>
-                    {([["detail", "Détail", FileText], ["feedback", "Feedback", ThumbsUp], ["note", "Note interne", MessageSquare], ["history", "Historique", History]] as const).map(([key, label, Icon]) => (
+                    {([["detail", "Détail", FileText], ["fiche", "Fiche RDV", FileText], ["feedback", "Feedback", ThumbsUp], ["note", "Note interne", MessageSquare], ["history", "Historique", History]] as const).map(([key, label, Icon]) => (
                       <button key={key} className={`rdv-tab ${panelTab === key ? "active" : ""}`} onClick={() => setPanelTab(key)}>
                         <Icon size={13} style={{ display: "inline", marginRight: 5, verticalAlign: -2 }} />{label}
                       </button>
@@ -1358,26 +1502,133 @@ export default function ManagerRdvPage() {
                       <DetailRow label="Mission">{selectedMeeting.mission.name}</DetailRow>
                       <DetailRow label="Campagne">{selectedMeeting.campaign.name}</DetailRow>
                       <DetailRow label="Entreprise">
-                        <div>
-                          <div style={{ color: "var(--ink)", fontWeight: 500 }}>{selectedMeeting.company?.name || "—"}</div>
-                          {selectedMeeting.company?.industry && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>{selectedMeeting.company.industry}</div>}
-                          {selectedMeeting.company?.website && (
-                            <a href={selectedMeeting.company.website.startsWith("http") ? selectedMeeting.company.website : `https://${selectedMeeting.company.website}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)" }}>
-                              {selectedMeeting.company.website}
-                            </a>
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, width: "100%" }}>
+                          <div>
+                            <div style={{ color: "var(--ink)", fontWeight: 500 }}>{selectedMeeting.company?.name || "—"}</div>
+                            {selectedMeeting.company?.industry && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>{selectedMeeting.company.industry}</div>}
+                            {selectedMeeting.company?.phone && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>{selectedMeeting.company.phone}</div>}
+                            {selectedMeeting.company?.website && (
+                              <a href={selectedMeeting.company.website.startsWith("http") ? selectedMeeting.company.website : `https://${selectedMeeting.company.website}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)" }}>
+                                {selectedMeeting.company.website}
+                              </a>
+                            )}
+                          </div>
+                          {selectedMeeting.company && (
+                            <button type="button" className="rdv-btn rdv-btn-ghost" style={{ fontSize: 11, padding: "4px 8px", flexShrink: 0 }} onClick={() => { setCompanyForm({ name: selectedMeeting.company?.name ?? "", industry: selectedMeeting.company?.industry ?? "", country: selectedMeeting.company?.country ?? "", website: selectedMeeting.company?.website ?? "", size: selectedMeeting.company?.size ?? "", phone: selectedMeeting.company?.phone ?? "" }); setEditCompanyOpen(true); }}>
+                              <Pencil size={12} /> Modifier
+                            </button>
                           )}
                         </div>
                       </DetailRow>
                       <DetailRow label="Contact">
-                        <div>
-                          <div style={{ color: "var(--ink)", fontWeight: 500 }}>{contactName(selectedMeeting.contact)}</div>
-                          {selectedMeeting.contact?.title && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 1 }}>{selectedMeeting.contact.title}</div>}
-                          {selectedMeeting.contact?.email && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{selectedMeeting.contact.email}</div>}
-                          {selectedMeeting.contact?.phone && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{selectedMeeting.contact.phone}</div>}
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, width: "100%" }}>
+                          <div>
+                            <div style={{ color: "var(--ink)", fontWeight: 500 }}>{contactName(selectedMeeting.contact)}</div>
+                            {selectedMeeting.contact?.title && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 1 }}>{selectedMeeting.contact.title}</div>}
+                            {selectedMeeting.contact?.email && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{selectedMeeting.contact.email}</div>}
+                            {selectedMeeting.contact?.phone && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{selectedMeeting.contact.phone}</div>}
+                          </div>
+                          {selectedMeeting.contact && (
+                            <button type="button" className="rdv-btn rdv-btn-ghost" style={{ fontSize: 11, padding: "4px 8px", flexShrink: 0 }} onClick={() => { setContactForm({ firstName: selectedMeeting.contact?.firstName ?? "", lastName: selectedMeeting.contact?.lastName ?? "", title: selectedMeeting.contact?.title ?? "", email: selectedMeeting.contact?.email ?? "", phone: selectedMeeting.contact?.phone ?? "", linkedin: selectedMeeting.contact?.linkedin ?? "" }); setEditContactOpen(true); }}>
+                              <Pencil size={12} /> Modifier
+                            </button>
+                          )}
                         </div>
                       </DetailRow>
                       {selectedMeeting.note && <DetailRow label="Note SDR"><span style={{ color: "var(--ink2)", whiteSpace: "pre-wrap" }}>{selectedMeeting.note}</span></DetailRow>}
                       <DetailRow label="Créé le">{new Date(selectedMeeting.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</DetailRow>
+                    </div>
+                  )}
+
+                  {panelTab === "fiche" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>Fiche RDV (extraction IA)</div>
+                        <button
+                          className="rdv-btn rdv-btn-primary"
+                          style={{ fontSize: 12, padding: "8px 12px" }}
+                          disabled={ficheLoading}
+                          onClick={async () => {
+                            const auto = transcriptToText(selectedMeeting.voipTranscript);
+                            const transcription = (ficheManualTranscript || auto || "").trim();
+                            if (!transcription) {
+                              setFicheError("Aucune transcription détectée. Collez une transcription ci-dessous, puis relancez.");
+                              return;
+                            }
+                            setFicheLoading(true);
+                            setFicheError(null);
+                            try {
+                              const res = await fetch("/api/ai/mistral/rdv-fiche", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ transcription }),
+                              });
+                              const json = await res.json().catch(() => null);
+                              if (!res.ok || !json?.success) {
+                                setFicheError(json?.error || "Impossible de générer la fiche.");
+                                return;
+                              }
+                              const fiche = json.data?.fiche;
+                              await updateMeeting(selectedMeeting.id, { rdvFiche: fiche });
+                              setSelectedMeeting({ ...selectedMeeting, rdvFiche: fiche, rdvFicheUpdatedAt: new Date().toISOString() });
+                            } catch (e) {
+                              console.error(e);
+                              setFicheError("Erreur réseau lors de la génération.");
+                            } finally {
+                              setFicheLoading(false);
+                            }
+                          }}
+                        >
+                          {ficheLoading ? <RefreshCw size={14} style={{ animation: "spin 1s linear infinite" }} /> : <FileText size={14} />}
+                          Générer
+                        </button>
+                      </div>
+
+                      {selectedMeeting.rdvFicheUpdatedAt && (
+                        <div style={{ fontSize: 12, color: "var(--ink3)" }}>
+                          Dernière mise à jour: {new Date(selectedMeeting.rdvFicheUpdatedAt).toLocaleString("fr-FR")}
+                        </div>
+                      )}
+
+                      {ficheError && (
+                        <div style={{ background: "var(--redLight)", border: "1px solid rgba(220,38,38,0.18)", color: "var(--red)", padding: "10px 12px", borderRadius: 12, fontSize: 12 }}>
+                          {ficheError}
+                        </div>
+                      )}
+
+                      {transcriptToText(selectedMeeting.voipTranscript) === "" && (
+                        <div>
+                          <div style={{ fontSize: 12, color: "var(--ink3)", fontWeight: 600, marginBottom: 8 }}>
+                            Transcription (à coller)
+                          </div>
+                          <textarea
+                            className="rdv-input"
+                            style={{ width: "100%", minHeight: 120, resize: "vertical" }}
+                            value={ficheManualTranscript}
+                            onChange={(e) => setFicheManualTranscript(e.target.value)}
+                            placeholder="Collez ici la transcription complète (Agent/Prospect)…"
+                          />
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {([
+                          ["Contexte", selectedMeeting.rdvFiche?.contexte],
+                          ["Besoins / Problèmes identifiés", selectedMeeting.rdvFiche?.besoinsProblemes],
+                          ["Solutions en place", selectedMeeting.rdvFiche?.solutionsEnPlace],
+                          ["Objections / Freins", selectedMeeting.rdvFiche?.objectionsFreins],
+                          ["Notes importantes", selectedMeeting.rdvFiche?.notesImportantes],
+                        ] as const).map(([label, value]) => (
+                          <div key={label} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "var(--surface)" }}>
+                            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "var(--ink3)", textTransform: "uppercase", marginBottom: 8 }}>
+                              {label}
+                            </div>
+                            <div style={{ fontSize: 13, color: value ? "var(--ink2)" : "var(--ink3)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+                              {value?.toString().trim() || "—"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
@@ -1467,6 +1718,116 @@ export default function ManagerRdvPage() {
             <button style={{ background: "var(--surface2)", border: "none", color: "var(--ink3)", cursor: "pointer", padding: 6, borderRadius: 8 }} onClick={() => setSelectedIds(new Set())}>
               <X size={14} />
             </button>
+          </div>
+        )}
+
+        {/* Edit Contact modal */}
+        {editContactOpen && selectedMeeting?.contact && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !editContactSaving && setEditContactOpen(false)}>
+            <div style={{ background: "var(--surface)", borderRadius: 16, padding: 24, width: "100%", maxWidth: 420, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", marginBottom: 20 }}>Modifier le contact</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Prénom</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={contactForm.firstName} onChange={(e) => setContactForm((f) => ({ ...f, firstName: e.target.value }))} placeholder="Prénom" />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Nom</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={contactForm.lastName} onChange={(e) => setContactForm((f) => ({ ...f, lastName: e.target.value }))} placeholder="Nom" />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Poste</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={contactForm.title} onChange={(e) => setContactForm((f) => ({ ...f, title: e.target.value }))} placeholder="Poste" />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Email</label>
+                  <input className="rdv-input" type="email" style={{ width: "100%" }} value={contactForm.email} onChange={(e) => setContactForm((f) => ({ ...f, email: e.target.value }))} placeholder="email@exemple.fr" />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Téléphone</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={contactForm.phone} onChange={(e) => setContactForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+33 6 12 34 56 78" />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>LinkedIn</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={contactForm.linkedin} onChange={(e) => setContactForm((f) => ({ ...f, linkedin: e.target.value }))} placeholder="https://linkedin.com/in/..." />
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+                <button className="rdv-btn rdv-btn-ghost" onClick={() => setEditContactOpen(false)} disabled={editContactSaving}>Annuler</button>
+                <button className="rdv-btn rdv-btn-primary" disabled={editContactSaving} onClick={async () => {
+                  if (!selectedMeeting?.contact) return;
+                  setEditContactSaving(true);
+                  try {
+                    const res = await fetch(`/api/contacts/${selectedMeeting.contact.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firstName: contactForm.firstName || null, lastName: contactForm.lastName || null, title: contactForm.title || null, email: contactForm.email || null, phone: contactForm.phone || null, linkedin: contactForm.linkedin || null }) });
+                    const json = await res.json().catch(() => null);
+                    if (res.ok && json?.success) {
+                      const u = json.data as { firstName?: string | null; lastName?: string | null; title?: string | null; email?: string | null; phone?: string | null; linkedin?: string | null };
+                      const updated = { firstName: u.firstName ?? null, lastName: u.lastName ?? null, title: u.title ?? null, email: u.email ?? null, phone: u.phone ?? null, linkedin: u.linkedin ?? null };
+                      setSelectedMeeting((prev) => prev && prev.contact ? { ...prev, contact: { ...prev.contact, ...updated } } : prev ?? null);
+                      setMeetings((prev) => prev.map((m) => m.id === selectedMeeting.id && m.contact ? { ...m, contact: { ...m.contact, ...updated } } : m));
+                      setEditContactOpen(false);
+                    }
+                  } finally { setEditContactSaving(false); }
+                }}>
+                  {editContactSaving ? "Enregistrement…" : "Enregistrer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Company modal */}
+        {editCompanyOpen && selectedMeeting?.company && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => !editCompanySaving && setEditCompanyOpen(false)}>
+            <div style={{ background: "var(--surface)", borderRadius: 16, padding: 24, width: "100%", maxWidth: 420, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", marginBottom: 20 }}>Modifier l&apos;entreprise</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Nom</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={companyForm.name} onChange={(e) => setCompanyForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nom de l'entreprise" />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Secteur</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={companyForm.industry} onChange={(e) => setCompanyForm((f) => ({ ...f, industry: e.target.value }))} placeholder="Secteur d'activité" />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Pays</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={companyForm.country} onChange={(e) => setCompanyForm((f) => ({ ...f, country: e.target.value }))} placeholder="Pays" />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Site web</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={companyForm.website} onChange={(e) => setCompanyForm((f) => ({ ...f, website: e.target.value }))} placeholder="https://..." />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Taille / Effectif</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={companyForm.size} onChange={(e) => setCompanyForm((f) => ({ ...f, size: e.target.value }))} placeholder="ex: 50-200" />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>Téléphone</label>
+                  <input className="rdv-input" style={{ width: "100%" }} value={companyForm.phone} onChange={(e) => setCompanyForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+33 1 23 45 67 89" />
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+                <button className="rdv-btn rdv-btn-ghost" onClick={() => setEditCompanyOpen(false)} disabled={editCompanySaving}>Annuler</button>
+                <button className="rdv-btn rdv-btn-primary" disabled={editCompanySaving || !companyForm.name.trim()} onClick={async () => {
+                  if (!selectedMeeting?.company) return;
+                  setEditCompanySaving(true);
+                  try {
+                    const res = await fetch(`/api/companies/${selectedMeeting.company.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: companyForm.name.trim(), industry: companyForm.industry || null, country: companyForm.country || null, website: companyForm.website || null, size: companyForm.size || null, phone: companyForm.phone || null }) });
+                    const json = await res.json().catch(() => null);
+                    if (res.ok && json?.success) {
+                      const u = json.data as { name: string; industry?: string | null; country?: string | null; website?: string | null; size?: string | null; phone?: string | null };
+                      const companyPatch = { name: u.name, industry: u.industry ?? null, country: u.country ?? null, size: u.size ?? null, website: u.website ?? null, phone: u.phone ?? null };
+                      setSelectedMeeting((prev) => prev && prev.company ? { ...prev, company: { ...prev.company, ...companyPatch } } : prev ?? null);
+                      setMeetings((prev) => prev.map((m) => m.id === selectedMeeting.id && m.company ? { ...m, company: { ...m.company, ...companyPatch } } : m));
+                      setEditCompanyOpen(false);
+                    }
+                  } finally { setEditCompanySaving(false); }
+                }}>
+                  {editCompanySaving ? "Enregistrement…" : "Enregistrer"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1602,6 +1963,24 @@ const MeetingRow = memo(function MeetingRow({ meeting, selected, onToggleSelect,
         <span className="rdv-pill" style={{ background: statusBg(status), color: statusColor(status), padding: "4px 12px" }}>
           {statusLabel(status)}
         </span>
+      </div>
+
+      <div style={{ width: 110, textAlign: "center" }}>
+        {meeting.confirmationStatus ? (
+          <span
+            className="rdv-pill"
+            style={{
+              background: confirmationBg(meeting.confirmationStatus as ConfirmationFilter),
+              color: confirmationColor(meeting.confirmationStatus as ConfirmationFilter),
+              padding: "4px 12px",
+              border: `1px solid ${confirmationColor(meeting.confirmationStatus as ConfirmationFilter)}`,
+            }}
+          >
+            {confirmationLabel(meeting.confirmationStatus as ConfirmationFilter)}
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, color: "var(--ink3)", opacity: 0.4 }}>—</span>
+        )}
       </div>
 
       <div style={{ width: 44, textAlign: "center" }}>{outcomeIcon(meeting.feedback?.outcome || null)}</div>

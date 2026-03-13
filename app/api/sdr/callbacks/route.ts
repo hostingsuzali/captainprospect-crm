@@ -65,7 +65,7 @@ export async function GET(request: Request) {
             result: "CALLBACK_REQUESTED";
             campaign?: { missionId: string | { in: string[] } };
             callbackDate?: { gte?: Date; lte?: Date };
-            OR?: Array<{ sdrId: string; campaign: { missionId: string | { in: string[] } } } | { campaign: { missionId: { in: string[] } } }>;
+            OR?: Array<{ sdrId: string; campaign: { missionId: string | { in: string[] } } } | { campaign: { missionId: string | { in: string[] } } }>;
         } = {
             result: "CALLBACK_REQUESTED",
         };

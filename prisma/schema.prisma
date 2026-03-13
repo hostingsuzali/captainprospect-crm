@@ -107,6 +107,12 @@ enum RecontactPreference {
   MAYBE
 }
 
+enum MeetingConfirmationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
 enum ProjectStatus {
   ACTIVE
   COMPLETED
@@ -299,6 +305,7 @@ model User {
   client        Client?   @relation(fields: [clientId], references: [id])
   clientOnboardingDismissedPermanently Boolean @default(false)  // Client portal: hide onboarding forever
   actions       Action[]  @relation("SDRActions")
+  confirmedMeetings Action[] @relation("MeetingConfirmedBy")
   assignedMissions SDRAssignment[]
   missionsAsTeamLead Mission[]  @relation("MissionTeamLead")
   uploadedFiles File[]
@@ -478,6 +485,11 @@ model Client {
   industry      String?
   logo          String?
   bookingUrl    String?   // URL for booking tools (Calendly, etc.)
+  
+  // Default mailbox for this client (optional)
+  defaultMailboxId String?
+  defaultMailbox   Mailbox? @relation("ClientDefaultMailbox", fields: [defaultMailboxId], references: [id], onDelete: SetNull)
+
   salesPlaybook Json?     @map("sales_playbook")
   users         User[]
   missions      Mission[]
@@ -523,6 +535,8 @@ model Client {
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@index([defaultMailboxId])
 }
 
 model ClientInterlocuteur {
@@ -557,6 +571,11 @@ model Mission {
   objective     String
   channel       Channel   // Primary (first channel); kept for backward compatibility
   channels      Channel[] @default([CALL]) // Multi-channel: mission can run on CALL + EMAIL + LINKEDIN
+  
+  // Default mailbox for this mission (optional)
+  defaultMailboxId String?
+  defaultMailbox   Mailbox? @relation("MissionDefaultMailbox", fields: [defaultMailboxId], references: [id], onDelete: SetNull)
+
   startDate     DateTime
   endDate       DateTime
   isActive      Boolean   @default(true)
@@ -603,6 +622,8 @@ model Mission {
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@index([defaultMailboxId])
 }
 
 model SDRAssignment {
@@ -725,6 +746,15 @@ model Action {
   meetingAddress  String?    // Physical address (for PHYSIQUE meetings only)
   meetingJoinUrl String?    // Video join link (for VISIO meetings only)
   meetingPhone   String?    // Dial number for call (for TELEPHONIQUE; fallback to contact.phone)
+
+  // SAS RDV (manager confirmation workflow)
+  confirmationStatus MeetingConfirmationStatus @default(PENDING)
+  confirmationUpdatedAt DateTime?
+  confirmedAt    DateTime?
+  confirmedById  String?
+  confirmedBy    User?      @relation("MeetingConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  rdvFiche       Json?
+  rdvFicheUpdatedAt DateTime?
   createdAt     DateTime     @default(now())
 
   // Call workflow: IN_PROGRESS when call started, PENDING_VALIDATION when webhook received
@@ -1741,6 +1771,10 @@ model Mailbox {
   permissions     MailboxPermission[]
   sequences       EmailSequence[]
   analyticsDaily  EmailAnalyticsDaily[]
+  
+  // Default mappings (optional)
+  defaultForClients  Client[]  @relation("ClientDefaultMailbox")
+  defaultForMissions Mission[] @relation("MissionDefaultMailbox")
   
   isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())

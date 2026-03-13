@@ -100,7 +100,7 @@ export const MANAGER_NAV: NavSection[] = [
       {
         href: "/manager/rdv",
         icon: Calendar,
-        label: "RDV",
+        label: "SAS RDV",
         permission: "pages.analytics",
       },
       {

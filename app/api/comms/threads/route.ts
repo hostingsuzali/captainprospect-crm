@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import {
     getInboxThreads,
     createThread,
@@ -88,6 +89,27 @@ export async function POST(request: NextRequest) {
                 { error: "Seuls les managers peuvent créer des annonces" },
                 { status: 403 }
             );
+        }
+
+        // Client portal: direct messages only to managers (messaging is only in mission or to a manager)
+        if (session.user.role === "CLIENT" && body.channelType === "DIRECT") {
+            const participantIds = body.participantIds ?? [];
+            if (participantIds.length !== 1) {
+                return NextResponse.json(
+                    { error: "Un message direct doit avoir exactement un destinataire" },
+                    { status: 400 }
+                );
+            }
+            const recipient = await prisma.user.findUnique({
+                where: { id: participantIds[0] },
+                select: { role: true },
+            });
+            if (recipient?.role !== "MANAGER") {
+                return NextResponse.json(
+                    { error: "Les clients ne peuvent envoyer de messages directs qu'à un manager" },
+                    { status: 403 }
+                );
+            }
         }
 
         const threadId = await createThread(body, session.user.id);

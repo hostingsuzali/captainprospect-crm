@@ -452,6 +452,15 @@ interface Meeting {
   result?: string;
   note?: string | null;
   voipSummary?: string | null;
+  rdvFiche?: {
+    contexte?: string;
+    besoinsProblemes?: string;
+    solutionsEnPlace?: string;
+    objectionsFreins?: string;
+    notesImportantes?: string;
+    [k: string]: unknown;
+  } | null;
+  rdvFicheUpdatedAt?: string | null;
   cancellationReason?: string | null;
   contact: {
     id: string;
@@ -1149,6 +1158,9 @@ function Card({
               <Pill label={`${MTY[m.meetingType].emoji} ${MTY[m.meetingType].label}`} color={tk.ink3} bg="#F3F4F6" border="rgba(0,0,0,0.07)" />
             )}
             <Pill label={m.campaign.mission.name} color={tk.accentText} bg={tk.accentLight} border="rgba(91,79,232,0.18)" />
+            {m.rdvFiche && (
+              <Pill label="Fiche RDV" color={tk.ink3} bg="#F3F4F6" border="rgba(0,0,0,0.07)" />
+            )}
             <span style={{fontSize:11.5,color:tk.ink4}}>{m.campaign.name}</span>
           </div>
 
@@ -1443,6 +1455,35 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
               <Sparkles style={{width:11,height:11}} />IA · Résumé automatique
             </div>
             {m.voipSummary}
+          </div>
+        </Sec>
+      )}
+
+      {/* Fiche RDV (contexte, besoins, solutions, objections, notes) */}
+      {m.rdvFiche && (
+        <Sec label="Fiche RDV">
+          {m.rdvFicheUpdatedAt && (
+            <p style={{fontSize:10.5,color:tk.ink4,marginBottom:10}}>
+              Dernière mise à jour : {new Date(m.rdvFicheUpdatedAt).toLocaleString("fr-FR")}
+            </p>
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {([
+              ["Contexte", m.rdvFiche.contexte],
+              ["Besoins / Problèmes identifiés", m.rdvFiche.besoinsProblemes],
+              ["Solutions en place", m.rdvFiche.solutionsEnPlace],
+              ["Objections / Freins", m.rdvFiche.objectionsFreins],
+              ["Notes importantes", m.rdvFiche.notesImportantes],
+            ] as const).map(([label, value]) => (
+              <div key={label} style={{border:`1px solid ${tk.border}`,borderRadius:14,padding:12,background:tk.surfaceRaised}}>
+                <div style={{fontSize:11,fontWeight:800,letterSpacing:"0.08em",color:tk.ink3,textTransform:"uppercase",marginBottom:8}}>
+                  {label}
+                </div>
+                <div style={{fontSize:13,color:value?.trim()?tk.ink2:tk.ink4,whiteSpace:"pre-wrap",lineHeight:1.6}}>
+                  {value?.toString().trim() || "—"}
+                </div>
+              </div>
+            ))}
           </div>
         </Sec>
       )}

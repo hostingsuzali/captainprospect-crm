@@ -25,6 +25,7 @@ const updateMissionSchema = z.object({
     endDate: z.string().transform((s) => new Date(s)).optional(),
     isActive: z.boolean().optional(),
     teamLeadSdrId: z.string().nullable().optional(),
+    defaultMailboxId: z.string().optional().or(z.literal('')),
 }).partial().transform((data) => {
     if (data.channels !== undefined) {
         return { ...data, channel: data.channels[0] };
