@@ -1632,40 +1632,81 @@ export default function ManagerRdvPage() {
                       <DetailRow label="Client">{selectedMeeting.client?.name || "—"}</DetailRow>
                       <DetailRow label="Mission">{selectedMeeting.mission.name}</DetailRow>
                       <DetailRow label="Campagne">{selectedMeeting.campaign.name}</DetailRow>
-                      <DetailRow label="Entreprise">
-                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, width: "100%" }}>
-                          <div>
-                            <div style={{ color: "var(--ink)", fontWeight: 500 }}>{selectedMeeting.company?.name || "—"}</div>
-                            {selectedMeeting.company?.industry && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>{selectedMeeting.company.industry}</div>}
-                            {selectedMeeting.company?.phone && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>{selectedMeeting.company.phone}</div>}
-                            {selectedMeeting.company?.website && (
-                              <a href={selectedMeeting.company.website.startsWith("http") ? selectedMeeting.company.website : `https://${selectedMeeting.company.website}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)" }}>
-                                {selectedMeeting.company.website}
-                              </a>
-                            )}
-                          </div>
+                      {/* COMPANY */}
+                      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "14px 16px", background: "var(--surface)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "var(--ink3)", textTransform: "uppercase" }}>Entreprise</span>
                           {selectedMeeting.company && (
-                            <button type="button" className="rdv-btn rdv-btn-ghost" style={{ fontSize: 11, padding: "4px 8px", flexShrink: 0 }} onClick={() => { setCompanyForm({ name: selectedMeeting.company?.name ?? "", industry: selectedMeeting.company?.industry ?? "", country: selectedMeeting.company?.country ?? "", website: selectedMeeting.company?.website ?? "", size: selectedMeeting.company?.size ?? "", phone: selectedMeeting.company?.phone ?? "" }); setEditCompanyOpen(true); }}>
+                            <button
+                              type="button"
+                              className="rdv-btn rdv-btn-ghost"
+                              style={{ fontSize: 12, padding: "5px 10px" }}
+                              onClick={() => {
+                                setCompanyForm({ name: selectedMeeting.company?.name ?? "", industry: selectedMeeting.company?.industry ?? "", country: selectedMeeting.company?.country ?? "", website: selectedMeeting.company?.website ?? "", size: selectedMeeting.company?.size ?? "", phone: selectedMeeting.company?.phone ?? "" });
+                                setEditCompanyOpen(true);
+                              }}
+                            >
                               <Pencil size={12} /> Modifier
                             </button>
                           )}
                         </div>
-                      </DetailRow>
-                      <DetailRow label="Contact">
-                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, width: "100%" }}>
-                          <div>
-                            <div style={{ color: "var(--ink)", fontWeight: 500 }}>{contactName(selectedMeeting.contact)}</div>
-                            {selectedMeeting.contact?.title && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 1 }}>{selectedMeeting.contact.title}</div>}
-                            {selectedMeeting.contact?.email && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{selectedMeeting.contact.email}</div>}
-                            {selectedMeeting.contact?.phone && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{selectedMeeting.contact.phone}</div>}
-                          </div>
+                        <div style={{ color: "var(--ink)", fontWeight: 600, fontSize: 14 }}>{selectedMeeting.company?.name || "—"}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
+                          {selectedMeeting.company?.industry && <div style={{ fontSize: 12, color: "var(--ink3)" }}>🏭 {selectedMeeting.company.industry}</div>}
+                          {selectedMeeting.company?.country && <div style={{ fontSize: 12, color: "var(--ink3)" }}>🌍 {selectedMeeting.company.country}</div>}
+                          {selectedMeeting.company?.size && <div style={{ fontSize: 12, color: "var(--ink3)" }}>👥 {selectedMeeting.company.size} salariés</div>}
+                          {selectedMeeting.company?.phone && <div style={{ fontSize: 12, color: "var(--ink3)" }}>📞 {selectedMeeting.company.phone}</div>}
+                          {selectedMeeting.company?.website && (
+                            <a href={selectedMeeting.company.website.startsWith("http") ? selectedMeeting.company.website : `https://${selectedMeeting.company.website}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", display: "flex", alignItems: "center", gap: 4 }}>
+                              <ExternalLink size={11} /> {selectedMeeting.company.website}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* CONTACT */}
+                      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "14px 16px", background: "var(--surface)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "var(--ink3)", textTransform: "uppercase" }}>Contact</span>
                           {selectedMeeting.contact && (
-                            <button type="button" className="rdv-btn rdv-btn-ghost" style={{ fontSize: 11, padding: "4px 8px", flexShrink: 0 }} onClick={() => { setContactForm({ firstName: selectedMeeting.contact?.firstName ?? "", lastName: selectedMeeting.contact?.lastName ?? "", title: selectedMeeting.contact?.title ?? "", email: selectedMeeting.contact?.email ?? "", phone: selectedMeeting.contact?.phone ?? "", linkedin: selectedMeeting.contact?.linkedin ?? "" }); setEditContactOpen(true); }}>
+                            <button
+                              type="button"
+                              className="rdv-btn rdv-btn-ghost"
+                              style={{ fontSize: 12, padding: "5px 10px" }}
+                              onClick={() => {
+                                setContactForm({ firstName: selectedMeeting.contact?.firstName ?? "", lastName: selectedMeeting.contact?.lastName ?? "", title: selectedMeeting.contact?.title ?? "", email: selectedMeeting.contact?.email ?? "", phone: selectedMeeting.contact?.phone ?? "", linkedin: selectedMeeting.contact?.linkedin ?? "" });
+                                setEditContactOpen(true);
+                              }}
+                            >
                               <Pencil size={12} /> Modifier
                             </button>
                           )}
                         </div>
-                      </DetailRow>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                          <Avatar name={contactName(selectedMeeting.contact)} size={36} />
+                          <div>
+                            <div style={{ color: "var(--ink)", fontWeight: 600, fontSize: 14 }}>{contactName(selectedMeeting.contact)}</div>
+                            {selectedMeeting.contact?.title && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{selectedMeeting.contact.title}</div>}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          {selectedMeeting.contact?.email && (
+                            <a href={`mailto:${selectedMeeting.contact.email}`} style={{ fontSize: 12, color: "var(--ink2)", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
+                              <Mail size={12} style={{ color: "var(--ink3)" }} /> {selectedMeeting.contact.email}
+                            </a>
+                          )}
+                          {selectedMeeting.contact?.phone && (
+                            <a href={`tel:${selectedMeeting.contact.phone}`} style={{ fontSize: 12, color: "var(--ink2)", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
+                              <Phone size={12} style={{ color: "var(--ink3)" }} /> {selectedMeeting.contact.phone}
+                            </a>
+                          )}
+                          {selectedMeeting.contact?.linkedin && (
+                            <a href={selectedMeeting.contact.linkedin} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
+                              <Linkedin size={12} /> LinkedIn
+                            </a>
+                          )}
+                        </div>
+                      </div>
                       {selectedMeeting.note && <DetailRow label="Note SDR"><span style={{ color: "var(--ink2)", whiteSpace: "pre-wrap" }}>{selectedMeeting.note}</span></DetailRow>}
                       <DetailRow label="Créé le">{new Date(selectedMeeting.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</DetailRow>
                     </div>
