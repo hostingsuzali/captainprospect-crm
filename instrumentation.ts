@@ -1,13 +1,2 @@
-import * as Sentry from "@sentry/nextjs";
-
-export async function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs") {
-    await import("./sentry.server.config");
-  }
-
-  if (process.env.NEXT_RUNTIME === "edge") {
-    await import("./sentry.edge.config");
-  }
-}
-
-export const onRequestError = Sentry.captureRequestError;
+// Sentry instrumentation disabled for Replit compatibility — configure SENTRY_DSN and re-enable when deploying to production
+export async function register() {}
