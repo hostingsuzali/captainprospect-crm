@@ -40,16 +40,35 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Check mailbox ownership
-        const mailbox = await prisma.mailbox.findFirst({
+        // Check mailbox ownership / access
+        let mailbox = await prisma.mailbox.findFirst({
             where: {
                 id: mailboxId,
                 OR: [
                     { ownerId: session.user.id },
-                    { permissions: { some: { userId: session.user.id } } }
-                ]
-            }
+                    { permissions: { some: { userId: session.user.id } } },
+                ],
+            },
         });
+
+        // If not directly owned or shared, allow mission-level default mailbox
+        // when the current user is assigned as SDR on that mission.
+        if (!mailbox && missionId) {
+            const mission = await prisma.mission.findUnique({
+                where: { id: missionId },
+                select: {
+                    defaultMailboxId: true,
+                    sdrAssignments: { select: { sdrId: true } },
+                },
+            });
+
+            const isAssignedSdr =
+                mission?.sdrAssignments.some((a) => a.sdrId === session.user.id) ?? false;
+
+            if (mission?.defaultMailboxId === mailboxId && isAssignedSdr) {
+                mailbox = await prisma.mailbox.findUnique({ where: { id: mailboxId } });
+            }
+        }
 
         if (!mailbox) {
             return NextResponse.json(
@@ -126,7 +145,9 @@ export async function POST(req: NextRequest) {
         }
 
         // Forward to the existing send email endpoint (JSON to avoid FormData boundary issues in server-side fetch)
-        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+        // Use the current request origin instead of a hard-coded port, so it works on localhost:5000, etc.
+        const requestUrl = new URL(req.url);
+        const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
         const sendPayload = {
             mailboxId,
             to: to.map((e: { email?: string } | string) => (typeof e === 'string' ? { email: e } : { email: e.email })),

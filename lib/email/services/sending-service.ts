@@ -261,7 +261,19 @@ export class EmailSendingService {
         },
       });
 
-      // Update thread
+      // Wrap links in the stored HTML for click tracking
+      // We do this after creating the email record so we have the emailId
+      if (bodyHtml && shouldTrackOpens) {
+        const trackingDomain = (mailbox as any).trackingDomain || undefined;
+        const wrappedHtml = this.wrapLinksForTracking(bodyHtml, email.id, trackingDomain);
+        if (wrappedHtml !== bodyHtml) {
+          await prisma.email.update({
+            where: { id: email.id },
+            data: { bodyHtml: wrappedHtml },
+          });
+        }
+      }
+
       await prisma.emailThread.update({
         where: { id: thread.id },
         data: {
@@ -464,6 +476,42 @@ export class EmailSendingService {
       return html.replace("</body>", `${pixel}</body>`);
     }
     return html + pixel;
+  }
+
+  private wrapLinksForTracking(
+    html: string,
+    emailId: string,
+    customDomain?: string,
+  ): string {
+    const baseUrl = (
+      customDomain ||
+      process.env.EMAIL_TRACKING_DOMAIN ||
+      process.env.NEXTAUTH_URL ||
+      ""
+    ).replace(/\/$/, "");
+
+    let linkIndex = 0;
+
+    return html.replace(
+      /<a\s+([^>]*?)href=["']([^"']+)["']([^>]*)>/gi,
+      (match, before, href, after) => {
+        // Skip non-http links (mailto:, tel:, #, unsubscribe patterns)
+        const lowerHref = href.toLowerCase().trim();
+        if (
+          lowerHref.startsWith("mailto:") ||
+          lowerHref.startsWith("tel:") ||
+          lowerHref.startsWith("#") ||
+          lowerHref.includes("unsubscribe") ||
+          lowerHref.includes("tracking/click") // Already wrapped
+        ) {
+          return match;
+        }
+
+        const lid = String(linkIndex++);
+        const trackingUrl = `${baseUrl}/api/email/tracking/click?eid=${emailId}&url=${encodeURIComponent(href)}&lid=${lid}`;
+        return `<a ${before}href="${trackingUrl}"${after}>`;
+      },
+    );
   }
 }
 

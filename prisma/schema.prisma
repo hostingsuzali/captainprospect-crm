@@ -22,6 +22,7 @@ enum UserRole {
   CLIENT
   DEVELOPER
   BUSINESS_DEVELOPER
+  COMMERCIAL
 }
 
 enum Channel {
@@ -303,6 +304,8 @@ model User {
   isActive      Boolean   @default(true)  // For banning/disabling users
   clientId      String?
   client        Client?   @relation(fields: [clientId], references: [id])
+  interlocuteurId String?  @unique  // For COMMERCIAL role: links to their ClientInterlocuteur record
+  interlocuteur   ClientInterlocuteur? @relation("CommercialUser", fields: [interlocuteurId], references: [id])
   clientOnboardingDismissedPermanently Boolean @default(false)  // Client portal: hide onboarding forever
   actions       Action[]  @relation("SDRActions")
   confirmedMeetings Action[] @relation("MeetingConfirmedBy")
@@ -557,6 +560,16 @@ model ClientInterlocuteur {
   notes        String?  @db.Text
   isActive     Boolean  @default(true)
 
+  // Portal access: COMMERCIAL user linked to this interlocuteur
+  portalUser   User?    @relation("CommercialUser")
+
+  // Meetings booked for this interlocuteur
+  meetings     Action[] @relation("InterlocuteurMeetings")
+
+  // Commercial ownership
+  defaultForMissions Mission[]
+  lists              List[]
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -575,6 +588,10 @@ model Mission {
   // Default mailbox for this mission (optional)
   defaultMailboxId String?
   defaultMailbox   Mailbox? @relation("MissionDefaultMailbox", fields: [defaultMailboxId], references: [id], onDelete: SetNull)
+
+  // Default commercial (client interlocuteur) for this mission
+  defaultInterlocuteurId String?
+  defaultInterlocuteur   ClientInterlocuteur? @relation(fields: [defaultInterlocuteurId], references: [id], onDelete: SetNull)
 
   startDate     DateTime
   endDate       DateTime
@@ -670,6 +687,10 @@ model List {
   source        String?   // Origin: Apollo, Clay, CSV, etc.
   importConfig  Json?     // Store import configuration (type, mappings, custom fields)
   companies     Company[]
+
+  // Optional commercial (client interlocuteur) owning this list
+  commercialInterlocuteurId String?
+  commercialInterlocuteur   ClientInterlocuteur? @relation(fields: [commercialInterlocuteurId], references: [id], onDelete: SetNull)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -747,6 +768,10 @@ model Action {
   meetingJoinUrl String?    // Video join link (for VISIO meetings only)
   meetingPhone   String?    // Dial number for call (for TELEPHONIQUE; fallback to contact.phone)
 
+  // Commercial portal: which interlocuteur this meeting was booked for
+  interlocuteurId String?
+  interlocuteur   ClientInterlocuteur? @relation("InterlocuteurMeetings", fields: [interlocuteurId], references: [id], onDelete: SetNull)
+
   // SAS RDV (manager confirmation workflow)
   confirmationStatus MeetingConfirmationStatus @default(PENDING)
   confirmationUpdatedAt DateTime?
@@ -790,6 +815,7 @@ model CallRecord {
   company        Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
   externalCallId String    // WithAllo call id (idempotency)
   source         String    @default("withallo")
+  provider       String?   // Kept in sync with existing DB column to avoid data loss
   fromNumber     String?
   toNumber       String?
   duration       Int?      // seconds

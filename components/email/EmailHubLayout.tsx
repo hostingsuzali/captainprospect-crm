@@ -40,6 +40,12 @@ const MANAGER_TABS: EmailHubTab[] = [
         icon: <LayoutDashboard className="w-4 h-4" />,
     },
     {
+        id: "sent",
+        label: "Emails envoyés",
+        href: "/manager/emails/sent",
+        icon: <Send className="w-4 h-4" />,
+    },
+    {
         id: "contacts",
         label: "Contacts",
         href: "/manager/emails/contacts",

@@ -98,6 +98,15 @@ function getDaysActive(startDate?: string): number | null {
     return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
 }
 
+function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedValue(value), delay);
+        return () => clearTimeout(timer);
+    }, [value, delay]);
+    return debouncedValue;
+}
+
 // ============================================
 // MISSIONS PAGE
 // ============================================
@@ -115,6 +124,7 @@ export default function MissionsPage() {
     const { error: showError } = useToast();
 
     const pageSize = 10;
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
     const fetchMissions = async () => {
         setIsLoading(true);
@@ -124,6 +134,12 @@ export default function MissionsPage() {
             params.set("limit", String(pageSize));
             if (statusFilter !== "all") {
                 params.set("isActive", statusFilter === "active" ? "true" : "false");
+            }
+            if (debouncedSearchQuery.trim()) {
+                params.set("search", debouncedSearchQuery.trim());
+            }
+            if (channelFilter !== "all") {
+                params.set("channel", channelFilter);
             }
             const res = await fetch(`/api/missions?${params.toString()}`);
             const json = await res.json();
@@ -147,15 +163,15 @@ export default function MissionsPage() {
 
     useEffect(() => {
         fetchMissions();
-    }, [statusFilter, page]);
+    }, [statusFilter, page, debouncedSearchQuery, channelFilter]);
 
-    const filteredMissions = missions.filter(mission => {
-        const matchesSearch = !searchQuery ||
-            mission.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            mission.client?.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesChannel = channelFilter === "all" || mission.channels?.includes(channelFilter) || mission.channel === channelFilter;
-        return matchesSearch && matchesChannel;
-    });
+    // Reset to page 1 when search or channel filter changes
+    useEffect(() => {
+        setPage(1);
+    }, [debouncedSearchQuery, channelFilter]);
+
+    // Display missions from API (server-side search/filter across all pages)
+    const filteredMissions = missions;
 
     const stats = {
         total: total || missions.length,

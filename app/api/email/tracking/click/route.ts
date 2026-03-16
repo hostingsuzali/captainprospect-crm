@@ -38,13 +38,20 @@ export async function GET(req: NextRequest) {
             clickedAt: new Date().toISOString(),
         };
 
-        // Fire and forget - update click count
-        prisma.email.update({
-            where: { id: emailId },
-            data: {
-                clickCount: { increment: 1 },
-                status: 'CLICKED',
-            },
+        // Fire and forget - update click count, preserve higher-priority statuses
+        prisma.email.findUnique({ where: { id: emailId } }).then((email) => {
+            if (!email) return;
+            const newStatus =
+                email.status === 'REPLIED' || email.status === 'BOUNCED'
+                    ? email.status
+                    : 'CLICKED';
+            return prisma.email.update({
+                where: { id: emailId },
+                data: {
+                    clickCount: { increment: 1 },
+                    status: newStatus,
+                },
+            });
         }).catch(console.error);
 
         // Also log to audit if needed

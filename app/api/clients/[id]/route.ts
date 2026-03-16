@@ -74,6 +74,11 @@ export const GET = withErrorHandler(async (
                 orderBy: { createdAt: 'desc' },
             },
             interlocuteurs: {
+                include: {
+                    portalUser: {
+                        select: { id: true, email: true, name: true, isActive: true },
+                    },
+                },
                 orderBy: { createdAt: 'asc' },
             },
             _count: {

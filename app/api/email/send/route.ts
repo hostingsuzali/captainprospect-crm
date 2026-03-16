@@ -124,7 +124,24 @@ export async function POST(req: NextRequest) {
         const isOwner = mailbox.ownerId === session.user.id;
         const canSend = mailbox.permissions.some(p => p.canSend);
 
-        if (!isOwner && !canSend && session.user.role !== 'MANAGER') {
+        let allowedByMissionContext = false;
+        // Allow SDRs assigned to a mission to send from that mission's default mailbox
+        if (!isOwner && !canSend && missionId) {
+            const mission = await prisma.mission.findUnique({
+                where: { id: missionId },
+                select: {
+                    defaultMailboxId: true,
+                    sdrAssignments: { select: { sdrId: true } },
+                },
+            });
+            const isAssignedSdr =
+                mission?.sdrAssignments.some((a) => a.sdrId === session.user.id) ?? false;
+            if (mission?.defaultMailboxId === mailboxId && isAssignedSdr) {
+                allowedByMissionContext = true;
+            }
+        }
+
+        if (!isOwner && !canSend && !allowedByMissionContext && session.user.role !== 'MANAGER') {
             return NextResponse.json(
                 { success: false, error: 'Permission d\'envoi non autorisée' },
                 { status: 403 }

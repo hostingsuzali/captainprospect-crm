@@ -36,6 +36,7 @@ export async function GET() {
                 },
             },
             _count: { select: { campaigns: true, lists: true } },
+            defaultMailbox: { select: { id: true, email: true, displayName: true } },
         } as const;
 
         const missionsRaw =
@@ -93,6 +94,7 @@ export async function GET() {
                     name: mission.name,
                     channel: mission.channel,
                     client: mission.client,
+                    defaultMailboxId: mission.defaultMailboxId ?? null,
                     progress,
                     contactsRemaining: totalContacts - actionedContacts,
                     _count: mission._count,

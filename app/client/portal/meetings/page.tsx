@@ -51,10 +51,10 @@ const tk = {
    GLOBAL CSS  — injected once at runtime
 ═══════════════════════════════════════════════════════════════ */
 const GLOBAL_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Inter:wght@300;400;500;600;700&display=swap');
 
 .cp-page *, .cp-page *::before, .cp-page *::after { box-sizing: border-box; }
-.cp-page { font-family: 'DM Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.cp-page { font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
 
 /* ── Keyframes ── */
 @keyframes cp-fade-up   { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
@@ -956,7 +956,7 @@ export default function ClientPortalMeetingsPage() {
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="cp-enter" style={{display:"flex",flexWrap:"wrap",alignItems:"flex-start",justifyContent:"space-between",gap:16,marginBottom:32}}>
         <div>
-          <h1 style={{fontFamily:"'Instrument Serif',Georgia,serif",fontStyle:"italic",fontSize:32,fontWeight:400,color:tk.ink,letterSpacing:"-0.025em",margin:0,lineHeight:1.15}}>
+          <h1 style={{fontFamily:"'DM Sans','Inter',system-ui,sans-serif",fontSize:32,fontWeight:600,color:tk.ink,letterSpacing:"-0.03em",margin:0,lineHeight:1.15}}>
             Mes rendez-vous
           </h1>
           <p style={{fontSize:13.5,color:tk.ink3,marginTop:6,lineHeight:1.5}}>
@@ -1521,7 +1521,7 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
       footer={<Btn variant="primary" onClick={onClose}>Fermer</Btn>}>
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"56px 32px",textAlign:"center"}}>
         <div className="cp-done-ico"><Check style={{width:28,height:28,color:tk.green}} /></div>
-        <h3 style={{fontFamily:"'Instrument Serif',Georgia,serif",fontStyle:"italic",fontSize:22,fontWeight:400,color:tk.ink,margin:"0 0 8px"}}>
+        <h3 style={{fontFamily:"'DM Sans','Inter',system-ui,sans-serif",fontSize:22,fontWeight:600,color:tk.ink,margin:"0 0 8px"}}>
           Merci pour votre retour
         </h3>
         <p style={{fontSize:13.5,color:tk.ink3,maxWidth:280,lineHeight:1.6,margin:0}}>

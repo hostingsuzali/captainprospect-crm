@@ -534,6 +534,47 @@ export const CLIENT_NAV: NavSection[] = [
 ];
 
 // ============================================
+// COMMERCIAL NAVIGATION — Portal for ClientInterlocuteurs
+// ============================================
+
+export const COMMERCIAL_NAV: NavSection[] = [
+  {
+    items: [
+      {
+        href: "/commercial/portal",
+        icon: LayoutDashboard,
+        label: "Accueil",
+      },
+    ],
+  },
+  {
+    title: "Suivi",
+    items: [
+      {
+        href: "/commercial/portal/meetings",
+        icon: Calendar,
+        label: "Mes RDV",
+      },
+      {
+        href: "/commercial/portal/contacts",
+        icon: Users,
+        label: "Contacts",
+      },
+    ],
+  },
+  {
+    title: "Compte",
+    items: [
+      {
+        href: "/commercial/portal/settings",
+        icon: Settings,
+        label: "Paramètres",
+      },
+    ],
+  },
+];
+
+// ============================================
 // GET NAVIGATION BY ROLE
 // ============================================
 
@@ -551,6 +592,8 @@ export function getNavByRole(role: UserRole): NavSection[] {
       return DEVELOPER_NAV;
     case "CLIENT":
       return CLIENT_NAV;
+    case "COMMERCIAL":
+      return COMMERCIAL_NAV;
     default:
       return [];
   }
@@ -603,5 +646,11 @@ export const ROLE_CONFIG: Record<UserRole, RoleConfig> = {
     color: "indigo",
     gradient: "from-indigo-500 to-violet-600",
     defaultPath: "/client/portal",
+  },
+  COMMERCIAL: {
+    label: "Commercial",
+    color: "emerald",
+    gradient: "from-emerald-500 to-teal-600",
+    defaultPath: "/commercial/portal",
   },
 };

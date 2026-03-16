@@ -102,7 +102,6 @@ interface UnifiedActionDrawerProps {
         isActive: boolean;
     }>;
     onActionRecorded?: () => void;
-    onOpenEmailModal?: () => void;
     onValidateAndNext?: () => void;
     onContactSelect?: (contactId: string) => void;
 }
@@ -353,7 +352,6 @@ export function UnifiedActionDrawer({
     clientBookingUrl,
     clientInterlocuteurs,
     onActionRecorded,
-    onOpenEmailModal,
     onValidateAndNext,
     onContactSelect,
 }: UnifiedActionDrawerProps) {
@@ -420,6 +418,16 @@ export function UnifiedActionDrawer({
     const [voipModalData, setVoipModalData] = useState<VoipCallCompletedEvent | null>(null);
     const [voipModalActionId, setVoipModalActionId] = useState<string>("");
     const [voipEnrichmentSummary, setVoipEnrichmentSummary] = useState<string | null>(null);
+
+    // ── Inline email panel (ENVOIE_MAIL) ──────────────────────────────────────
+    const [emailMailboxes, setEmailMailboxes] = useState<Array<{ id: string; email: string; displayName: string | null }>>([]);
+    const [emailSelectedMailboxId, setEmailSelectedMailboxId] = useState<string>("");
+    const [emailMailboxesLoading, setEmailMailboxesLoading] = useState(false);
+    const [emailTemplates, setEmailTemplates] = useState<Array<{ id: string; templateId: string; order: number; template: { id: string; name: string; subject: string; bodyHtml: string; category: string } }>>([]);
+    const [emailTemplatesLoading, setEmailTemplatesLoading] = useState(false);
+    const [emailSelectedTemplateId, setEmailSelectedTemplateId] = useState<string>("");
+    const [emailPreviewTemplateId, setEmailPreviewTemplateId] = useState<string>("");
+    const [emailIsSending, setEmailIsSending] = useState(false);
 
     const { data: session } = useSession();
     const userId = session?.user?.id ?? null;
@@ -618,6 +626,96 @@ export function UnifiedActionDrawer({
         return () => controller.abort();
     }, [isOpen, missionId, showError]);
 
+    // ── Fetch mailboxes + templates when ENVOIE_MAIL is selected ────────────
+    useEffect(() => {
+        if (newActionResult !== "ENVOIE_MAIL") return;
+
+        let cancelled = false;
+
+        const load = async () => {
+            try {
+                // Fetch mission first to know its default mailbox (including client-level mailbox)
+                let missionDefault: { id: string; email: string; displayName: string | null } | null = null;
+                if (missionId) {
+                    try {
+                        const mr = await fetch(`/api/missions/${missionId}`);
+                        const mj = await mr.json();
+                        if (mj.success && mj.data?.defaultMailbox) {
+                            missionDefault = mj.data.defaultMailbox as {
+                                id: string;
+                                email: string;
+                                displayName: string | null;
+                            };
+                        }
+                    } catch {
+                        // ignore mission fetch errors for email panel
+                    }
+                }
+
+                // Fetch mailboxes visible to the SDR
+                setEmailMailboxesLoading(true);
+                const res = await fetch("/api/email/mailboxes?includeShared=true");
+                const json = await res.json();
+                if (cancelled) return;
+
+                let list: Array<{ id: string; email: string; displayName: string | null }> = [];
+                if (json.success && Array.isArray(json.data)) {
+                    list = json.data;
+                }
+
+                // If SDR has no mailboxes but mission has a default mailbox, synthesize an option
+                if (list.length === 0 && missionDefault) {
+                    list = [missionDefault];
+                }
+
+                setEmailMailboxes(list);
+
+                if (list.length > 0) {
+                    // Prefer mission default if present, else first available
+                    const preferredId = missionDefault?.id ?? list[0].id;
+                    setEmailSelectedMailboxId(preferredId);
+                } else {
+                    setEmailSelectedMailboxId("");
+                }
+            } finally {
+                if (!cancelled) {
+                    setEmailMailboxesLoading(false);
+                }
+            }
+
+            // Fetch mission templates
+            if (missionId) {
+                setEmailTemplatesLoading(true);
+                try {
+                    const tr = await fetch(`/api/missions/${missionId}/templates`);
+                    const tj = await tr.json();
+                    if (!cancelled && tj.success) {
+                        setEmailTemplates(tj.data || []);
+                        if (tj.data?.length > 0) setEmailSelectedTemplateId(tj.data[0].templateId);
+                    }
+                } catch {
+                    // ignore
+                } finally {
+                    if (!cancelled) setEmailTemplatesLoading(false);
+                }
+            }
+        };
+
+        load();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [newActionResult, missionId]);
+
+    // Reset email panel state when result changes away from ENVOIE_MAIL
+    useEffect(() => {
+        if (newActionResult !== "ENVOIE_MAIL") {
+            setEmailSelectedTemplateId("");
+            setEmailPreviewTemplateId("");
+        }
+    }, [newActionResult]);
+
     // ── Derived state ──────────────────────────────────────────────────────────
 
     const getRequiresNote = useCallback(
@@ -713,6 +811,81 @@ export function UnifiedActionDrawer({
             showError("Erreur", "Connexion à l'IA impossible");
         } finally {
             setIsImprovingNote(false);
+        }
+    };
+
+    // ── Send email from inline panel + record action ────────────────────────
+    const getChosenTemplateId = () => {
+        // Prefer explicit selection; otherwise fall back to first template if any
+        if (emailSelectedTemplateId) return emailSelectedTemplateId;
+        if (emailTemplates.length > 0) return emailTemplates[0].templateId;
+        return null;
+    };
+
+    const handleSendEmailAndRecord = async (andNext?: boolean) => {
+        const recipientEmail = contact?.email;
+        if (!recipientEmail) {
+            showError("Erreur", "Ce contact n'a pas d'adresse email");
+            return;
+        }
+        if (!emailSelectedMailboxId) {
+            showError("Erreur", "Sélectionnez une boîte d'envoi");
+            return;
+        }
+        const chosenTemplateId = getChosenTemplateId();
+        if (!chosenTemplateId) {
+            showError("Erreur", "Sélectionnez un template d'email");
+            return;
+        }
+        setEmailIsSending(true);
+        try {
+            // Send the email
+            const sendRes = await fetch("/api/email/quick-send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mailboxId: emailSelectedMailboxId,
+                    templateId: chosenTemplateId,
+                    to: [{ email: recipientEmail }],
+                    contactId: contactId || undefined,
+                    companyId: contactId ? undefined : companyId,
+                    missionId: missionId || undefined,
+                }),
+            });
+            const sendJson = await sendRes.json();
+            if (!sendJson.success) {
+                showError("Erreur envoi", sendJson.error || "Impossible d'envoyer l'email");
+                return;
+            }
+
+            // Record the action
+            const campaignId = campaigns[0]?.id;
+            if (campaignId) {
+                const template = emailTemplates.find(t => t.templateId === chosenTemplateId)?.template;
+                await fetch("/api/actions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contactId: contactId || undefined,
+                        companyId: contactId ? undefined : companyId,
+                        campaignId,
+                        channel: "EMAIL",
+                        result: "ENVOIE_MAIL",
+                        note: template ? `Email envoyé : ${template.subject}` : "Email envoyé",
+                    }),
+                });
+            }
+
+            success("Email envoyé", `Email envoyé avec succès à ${recipientEmail}`);
+            setNewActionResult("");
+            setEmailSelectedTemplateId("");
+            setEmailPreviewTemplateId("");
+            onActionRecorded?.();
+            if (andNext && onValidateAndNext) onValidateAndNext();
+        } catch {
+            showError("Erreur", "Erreur lors de l'envoi de l'email");
+        } finally {
+            setEmailIsSending(false);
         }
     };
 
@@ -1968,7 +2141,6 @@ export function UnifiedActionDrawer({
                                                         aria-checked={isSelected}
                                                         onClick={() => {
                                                             setNewActionResult(opt.value);
-                                                            if (opt.value === "ENVOIE_MAIL") onOpenEmailModal?.();
                                                         }}
                                                         className={cn(
                                                             "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1",
@@ -1993,6 +2165,162 @@ export function UnifiedActionDrawer({
                                             })}
                                         </div>
                                     </fieldset>
+
+                                    {/* ── Inline email panel: mailbox + template picker ── */}
+                                    {newActionResult === "ENVOIE_MAIL" && (
+                                        <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3.5 space-y-3">
+                                            <div className="flex items-center gap-2 mb-0.5">
+                                                <Mail className="w-4 h-4 text-blue-600" aria-hidden="true" />
+                                                <span className="text-sm font-semibold text-blue-800">Envoyer un email</span>
+                                            </div>
+
+                                            {/* Recipient display */}
+                                            {contact?.email ? (
+                                                <div className="flex items-center gap-2 text-xs text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2">
+                                                    <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                    <span className="font-medium text-slate-700">À :</span>
+                                                    <span className="truncate">{contact.email}</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                                    Ce contact n&apos;a pas d&apos;adresse email enregistrée
+                                                </div>
+                                            )}
+
+                                            {/* Mailbox selector */}
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Boîte d&apos;envoi <span className="text-red-500">*</span></label>
+                                                {emailMailboxesLoading ? (
+                                                    <div className="flex items-center gap-2 text-xs text-slate-500 py-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Chargement...</div>
+                                                ) : emailMailboxes.length === 0 ? (
+                                                    <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                                                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                                        Aucune boîte mail configurée
+                                                    </div>
+                                                ) : (
+                                                    <select
+                                                        value={emailSelectedMailboxId}
+                                                        onChange={e => setEmailSelectedMailboxId(e.target.value)}
+                                                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-400"
+                                                    >
+                                                        {emailMailboxes.map(mb => (
+                                                            <option key={mb.id} value={mb.id}>
+                                                                {mb.displayName ? `${mb.displayName} <${mb.email}>` : mb.email}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                )}
+                                            </div>
+
+                                            {/* Template selector */}
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Template <span className="text-red-500">*</span></label>
+                                                {emailTemplatesLoading ? (
+                                                    <div className="flex items-center gap-2 text-xs text-slate-500 py-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Chargement des templates...</div>
+                                                ) : emailTemplates.length === 0 ? (
+                                                    <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                                                        <FileText className="w-3.5 h-3.5 shrink-0" />
+                                                        Aucun template assigné à cette mission
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+                                                        {emailTemplates.map(mt => {
+                                                            const isSelected = emailSelectedTemplateId === mt.templateId;
+                                                            const isPreviewing = emailPreviewTemplateId === mt.templateId;
+                                                            const catColors: Record<string, string> = {
+                                                                OUTREACH: "bg-blue-100 text-blue-700",
+                                                                FOLLOW_UP: "bg-amber-100 text-amber-700",
+                                                                NURTURE: "bg-violet-100 text-violet-700",
+                                                                CLOSING: "bg-emerald-100 text-emerald-700",
+                                                                OTHER: "bg-slate-100 text-slate-600",
+                                                            };
+                                                            return (
+                                                                <div key={mt.id}>
+                                                                    <div
+                                                                        role="button"
+                                                                        tabIndex={0}
+                                                                        onClick={() => {
+                                                                            setEmailSelectedTemplateId(mt.templateId);
+                                                                            setEmailPreviewTemplateId("");
+                                                                        }}
+                                                                        onKeyDown={e => e.key === "Enter" && setEmailSelectedTemplateId(mt.templateId)}
+                                                                        className={cn(
+                                                                            "flex items-start gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-all",
+                                                                            isSelected
+                                                                                ? "border-blue-400 bg-blue-50 ring-1 ring-blue-300"
+                                                                                : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40"
+                                                                        )}
+                                                                    >
+                                                                        <div className={cn("mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all", isSelected ? "border-blue-500 bg-blue-500" : "border-slate-300")}>
+                                                                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                                                        </div>
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                <span className="text-sm font-medium text-slate-800 truncate">{mt.template.name}</span>
+                                                                                <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0", catColors[mt.template.category] ?? catColors.OTHER)}>
+                                                                                    {mt.template.category}
+                                                                                </span>
+                                                                            </div>
+                                                                            <p className="text-xs text-slate-500 truncate mt-0.5">Objet : {mt.template.subject}</p>
+                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={e => { e.stopPropagation(); setEmailPreviewTemplateId(isPreviewing ? "" : mt.templateId); }}
+                                                                            className="shrink-0 p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                                                            title={isPreviewing ? "Masquer l'aperçu" : "Voir l'aperçu"}
+                                                                        >
+                                                                            {isPreviewing ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                                                        </button>
+                                                                    </div>
+                                                                    {isPreviewing && (
+                                                                        <div className="mt-1 border border-blue-200 rounded-lg overflow-hidden">
+                                                                            <div className="bg-slate-50 border-b border-slate-200 px-3 py-1.5 flex items-center gap-1.5">
+                                                                                <div className="w-2 h-2 rounded-full bg-red-400" /><div className="w-2 h-2 rounded-full bg-amber-400" /><div className="w-2 h-2 rounded-full bg-emerald-400" />
+                                                                                <span className="text-[11px] text-slate-500 ml-1">Aperçu</span>
+                                                                            </div>
+                                                                            <div
+                                                                                className="bg-white p-3 max-h-48 overflow-y-auto text-sm prose prose-sm max-w-none"
+                                                                                style={{ fontFamily: "Arial, sans-serif", fontSize: "13px", lineHeight: "1.5" }}
+                                                                                dangerouslySetInnerHTML={{ __html: mt.template.bodyHtml }}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Send button */}
+                                            <div className="flex gap-2 pt-1 border-t border-blue-200">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSendEmailAndRecord(false)}
+                                                    disabled={emailIsSending || !contact?.email || !emailSelectedMailboxId || !getChosenTemplateId()}
+                                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all"
+                                                >
+                                                    {emailIsSending ? (
+                                                        <><Loader2 className="w-4 h-4 animate-spin" /> Envoi...</>
+                                                    ) : (
+                                                        <><Send className="w-4 h-4" /> Envoyer l&apos;email</>
+                                                    )}
+                                                </button>
+                                                {onValidateAndNext && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSendEmailAndRecord(true)}
+                                                        disabled={emailIsSending || !contact?.email || !emailSelectedMailboxId || !getChosenTemplateId()}
+                                                        className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-blue-700 bg-blue-100 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all"
+                                                    >
+                                                        {emailIsSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
+                                                        Envoyer &amp; Suivant
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Contextual: callback date */}
                                     {newActionResult === "CALLBACK_REQUESTED" && (
@@ -2037,6 +2365,7 @@ export function UnifiedActionDrawer({
                                     )}
 
                                     {/* Note */}
+                                    {newActionResult !== "ENVOIE_MAIL" && (
                                     <div>
                                         <label
                                             htmlFor="action-note"
@@ -2089,8 +2418,10 @@ export function UnifiedActionDrawer({
                                             </p>
                                         </div>
                                     </div>
+                                    )}
 
-                                    {/* Submit — sticky feel via border-top separation */}
+                                    {/* Submit — hidden when ENVOIE_MAIL (email panel has its own send) */}
+                                    {newActionResult !== "ENVOIE_MAIL" && (
                                     <div className="flex flex-col sm:flex-row gap-2 pt-1 border-t border-slate-100">
                                         <Button
                                             type="button"
@@ -2117,6 +2448,7 @@ export function UnifiedActionDrawer({
                                             </Button>
                                         )}
                                     </div>
+                                    )}
                                 </div>
                             )}
                         </div>

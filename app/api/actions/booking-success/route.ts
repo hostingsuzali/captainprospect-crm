@@ -175,7 +175,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         );
     }
 
-    const campaign = contact.company.list.mission.campaigns[0];
+    const list = contact.company.list;
+    const mission = list.mission;
+    const campaign = mission.campaigns[0];
     if (!campaign) {
         return NextResponse.json(
             { success: false, error: 'No active campaign found for this contact' },
@@ -199,6 +201,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             ? normalizeUrlCandidate(meetingJoinUrl) ?? extractMeetingJoinUrl(eventData)
             : null;
 
+    // Determine commercial interlocuteur for this booking:
+    // prefer list-level mapping, else fall back to mission-level default, else null.
+    const interlocuteurId =
+        (list as any).commercialInterlocuteurId ?? (mission as any).defaultInterlocuteurId ?? null;
+
     // Create action with MEETING_BOOKED result and optional meeting format metadata
     const action = await prisma.action.create({
         data: {
@@ -216,6 +223,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             meetingAddress: meetingAddress ?? null,
             meetingJoinUrl: resolvedMeetingJoinUrl,
             meetingPhone: meetingPhone ?? null,
+            interlocuteurId: interlocuteurId ?? undefined,
         },
         include: {
             contact: {

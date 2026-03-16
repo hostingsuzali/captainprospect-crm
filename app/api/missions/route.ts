@@ -61,6 +61,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const clientId = searchParams.get('clientId');
     const isActive = searchParams.get('isActive');
     const search = searchParams.get('search');
+    const channel = searchParams.get('channel');
 
     const where: Record<string, unknown> = {};
 
@@ -75,10 +76,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
     if (clientId) where.clientId = clientId;
     if (isActive !== null) where.isActive = isActive === 'true';
-    if (search) {
+    if (channel && ['CALL', 'EMAIL', 'LINKEDIN'].includes(channel)) {
+        where.channels = { has: channel };
+    }
+    if (search?.trim()) {
         where.OR = [
-            { name: { contains: search, mode: 'insensitive' } },
-            { objective: { contains: search, mode: 'insensitive' } },
+            { name: { contains: search.trim(), mode: 'insensitive' } },
+            { objective: { contains: search.trim(), mode: 'insensitive' } },
+            { client: { name: { contains: search.trim(), mode: 'insensitive' } } },
         ];
     }
 

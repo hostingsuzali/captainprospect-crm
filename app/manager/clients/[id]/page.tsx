@@ -29,14 +29,17 @@ import {
     Skeleton,
     useToast,
     Input,
+    Tabs,
+    StatCard,
 } from "@/components/ui";
+import { ProgressBar } from "@/components/ui/ProgressBar";
 import {
     ArrowLeft, Edit, Trash2, Building2, Target, Users, Mail,
     Phone, Plus, TrendingUp, Calendar, CheckCircle2, XCircle,
     Copy, CalendarCheck, User, Briefcase, FileText, Key,
     ShieldCheck, BarChart3, Loader2, ExternalLink, Zap, Video,
     MapPin, ChevronDown, ChevronUp, Mic, Sparkles, Clock,
-    AlertCircle, RefreshCw, Send, Eye, List,
+    AlertCircle, RefreshCw, Send, Eye, List, Hash, ArrowUpRight,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -103,6 +106,12 @@ interface ClientInterlocuteur {
     notes?: string;
     isActive: boolean;
     createdAt: string;
+    portalUser?: {
+        id: string;
+        email: string;
+        name: string;
+        isActive: boolean;
+    } | null;
 }
 
 interface Client {
@@ -319,6 +328,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [isDeletingInt, setIsDeletingInt] = useState<string | null>(null);
     const [showInterlocuteurs, setShowInterlocuteurs] = useState(true);
     const [isSavingInt, setIsSavingInt] = useState(false);
+    const [activatingPortalFor, setActivatingPortalFor] = useState<string | null>(null);
+    const [portalCredentials, setPortalCredentials] = useState<{ intId: string; email: string; password: string } | null>(null);
 
     // Tabs
     const [activeTab, setActiveTab] = useState<"overview" | "missions" | "sessions" | "analytics">("overview");
@@ -344,7 +355,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         type: "Kick-Off" as SessionType,
         leexiId: "",
         notifyByEmail: false,
+        customTypeLabel: "",
     });
+    const [sessionDateInput, setSessionDateInput] = useState("");
+    const [transcriptMode, setTranscriptMode] = useState<"leexi" | "text" | "cr">("leexi");
+    const [manualTranscript, setManualTranscript] = useState("");
+    const [manualCR, setManualCR] = useState("");
+    const [manualSummaryEmail, setManualSummaryEmail] = useState("");
     const [isGeneratingCR, setIsGeneratingCR] = useState(false);
     const [generatedCR, setGeneratedCR] = useState<{ cr: string; email: string } | null>(null);
     const [isSavingSession, setIsSavingSession] = useState(false);
@@ -525,8 +542,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
      *   - Return { success: true, data: { text: string } }
      */
     const handleGenerateCR = async () => {
-        if (!client || !newSessionForm.leexiId) {
+        if (!client) {
+            showError("Erreur", "Client introuvable");
+            return;
+        }
+
+        // Determine transcript source (Leexi vs manual text)
+        const isLeexiMode = transcriptMode === "leexi";
+        if (isLeexiMode && !newSessionForm.leexiId) {
             showError("Erreur", "Sélectionnez une transcription Leexi");
+            return;
+        }
+
+        if (!isLeexiMode && (!manualTranscript.trim() || manualTranscript.trim().length < 20)) {
+            showError("Erreur", "La transcription doit contenir au moins 20 caractères");
             return;
         }
 
@@ -534,22 +563,48 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         setGeneratedCR(null);
 
         try {
-            // 1. Fetch full transcript
-            const transcriptRes = await fetch(`/api/leexi/transcript/${newSessionForm.leexiId}`);
-            const transcriptJson = await transcriptRes.json();
-            if (!transcriptJson.success) throw new Error(transcriptJson.error || "Transcript fetch failed");
+            // If user chose to import an already prepared CR, we skip AI generation
+            if (transcriptMode === "cr") {
+                const cr = manualCR.trim();
+                const email = manualSummaryEmail.trim();
+                if (!cr) {
+                    showError("Erreur", "Merci de coller au minimum le compte rendu.");
+                    return;
+                }
+                setGeneratedCR({ cr, email });
+                return;
+            }
 
+            let transcriptText: string;
             const selectedLeexi = leexiTranscriptions.find((t) => t.id === newSessionForm.leexiId);
-            const sessionDate = selectedLeexi
-                ? new Date(selectedLeexi.date).toLocaleDateString("fr-FR")
-                : new Date().toLocaleDateString("fr-FR");
+
+            // Effective date for the session (used both in prompt and for saving)
+            const effectiveDateIso = sessionDateInput
+                ? new Date(sessionDateInput).toISOString()
+                : (selectedLeexi?.date || new Date().toISOString());
+            const sessionDate = new Date(effectiveDateIso).toLocaleDateString("fr-FR");
+
+            if (isLeexiMode) {
+                // 1. Fetch full transcript from Leexi
+                const transcriptRes = await fetch(`/api/leexi/transcript/${newSessionForm.leexiId}`);
+                const transcriptJson = await transcriptRes.json();
+                if (!transcriptJson.success) throw new Error(transcriptJson.error || "Transcript fetch failed");
+                transcriptText = transcriptJson.data.transcript;
+            } else {
+                // Use manually pasted transcript
+                transcriptText = manualTranscript.trim();
+            }
 
             // 2. Build prompt
+            const sessionTypeLabel =
+                newSessionForm.type === "Autre" && newSessionForm.customTypeLabel.trim().length > 0
+                    ? newSessionForm.customTypeLabel.trim()
+                    : newSessionForm.type;
             const prompt = buildCRPrompt({
                 clientName: client.name,
-                sessionType: newSessionForm.type,
+                sessionType: sessionTypeLabel,
                 sessionDate,
-                transcript: transcriptJson.data.transcript,
+                transcript: transcriptText,
                 crPublicUrl: `${process.env.NEXT_PUBLIC_APP_URL}/client/sessions/[SESSION_ID]`,
                 notifyByEmail: newSessionForm.notifyByEmail,
             });
@@ -602,6 +657,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         setIsSavingSession(true);
         try {
             const selectedLeexi = leexiTranscriptions.find((t) => t.id === newSessionForm.leexiId);
+            const effectiveDateIso = sessionDateInput
+                ? new Date(sessionDateInput).toISOString()
+                : (selectedLeexi?.date || new Date().toISOString());
             const res = await fetch(`/api/clients/${client.id}/sessions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -612,7 +670,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     summaryEmail: generatedCR.email,
                     notifyByEmail: newSessionForm.notifyByEmail,
                     recordingUrl: selectedLeexi?.recordingUrl,
-                    date: selectedLeexi?.date || new Date().toISOString(),
+                    date: effectiveDateIso,
+                    // Optional label when type === "Autre"
+                    customTypeLabel:
+                        newSessionForm.type === "Autre" && newSessionForm.customTypeLabel.trim().length > 0
+                            ? newSessionForm.customTypeLabel.trim()
+                            : undefined,
                 }),
             });
             const json = await res.json();
@@ -625,7 +688,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 );
                 setShowNewSessionModal(false);
                 setGeneratedCR(null);
-                setNewSessionForm({ type: "Kick-Off", leexiId: "", notifyByEmail: false });
+                setNewSessionForm({ type: "Kick-Off", leexiId: "", notifyByEmail: false, customTypeLabel: "" });
+                setSessionDateInput("");
+                setManualTranscript("");
+                setManualCR("");
+                setManualSummaryEmail("");
                 await fetchSessions();
             } else {
                 showError("Erreur", json.error);
@@ -811,6 +878,54 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         finally { setIsDeletingInt(null); }
     };
 
+    const handleActivatePortal = async (interl: ClientInterlocuteur) => {
+        if (!client) return;
+        setActivatingPortalFor(interl.id);
+        try {
+            const res = await fetch(`/api/clients/${client.id}/interlocuteurs/${interl.id}/activate-portal`, {
+                method: "POST",
+            });
+            const json = await res.json();
+            if (json.success) {
+                if (json.data.alreadyExists) {
+                    success("Portail déjà activé", `Un compte existe déjà pour ${interl.firstName}`);
+                } else {
+                    setPortalCredentials({
+                        intId: interl.id,
+                        email: json.data.user.email,
+                        password: json.data.generatedPassword,
+                    });
+                    setInterlocuteurs(prev => prev.map(i => i.id === interl.id
+                        ? { ...i, portalUser: { id: json.data.user.id, email: json.data.user.email, name: json.data.user.name, isActive: true } }
+                        : i
+                    ));
+                }
+            } else {
+                showError("Erreur", json.error || "Impossible d'activer le portail");
+            }
+        } catch { showError("Erreur", "Une erreur est survenue"); }
+        finally { setActivatingPortalFor(null); }
+    };
+
+    const handleDeactivatePortal = async (interl: ClientInterlocuteur) => {
+        if (!client || !interl.portalUser) return;
+        setActivatingPortalFor(interl.id);
+        try {
+            const res = await fetch(`/api/clients/${client.id}/interlocuteurs/${interl.id}/activate-portal`, {
+                method: "DELETE",
+            });
+            const json = await res.json();
+            if (json.success) {
+                setInterlocuteurs(prev => prev.map(i => i.id === interl.id
+                    ? { ...i, portalUser: null }
+                    : i
+                ));
+                success("Portail désactivé", `L'accès portail de ${interl.firstName} a été révoqué`);
+            } else showError("Erreur", json.error);
+        } catch { showError("Erreur", "Une erreur est survenue"); }
+        finally { setActivatingPortalFor(null); }
+    };
+
     // ============================================================
     // COMPUTED
     // ============================================================
@@ -855,213 +970,321 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     // ============================================================
 
     return (
-        <div className="space-y-8 max-w-7xl mx-auto pb-10">
+        <div className="max-w-[1440px] mx-auto pb-16 space-y-8">
 
             {/* ── HEADER ── */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-                <div className="flex items-center gap-5">
-                    <Link href="/manager/clients">
-                        <Button variant="ghost" className="h-12 w-12 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-900 shadow-sm p-0 flex items-center justify-center">
-                            <ArrowLeft className="w-5 h-5" />
-                        </Button>
-                    </Link>
+            <div className="relative">
+                <div className="absolute inset-0 -top-6 -left-6 -right-6 h-40 bg-gradient-to-b from-indigo-50/60 to-transparent rounded-3xl -z-10" />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pt-2">
                     <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-500/30 flex items-center justify-center text-3xl font-bold text-white">
-                            {client.name[0]}
-                        </div>
-                        <div>
-                            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{client.name}</h1>
-                            <div className="flex items-center gap-2 mt-1.5">
-                                <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200">
-                                    {client.industry || "Secteur non défini"}
-                                </Badge>
-                                <span className="text-slate-300">•</span>
-                                <span className="text-sm text-slate-500">
-                                    Depuis le {new Date(client.createdAt).toLocaleDateString("fr-FR")}
-                                </span>
+                        <Link href="/manager/clients">
+                            <button className="h-10 w-10 rounded-xl bg-white/80 backdrop-blur border border-slate-200/60 text-slate-400 hover:text-slate-700 hover:border-slate-300 hover:shadow-sm flex items-center justify-center transition-all duration-200">
+                                <ArrowLeft className="w-4 h-4" />
+                            </button>
+                        </Link>
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-700 shadow-lg shadow-indigo-500/20 flex items-center justify-center text-2xl font-bold text-white ring-4 ring-white">
+                                {client.name[0]}
+                            </div>
+                            <div>
+                                <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-tight">{client.name}</h1>
+                                <div className="flex items-center gap-2.5 mt-1">
+                                    <Badge variant="outline" className="bg-white/80 text-slate-600 border-slate-200 text-[11px]">
+                                        <Building2 className="w-3 h-3 mr-1 text-slate-400" />
+                                        {client.industry || "Secteur non défini"}
+                                    </Badge>
+                                    <span className="text-slate-300 text-xs">·</span>
+                                    <span className="text-xs text-slate-400 font-medium">
+                                        Client depuis {new Date(client.createdAt).toLocaleDateString("fr-FR", { month: "short", year: "numeric" })}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    {client.bookingUrl && (
-                        <a href={client.bookingUrl} target="_blank" rel="noopener noreferrer">
-                            <Button variant="ghost" className="gap-2 bg-white border border-slate-200 text-slate-600 shadow-sm hover:bg-slate-50">
-                                <Calendar className="w-4 h-4" />
-                                Réserver
-                            </Button>
-                        </a>
-                    )}
-                    <Button variant="ghost" onClick={() => setShowEditModal(true)} className="gap-2 bg-white border border-slate-200 text-slate-600 shadow-sm hover:bg-slate-50">
-                        <Edit className="w-4 h-4" />
-                        Modifier
-                    </Button>
-                    <Button variant="danger" onClick={() => setShowDeleteModal(true)} className="gap-2 shadow-sm">
-                        <Trash2 className="w-4 h-4" />
-                        Supprimer
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        {client.bookingUrl && (
+                            <a href={client.bookingUrl} target="_blank" rel="noopener noreferrer">
+                                <Button variant="ghost" size="sm" className="gap-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all">
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    Réserver
+                                </Button>
+                            </a>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => setShowEditModal(true)} className="gap-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all">
+                            <Edit className="w-3.5 h-3.5" />
+                            Modifier
+                        </Button>
+                        <Button variant="danger" size="sm" onClick={() => setShowDeleteModal(true)} className="gap-1.5">
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                    </div>
                 </div>
             </div>
 
-            {/* ── TAB BAR — 4 tabs only ── */}
-            <div className="flex gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
-                {([
-                    { id: "overview",   label: "Vue d'ensemble",        icon: Building2 },
-                    { id: "missions",   label: "Missions & Prospection", icon: Target },
-                    { id: "sessions",   label: "Sessions & CRs",         icon: FileText },
-                    { id: "analytics",  label: "Analytics & Persona",    icon: BarChart3 },
-                ] as const).map(({ id, label, icon: Icon }) => (
-                    <button
-                        key={id}
-                        onClick={() => setActiveTab(id)}
-                        className={cn(
-                            "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex-1 justify-center",
-                            activeTab === id
-                                ? "bg-white text-indigo-600 shadow-sm border border-slate-200"
-                                : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
-                        )}
-                    >
-                        <Icon className="w-4 h-4" />
-                        {label}
-                    </button>
-                ))}
-            </div>
+            {/* ── SEGMENTED CONTROL ── */}
+            <Tabs
+                variant="pills"
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as typeof activeTab)}
+                tabs={[
+                    { id: "overview",  label: "Vue d'ensemble",         icon: <Building2 className="w-4 h-4" /> },
+                    { id: "missions",  label: "Missions & Prospection", icon: <Target className="w-4 h-4" /> },
+                    { id: "sessions",  label: "Sessions & CRs",         icon: <FileText className="w-4 h-4" /> },
+                    { id: "analytics", label: "Analytics",              icon: <BarChart3 className="w-4 h-4" /> },
+                ]}
+                className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-sm rounded-2xl"
+            />
 
             {/* ════════════════════════════════════════════
                 TAB 1 — VUE D'ENSEMBLE
             ════════════════════════════════════════════ */}
             {activeTab === "overview" && (
-                <div className="space-y-6">
+                <div className="space-y-8">
 
-                    {/* KPI strip */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Card className="p-5 border-none shadow-sm bg-white">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Missions actives</p>
-                                    <p className="text-3xl font-bold text-slate-900 mt-1">
-                                        {client.missions?.filter(m => m.isActive).length || 0}
-                                    </p>
-                                </div>
-                                <div className="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center">
-                                    <Target className="w-5 h-5 text-indigo-600" />
-                                </div>
-                            </div>
-                        </Card>
-                        <Card className="p-5 border-none shadow-sm bg-white">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">RDV pris</p>
-                                    <p className="text-3xl font-bold text-slate-900 mt-1">{meetingsData?.totalMeetings || 0}</p>
-                                </div>
-                                <div className="w-11 h-11 rounded-xl bg-rose-50 flex items-center justify-center">
-                                    <CalendarCheck className="w-5 h-5 text-rose-600" />
-                                </div>
-                            </div>
-                        </Card>
-                        <Card className="p-5 border-none shadow-sm bg-white">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Tâches ouvertes</p>
-                                    <p className={cn("text-3xl font-bold mt-1", openTasksCount > 0 ? "text-amber-600" : "text-slate-900")}>
-                                        {openTasksCount}
-                                    </p>
-                                </div>
-                                <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center", openTasksCount > 0 ? "bg-amber-50" : "bg-slate-50")}>
-                                    <AlertCircle className={cn("w-5 h-5", openTasksCount > 0 ? "text-amber-600" : "text-slate-400")} />
-                                </div>
-                            </div>
-                        </Card>
-                        <Card className="p-5 border-none shadow-sm bg-white">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Dernière session</p>
-                                    <p className={cn("text-3xl font-bold mt-1",
-                                        lastSessionDaysAgo === null ? "text-slate-400" :
-                                        lastSessionDaysAgo > 14 ? "text-red-500" : "text-slate-900"
-                                    )}>
-                                        {lastSessionDaysAgo === null ? "—" : `J-${lastSessionDaysAgo}`}
-                                    </p>
-                                </div>
-                                <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center",
-                                    lastSessionDaysAgo !== null && lastSessionDaysAgo > 14 ? "bg-red-50" : "bg-emerald-50"
-                                )}>
-                                    <Clock className={cn("w-5 h-5",
-                                        lastSessionDaysAgo !== null && lastSessionDaysAgo > 14 ? "text-red-500" : "text-emerald-600"
-                                    )} />
-                                </div>
-                            </div>
-                        </Card>
+                    {/* ── KPI CARDS ── */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <StatCard
+                            label="Missions actives"
+                            value={client.missions?.filter(m => m.isActive).length || 0}
+                            icon={Target}
+                            iconBg="bg-indigo-50"
+                            iconColor="text-indigo-600"
+                            subtitle={client.missions?.length ? (
+                                <span className="text-slate-500">{client.missions.length} au total</span>
+                            ) : undefined}
+                        />
+                        <StatCard
+                            label="RDV pris"
+                            value={meetingsData?.totalMeetings || 0}
+                            icon={CalendarCheck}
+                            iconBg="bg-emerald-50"
+                            iconColor="text-emerald-600"
+                            subtitle={nextMeeting ? (
+                                <span className="text-emerald-600 font-medium">Prochain : {new Date(nextMeeting.callbackDate!).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>
+                            ) : undefined}
+                        />
+                        <StatCard
+                            label="Tâches ouvertes"
+                            value={openTasksCount}
+                            icon={AlertCircle}
+                            iconBg={openTasksCount > 0 ? "bg-amber-50" : "bg-slate-50"}
+                            iconColor={openTasksCount > 0 ? "text-amber-600" : "text-slate-400"}
+                            className={openTasksCount > 0 ? "ring-1 ring-amber-200/60" : ""}
+                        />
+                        <StatCard
+                            label="Dernière session"
+                            value={lastSessionDaysAgo === null ? "—" : `J-${lastSessionDaysAgo}`}
+                            icon={Clock}
+                            iconBg={lastSessionDaysAgo !== null && lastSessionDaysAgo > 14 ? "bg-red-50" : "bg-emerald-50"}
+                            iconColor={lastSessionDaysAgo !== null && lastSessionDaysAgo > 14 ? "text-red-500" : "text-emerald-600"}
+                            className={lastSessionDaysAgo !== null && lastSessionDaysAgo > 14 ? "ring-1 ring-red-200/60" : ""}
+                            subtitle={lastSessionDaysAgo !== null && lastSessionDaysAgo > 14 ? (
+                                <span className="text-red-500 font-medium text-xs">Relance recommandée</span>
+                            ) : undefined}
+                        />
                     </div>
 
-                    {/* Next meeting banner */}
+                    {/* ── PROCHAIN RDV — timeline highlight ── */}
                     {nextMeeting && (
-                        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
-                                    <CalendarCheck className="w-5 h-5 text-indigo-600" />
+                        <div className="relative rounded-2xl border border-indigo-200/70 bg-gradient-to-r from-indigo-50 via-indigo-50/80 to-white p-5 overflow-hidden group hover:shadow-md hover:border-indigo-300 transition-all duration-300">
+                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-indigo-500 to-indigo-400 rounded-l-2xl" />
+                            <div className="flex items-center justify-between gap-6 pl-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-xl bg-white border border-indigo-200/60 shadow-sm flex flex-col items-center justify-center">
+                                        <span className="text-[10px] font-bold text-indigo-600 uppercase leading-none">
+                                            {new Date(nextMeeting.callbackDate!).toLocaleDateString("fr-FR", { month: "short" })}
+                                        </span>
+                                        <span className="text-lg font-bold text-slate-900 leading-none mt-0.5">
+                                            {new Date(nextMeeting.callbackDate!).getDate()}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Prochain RDV</span>
+                                            {nextMeeting.meetingType && (
+                                                <Badge variant="primary" className="text-[10px] py-0 border-0">
+                                                    {nextMeeting.meetingType === "VISIO" ? "Visio" : nextMeeting.meetingType === "PHYSIQUE" ? "Présentiel" : "Téléphone"}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <p className="font-semibold text-slate-900 text-sm">
+                                            {nextMeeting.contact.firstName} {nextMeeting.contact.lastName}
+                                            {nextMeeting.contact.company?.name && (
+                                                <span className="text-slate-500 font-normal"> — {nextMeeting.contact.company.name}</span>
+                                            )}
+                                        </p>
+                                        <p className="text-xs text-slate-500 mt-0.5">
+                                            {new Date(nextMeeting.callbackDate!).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                                            {" à "}
+                                            {new Date(nextMeeting.callbackDate!).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Prochain RDV</p>
-                                    <p className="font-semibold text-slate-900">
-                                        {nextMeeting.contact.firstName} {nextMeeting.contact.lastName}
-                                        {nextMeeting.contact.company?.name && ` — ${nextMeeting.contact.company.name}`}
-                                    </p>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {nextMeeting.meetingJoinUrl && (
+                                        <a href={nextMeeting.meetingJoinUrl} target="_blank" rel="noopener noreferrer">
+                                            <Button variant="primary" size="sm" className="gap-1.5 shadow-sm shadow-indigo-500/20">
+                                                <Video className="w-3.5 h-3.5" />
+                                                Rejoindre
+                                            </Button>
+                                        </a>
+                                    )}
                                 </div>
-                            </div>
-                            <div className="text-right">
-                                <p className="font-bold text-slate-900">
-                                    {new Date(nextMeeting.callbackDate!).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}
-                                </p>
-                                <p className="text-sm text-slate-500">
-                                    {new Date(nextMeeting.callbackDate!).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                                </p>
                             </div>
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                        {/* Contact + Portal access */}
+                        {/* LEFT — Missions actives + Sessions récentes */}
+                        <div className="lg:col-span-2 space-y-8">
+                            {/* Missions actives */}
+                            <div>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Missions actives</h2>
+                                    <button onClick={() => setActiveTab("missions")} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                                        Tout voir <ArrowUpRight className="w-3 h-3" />
+                                    </button>
+                                </div>
+                                {client.missions?.filter(m => m.isActive).length ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {client.missions.filter(m => m.isActive).slice(0, 4).map((mission) => (
+                                            <Link key={mission.id} href={`/manager/missions/${mission.id}`}>
+                                                <Card className="group overflow-hidden border-slate-200 hover:shadow-md transition-all duration-200 h-full">
+                                                    <div className="p-4 space-y-3">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                                                                    <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 truncate">{mission.name}</p>
+                                                                    <p className="text-xs text-slate-500 mt-0.5">{CHANNEL_LABELS[mission.channel]}</p>
+                                                                </div>
+                                                            </div>
+                                                            <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 shrink-0 mt-1" />
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex items-center justify-between text-xs text-slate-500">
+                                                                <span>{mission._count.campaigns} campagne{mission._count.campaigns > 1 ? "s" : ""}</span>
+                                                                <span>{mission._count.lists} liste{mission._count.lists > 1 ? "s" : ""}</span>
+                                                            </div>
+                                                            <ProgressBar value={mission._count.campaigns} max={Math.max(mission._count.campaigns + mission._count.lists, 1)} height="sm" />
+                                                        </div>
+                                                    </div>
+                                                </Card>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <Card className="border-slate-200">
+                                        <div className="p-8 text-center">
+                                            <Target className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                                            <p className="text-sm text-slate-500">Aucune mission active</p>
+                                            <Link href={`/manager/missions/new?clientId=${client.id}`}>
+                                                <Button variant="outline" size="sm" className="mt-3">Créer une mission</Button>
+                                            </Link>
+                                        </div>
+                                    </Card>
+                                )}
+                            </div>
+
+                            {/* Sessions récentes */}
+                            <div>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Sessions récentes</h2>
+                                    <button onClick={() => setActiveTab("sessions")} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                                        Tout voir <ArrowUpRight className="w-3 h-3" />
+                                    </button>
+                                </div>
+                                {sessions.length > 0 ? (
+                                    <Card className="overflow-hidden border-slate-200">
+                                        <div className="divide-y divide-slate-100">
+                                            {sessions.slice(0, 4).map((s) => (
+                                                <button
+                                                    key={s.id}
+                                                    onClick={() => { setActiveTab("sessions"); setExpandedSessionId(s.id); }}
+                                                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50/80 transition-colors text-left"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <Badge className={cn("text-[10px] border shrink-0", SESSION_TYPE_COLORS[s.type])}>{s.type}</Badge>
+                                                        <span className="text-sm text-slate-700">
+                                                            {new Date(s.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {s.tasks.filter(t => !t.doneAt).length > 0 && (
+                                                            <Badge className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                                                                {s.tasks.filter(t => !t.doneAt).length} tâche{s.tasks.filter(t => !t.doneAt).length > 1 ? "s" : ""}
+                                                            </Badge>
+                                                        )}
+                                                        <ArrowUpRight className="w-3.5 h-3.5 text-slate-300" />
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </Card>
+                                ) : (
+                                    <Card className="border-slate-200">
+                                        <div className="p-8 text-center">
+                                            <FileText className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                                            <p className="text-sm text-slate-500">Aucune session enregistrée</p>
+                                            <button onClick={() => setActiveTab("sessions")} className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1">
+                                                Créer la première <ArrowUpRight className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    </Card>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* RIGHT — Contact + Persona + Commerciaux + Portal */}
                         <div className="space-y-4">
-                            <Card className="overflow-hidden border-slate-200">
-                                <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                                    <h2 className="font-semibold text-slate-900 text-sm">Contact principal</h2>
+                            {/* Contact principal */}
+                            <Card className="overflow-hidden border-slate-200 hover:shadow-md transition-shadow duration-200">
+                                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
+                                    <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Contact principal</h2>
                                     <button onClick={() => setShowEditModal(true)} className="text-xs text-indigo-600 font-semibold hover:text-indigo-700">Modifier</button>
                                 </div>
-                                <div className="p-5 space-y-3">
+                                <div className="p-4 space-y-2.5">
                                     {client.email ? (
-                                        <div className="flex items-center gap-2">
-                                            <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-                                            <a href={`mailto:${client.email}`} className="text-sm text-slate-700 hover:text-indigo-600 truncate">{client.email}</a>
-                                            <button onClick={() => { navigator.clipboard.writeText(client.email!); success("Copié", ""); }}>
+                                        <div className="group/item flex items-center gap-2.5">
+                                            <div className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center shrink-0">
+                                                <Mail className="w-3.5 h-3.5 text-slate-400" />
+                                            </div>
+                                            <a href={`mailto:${client.email}`} className="text-sm text-slate-700 hover:text-indigo-600 truncate flex-1">{client.email}</a>
+                                            <button onClick={() => { navigator.clipboard.writeText(client.email!); success("Copié", ""); }} className="opacity-0 group-hover/item:opacity-100 transition-opacity">
                                                 <Copy className="w-3.5 h-3.5 text-slate-300 hover:text-slate-500" />
                                             </button>
                                         </div>
                                     ) : <p className="text-sm text-slate-400 italic">Email non renseigné</p>}
                                     {client.phone ? (
-                                        <div className="flex items-center gap-2">
-                                            <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                                            <a href={`tel:${client.phone}`} className="text-sm text-slate-700 hover:text-indigo-600">{client.phone}</a>
-                                            <button onClick={() => { navigator.clipboard.writeText(client.phone!); success("Copié", ""); }}>
+                                        <div className="group/item flex items-center gap-2.5">
+                                            <div className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center shrink-0">
+                                                <Phone className="w-3.5 h-3.5 text-slate-400" />
+                                            </div>
+                                            <a href={`tel:${client.phone}`} className="text-sm text-slate-700 hover:text-indigo-600 flex-1">{client.phone}</a>
+                                            <button onClick={() => { navigator.clipboard.writeText(client.phone!); success("Copié", ""); }} className="opacity-0 group-hover/item:opacity-100 transition-opacity">
                                                 <Copy className="w-3.5 h-3.5 text-slate-300 hover:text-slate-500" />
                                             </button>
                                         </div>
                                     ) : <p className="text-sm text-slate-400 italic">Téléphone non renseigné</p>}
                                     {client.bookingUrl && (
-                                        <div className="flex items-center gap-2">
-                                            <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
-                                            <a href={client.bookingUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 hover:underline truncate">{client.bookingUrl}</a>
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center shrink-0">
+                                                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                            </div>
+                                            <a href={client.bookingUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 hover:underline truncate flex-1">{client.bookingUrl}</a>
                                         </div>
                                     )}
                                 </div>
                             </Card>
 
-                            {/* Persona / ICP — manual edit */}
-                            <Card className="overflow-hidden border-slate-200">
-                                <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                                    <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-                                        <Target className="w-4 h-4 text-indigo-500 shrink-0" />
+                            {/* Persona / ICP */}
+                            <Card className="overflow-hidden border-slate-200 hover:shadow-md transition-shadow duration-200">
+                                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
+                                    <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                        <Target className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                                         Persona / ICP
                                     </h2>
                                     <button
@@ -1074,33 +1297,33 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                         Modifier
                                     </button>
                                 </div>
-                                <div className="p-5">
+                                <div className="p-4">
                                     {((client.onboarding?.onboardingData as { icp?: string } | null)?.icp?.trim()) ? (
-                                        <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                                        <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
                                             {(client.onboarding?.onboardingData as { icp?: string }).icp}
                                         </p>
                                     ) : (
-                                        <p className="text-sm text-slate-400 italic">Persona (profil cible / ICP) non renseigné. Cliquez sur Modifier pour l’ajouter.</p>
+                                        <p className="text-sm text-slate-400 italic">Persona non renseigné. Cliquez sur Modifier.</p>
                                     )}
                                 </div>
                             </Card>
 
-                            {/* Commerciaux (Interlocuteurs) — collapsible */}
-                            <Card className="overflow-hidden border-slate-200">
-                                <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between gap-2">
+                            {/* Commerciaux — collapsible, compact list */}
+                            <Card className="overflow-hidden border-slate-200 hover:shadow-md transition-shadow duration-200">
+                                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between gap-2">
                                     <button
                                         type="button"
                                         onClick={() => setShowInterlocuteurs(!showInterlocuteurs)}
                                         className="flex-1 min-w-0 flex items-center justify-between gap-2 text-left"
                                     >
-                                        <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-                                            <Users className="w-4 h-4 text-indigo-500 shrink-0" />
+                                        <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                            <Users className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                                             Commerciaux
                                             {interlocuteurs.length > 0 && (
-                                                <Badge className="text-xs bg-indigo-100 text-indigo-700 border-0 ml-1">{interlocuteurs.length}</Badge>
+                                                <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-0 ml-1">{interlocuteurs.length}</Badge>
                                             )}
                                         </h2>
-                                        {showInterlocuteurs ? <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />}
+                                        {showInterlocuteurs ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
                                     </button>
                                     <button
                                         type="button"
@@ -1111,9 +1334,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                     </button>
                                 </div>
                                 {showInterlocuteurs && (
-                                    <div className="p-4">
+                                    <div className="p-3">
                                         {interlocuteurs.length > 0 ? (
-                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                            <div className="space-y-2">
                                                 {interlocuteurs.map((interl) => {
                                                     const primaryEmail = interl.emails.find(e => e.isPrimary) || interl.emails[0];
                                                     const primaryPhone = interl.phones.find(p => p.isPrimary) || interl.phones[0];
@@ -1128,20 +1351,25 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                     ];
                                                     const avatarColor = avatarColors[hash % avatarColors.length];
                                                     return (
-                                                        <div key={interl.id} className={cn("rounded-xl border p-3 space-y-2", interl.isActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50")}>
-                                                            <div className="flex items-start justify-between gap-2">
-                                                                <div className="flex items-center gap-2.5">
-                                                                    <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold shrink-0", avatarColor)}>
+                                                        <div key={interl.id} className={cn("group/card rounded-xl border p-3 transition-all", interl.isActive ? "border-slate-200 bg-white hover:shadow-sm" : "border-slate-200 bg-slate-50/50")}>
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0", avatarColor)}>
                                                                         {interl.firstName[0]}{interl.lastName[0]}
                                                                     </div>
                                                                     <div className="min-w-0">
                                                                         <p className={cn("text-sm font-semibold text-slate-900 truncate", !interl.isActive && "line-through text-slate-400")}>
                                                                             {interl.firstName} {interl.lastName}
                                                                         </p>
-                                                                        {interl.title && <p className="text-xs text-slate-500 truncate">{interl.title}</p>}
+                                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                                            {interl.title && <span className="text-[11px] text-slate-500 truncate">{interl.title}</span>}
+                                                                            {primaryEmail && (
+                                                                                <span className="text-[11px] text-slate-400 truncate hidden sm:inline">{interl.title ? "·" : ""} {primaryEmail.value}</span>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                                <div className="flex items-center gap-1 shrink-0">
+                                                                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover/card:opacity-100 transition-opacity">
                                                                     <Badge className={cn("text-[10px] border-0", interl.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500")}>
                                                                         {interl.isActive ? "Actif" : "Inactif"}
                                                                     </Badge>
@@ -1158,44 +1386,52 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                                 </div>
                                                             </div>
                                                             {(interl.territory || interl.department) && (
-                                                                <div className="flex flex-wrap gap-1">
+                                                                <div className="flex flex-wrap gap-1 mt-2 ml-10">
                                                                     {interl.territory && <Badge className="text-[10px] bg-slate-100 text-slate-600 border-0">{interl.territory}</Badge>}
                                                                     {interl.department && <Badge className="text-[10px] bg-slate-100 text-slate-600 border-0">{interl.department}</Badge>}
                                                                 </div>
                                                             )}
-                                                            {primaryEmail && (
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <Mail className="w-3 h-3 text-slate-400 shrink-0" />
-                                                                    <span className="text-xs text-slate-600 truncate">{primaryEmail.value}</span>
-                                                                    <button onClick={() => { navigator.clipboard.writeText(primaryEmail.value); success("Copié", ""); }} className="shrink-0">
-                                                                        <Copy className="w-3 h-3 text-slate-300 hover:text-slate-500" />
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                            {primaryPhone && (
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <Phone className="w-3 h-3 text-slate-400 shrink-0" />
-                                                                    <span className="text-xs text-slate-600 truncate">{primaryPhone.value}</span>
-                                                                    <button onClick={() => { navigator.clipboard.writeText(primaryPhone.value); success("Copié", ""); }} className="shrink-0">
-                                                                        <Copy className="w-3 h-3 text-slate-300 hover:text-slate-500" />
-                                                                    </button>
-                                                                </div>
-                                                            )}
                                                             {interl.bookingLinks.length > 0 && (
-                                                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                                                <div className="flex flex-wrap gap-1.5 mt-2 ml-10">
                                                                     {interl.bookingLinks.map((bl, idx) => (
                                                                         <button
                                                                             key={idx}
                                                                             onClick={() => { navigator.clipboard.writeText(bl.url); success("Lien copié", bl.label); }}
-                                                                            className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2.5 py-1 text-xs font-semibold hover:bg-indigo-100 transition-colors"
+                                                                            className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-0.5 text-[10px] font-semibold hover:bg-indigo-100 transition-colors"
                                                                         >
-                                                                            <Calendar className="w-3 h-3" />
+                                                                            <Calendar className="w-2.5 h-2.5" />
                                                                             {bl.label} · {bl.durationMinutes}min
-                                                                            <Copy className="w-3 h-3 ml-0.5 opacity-60" />
+                                                                            <Copy className="w-2.5 h-2.5 ml-0.5 opacity-60" />
                                                                         </button>
                                                                     ))}
                                                                 </div>
                                                             )}
+                                                            <div className="mt-2 pt-2 border-t border-slate-100 ml-10">
+                                                                {interl.portalUser ? (
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                                                            <ShieldCheck className="w-2.5 h-2.5" /> Portail actif
+                                                                        </span>
+                                                                        <button
+                                                                            onClick={() => handleDeactivatePortal(interl)}
+                                                                            disabled={activatingPortalFor === interl.id}
+                                                                            className="text-[10px] text-red-400 hover:text-red-600 font-medium"
+                                                                            title="Révoquer l'accès portail"
+                                                                        >
+                                                                            {activatingPortalFor === interl.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Révoquer"}
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => handleActivatePortal(interl)}
+                                                                        disabled={activatingPortalFor === interl.id || !interl.isActive}
+                                                                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-full transition-colors disabled:opacity-50"
+                                                                    >
+                                                                        {activatingPortalFor === interl.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />}
+                                                                        Activer portail
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
@@ -1214,30 +1450,30 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 )}
                             </Card>
 
-                            {/* Portal access — collapsible */}
-                            <Card className="overflow-hidden border-slate-200">
+                            {/* Accès portail — simplified */}
+                            <Card className="overflow-hidden border-slate-200 hover:shadow-md transition-shadow duration-200">
                                 <button
                                     onClick={() => setShowPortalAccess(!showPortalAccess)}
-                                    className="w-full px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between"
+                                    className="w-full px-4 py-3 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between"
                                 >
-                                    <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-                                        <ShieldCheck className="w-4 h-4 text-indigo-500" />
+                                    <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                        <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
                                         Accès portail
                                         {client.users && client.users.length > 0 && (
-                                            <Badge className="text-xs bg-indigo-100 text-indigo-700 border-0 ml-1">{client.users.length}</Badge>
+                                            <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-0 ml-1">{client.users.length}</Badge>
                                         )}
                                     </h2>
-                                    {showPortalAccess ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                                    {showPortalAccess ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
                                 </button>
                                 {showPortalAccess && (
-                                    <div className="p-4">
+                                    <div className="p-3">
                                         {client.users && client.users.length > 0 ? (
                                             <div className="space-y-2 mb-3">
                                                 {client.users.map((u) => (
-                                                    <div key={u.id} className="flex items-center justify-between">
+                                                    <div key={u.id} className="flex items-center justify-between px-1">
                                                         <div>
                                                             <p className="text-sm font-medium text-slate-900">{u.name}</p>
-                                                            <p className="text-xs text-slate-500">{u.email}</p>
+                                                            <p className="text-[11px] text-slate-500">{u.email}</p>
                                                         </div>
                                                         {u.role === "CLIENT" && (
                                                             <button onClick={() => setUserToDelete({ id: u.id, name: u.name })} className="text-red-400 hover:text-red-600">
@@ -1259,88 +1495,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             </Card>
                         </div>
 
-                        {/* Missions preview */}
-                        <div className="lg:col-span-2 space-y-4">
-                            <Card className="overflow-hidden border-slate-200">
-                                <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                                    <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-                                        <Target className="w-4 h-4 text-indigo-500" />
-                                        Missions actives
-                                    </h2>
-                                    <button onClick={() => setActiveTab("missions")} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
-                                        Voir tout →
-                                    </button>
-                                </div>
-                                {client.missions?.filter(m => m.isActive).length ? (
-                                    <div className="divide-y divide-slate-100">
-                                        {client.missions.filter(m => m.isActive).slice(0, 3).map((mission) => (
-                                            <Link key={mission.id} href={`/manager/missions/${mission.id}`}>
-                                                <div className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-                                                            <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-sm font-medium text-slate-900">{mission.name}</p>
-                                                            <p className="text-xs text-slate-500">{CHANNEL_LABELS[mission.channel]} · {mission._count.lists} liste{mission._count.lists > 1 ? "s" : ""}</p>
-                                                        </div>
-                                                    </div>
-                                                    <ExternalLink className="w-4 h-4 text-slate-400" />
-                                                </div>
-                                            </Link>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="p-6 text-center">
-                                        <Target className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                                        <p className="text-sm text-slate-500">Aucune mission active</p>
-                                        <Link href={`/manager/missions/new?clientId=${client.id}`}>
-                                            <Button variant="outline" size="sm" className="mt-3">Créer une mission</Button>
-                                        </Link>
-                                    </div>
-                                )}
-                            </Card>
-
-                            {/* Recent sessions preview */}
-                            <Card className="overflow-hidden border-slate-200">
-                                <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                                    <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-                                        <FileText className="w-4 h-4 text-indigo-500" />
-                                        Sessions récentes
-                                    </h2>
-                                    <button onClick={() => setActiveTab("sessions")} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
-                                        Voir tout →
-                                    </button>
-                                </div>
-                                {sessions.length > 0 ? (
-                                    <div className="divide-y divide-slate-100">
-                                        {sessions.slice(0, 3).map((s) => (
-                                            <div key={s.id} className="p-4 flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <Badge className={cn("text-xs border", SESSION_TYPE_COLORS[s.type])}>{s.type}</Badge>
-                                                    <span className="text-sm text-slate-700">
-                                                        {new Date(s.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
-                                                    </span>
-                                                </div>
-                                                {s.tasks.filter(t => !t.doneAt).length > 0 && (
-                                                    <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-200">
-                                                        {s.tasks.filter(t => !t.doneAt).length} tâche{s.tasks.filter(t => !t.doneAt).length > 1 ? "s" : ""}
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="p-6 text-center">
-                                        <FileText className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                                        <p className="text-sm text-slate-500">Aucune session enregistrée</p>
-                                        <button onClick={() => setActiveTab("sessions")} className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700">
-                                            Créer la première →
-                                        </button>
-                                    </div>
-                                )}
-                            </Card>
-                        </div>
                     </div>
                 </div>
             )}
@@ -1365,16 +1519,19 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             </Link>
                         </div>
                         {client.missions?.length ? (
-                            <div className="p-4 space-y-3">
+                            <div className="p-4 space-y-4">
                                 {client.missions.map((mission) => (
                                     <Link key={mission.id} href={`/manager/missions/${mission.id}`}>
-                                        <div className="group block bg-white border border-slate-200 rounded-xl p-5 hover:border-indigo-300 hover:shadow-md transition-all duration-200">
+                                        <div className={cn(
+                                            "group block bg-white border rounded-xl p-5 hover:shadow-md transition-all duration-200 border-l-4",
+                                            mission.isActive ? "border-slate-200 border-l-indigo-500 hover:border-indigo-300" : "border-slate-200 border-l-slate-300 hover:border-slate-300"
+                                        )}>
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                                 <div className="flex items-start gap-4">
-                                                    <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0", mission.isActive ? "bg-indigo-50" : "bg-slate-100")}>
-                                                        {mission.isActive ? <CheckCircle2 className="w-6 h-6 text-indigo-600" /> : <XCircle className="w-6 h-6 text-slate-400" />}
+                                                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", mission.isActive ? "bg-indigo-50" : "bg-slate-100")}>
+                                                        {mission.isActive ? <CheckCircle2 className="w-5 h-5 text-indigo-600" /> : <XCircle className="w-5 h-5 text-slate-400" />}
                                                     </div>
-                                                    <div>
+                                                    <div className="min-w-0">
                                                         <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 flex items-center gap-2">
                                                             {mission.name}
                                                             {!mission.isActive && <Badge variant="warning" className="text-xs">Inactive</Badge>}
@@ -1386,9 +1543,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                             <span>·</span>
                                                             <span>{mission._count.lists} liste{mission._count.lists > 1 ? "s" : ""}</span>
                                                         </div>
+                                                        <div className="mt-3 max-w-xs">
+                                                            <ProgressBar value={mission._count.campaigns} max={Math.max(mission._count.campaigns + mission._count.lists, 1)} height="sm" />
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="text-sm text-slate-500 pl-16 sm:pl-0 sm:text-right">
+                                                <div className="text-sm text-slate-500 pl-14 sm:pl-0 sm:text-right shrink-0">
                                                     <p>Début : {new Date(mission.startDate).toLocaleDateString("fr-FR")}</p>
                                                     {mission.endDate && <p>Fin : {new Date(mission.endDate).toLocaleDateString("fr-FR")}</p>}
                                                 </div>
@@ -1481,20 +1641,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             </div>
                         </Card>
                     ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                             {sessions.map((session) => {
                                 const isExpanded = expandedSessionId === session.id;
                                 const openTasks = session.tasks.filter(t => !t.doneAt);
                                 return (
-                                    <Card key={session.id} className="border-slate-200 overflow-hidden">
+                                    <Card key={session.id} className="border-slate-200 overflow-hidden hover:shadow-md transition-all duration-200">
                                         {/* Session row */}
                                         <button
                                             onClick={() => setExpandedSessionId(isExpanded ? null : session.id)}
-                                            className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-left"
+                                            className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors text-left"
                                         >
                                             <div className="flex items-center gap-4">
                                                 <Badge className={cn("text-xs border shrink-0", SESSION_TYPE_COLORS[session.type])}>
-                                                    {session.type}
+                                                    {("customTypeLabel" in session && (session as any).customTypeLabel) ? (session as any).customTypeLabel : session.type}
                                                 </Badge>
                                                 <div>
                                                     <p className="font-semibold text-slate-900 text-sm">
@@ -1660,45 +1820,49 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     </div>
 
                     {/* KPIs */}
-                    <Card className="border-slate-200">
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-                                <BarChart3 className="w-4 h-4 text-indigo-500" />
-                                Statistiques
-                            </h3>
+                    {isLoadingStats ? (
+                        <div className="flex items-center justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-indigo-500" /></div>
+                    ) : clientStats ? (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <StatCard
+                                label="Appels"
+                                value={clientStats.kpis?.totalCalls || 0}
+                                icon={Phone}
+                                iconBg="bg-indigo-100"
+                                iconColor="text-indigo-600"
+                            />
+                            <StatCard
+                                label="RDV"
+                                value={clientStats.kpis?.meetings || 0}
+                                icon={CalendarCheck}
+                                iconBg="bg-emerald-100"
+                                iconColor="text-emerald-600"
+                            />
+                            <StatCard
+                                label="Conversion"
+                                value={`${clientStats.kpis?.conversionRate || 0}%`}
+                                icon={TrendingUp}
+                                iconBg="bg-amber-100"
+                                iconColor="text-amber-600"
+                            />
+                            <StatCard
+                                label="Temps de parole"
+                                value={`${Math.round((clientStats.kpis?.totalTalkTime || 0) / 60)} min`}
+                                icon={Clock}
+                                iconBg="bg-slate-100"
+                                iconColor="text-slate-600"
+                            />
                         </div>
-                        <div className="p-6">
-                            {isLoadingStats ? (
-                                <div className="flex items-center justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-indigo-500" /></div>
-                            ) : clientStats ? (
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
-                                        <p className="text-xs font-semibold text-indigo-600 uppercase">Appels</p>
-                                        <p className="text-2xl font-bold text-slate-900 mt-1">{clientStats.kpis?.totalCalls || 0}</p>
-                                    </div>
-                                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100">
-                                        <p className="text-xs font-semibold text-emerald-600 uppercase">RDV</p>
-                                        <p className="text-2xl font-bold text-slate-900 mt-1">{clientStats.kpis?.meetings || 0}</p>
-                                    </div>
-                                    <div className="p-4 rounded-xl bg-amber-50 border border-amber-100">
-                                        <p className="text-xs font-semibold text-amber-600 uppercase">Conversion</p>
-                                        <p className="text-2xl font-bold text-slate-900 mt-1">{clientStats.kpis?.conversionRate || 0}%</p>
-                                    </div>
-                                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                                        <p className="text-xs font-semibold text-slate-600 uppercase">Temps de parole</p>
-                                        <p className="text-2xl font-bold text-slate-900 mt-1">{Math.round((clientStats.kpis?.totalTalkTime || 0) / 60)} min</p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <p className="text-slate-500 text-center py-10">Aucune donnée pour cette période.</p>
-                            )}
-                        </div>
-                    </Card>
+                    ) : (
+                        <Card className="border-slate-200">
+                            <p className="text-slate-500 text-center py-10">Aucune donnée pour cette période.</p>
+                        </Card>
+                    )}
 
                     {/* Persona */}
-                    <Card className="border-slate-200">
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                    <Card className="border-slate-200 overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/30">
+                            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                 <Zap className="w-4 h-4 text-indigo-500" />
                                 Persona — cibles performantes
                             </h3>
@@ -1710,10 +1874,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                     {clientPersona.byFunction?.length > 0 && (
                                         <div>
-                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Par fonction</h4>
+                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Par fonction</h4>
                                             <div className="space-y-2">
                                                 {clientPersona.byFunction.slice(0, 8).map((r: any, i: number) => (
-                                                    <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
+                                                    <div key={i} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50/80 border border-slate-100 hover:border-slate-200 transition-colors">
                                                         <span className="font-medium text-slate-800 text-sm">{r.value}</span>
                                                         <div className="flex items-center gap-4 text-xs">
                                                             <span className="text-slate-500">{r.calls} appels</span>
@@ -1727,10 +1891,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                     )}
                                     {clientPersona.bySector?.length > 0 && (
                                         <div>
-                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Par secteur</h4>
+                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Par secteur</h4>
                                             <div className="space-y-2">
                                                 {clientPersona.bySector.slice(0, 8).map((r: any, i: number) => (
-                                                    <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
+                                                    <div key={i} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50/80 border border-slate-100 hover:border-slate-200 transition-colors">
                                                         <span className="font-medium text-slate-800 text-sm">{r.value}</span>
                                                         <div className="flex items-center gap-4 text-xs">
                                                             <span className="text-slate-500">{r.calls} appels</span>
@@ -1756,89 +1920,239 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             ════════════════════════════════════════════ */}
             <Modal
                 isOpen={showNewSessionModal}
-                onClose={() => { if (!isGeneratingCR && !isSavingSession) { setShowNewSessionModal(false); setGeneratedCR(null); }}}
+                onClose={() => {
+                    if (!isGeneratingCR && !isSavingSession) {
+                        setShowNewSessionModal(false);
+                        setGeneratedCR(null);
+                        setTranscriptMode("leexi");
+                        setManualTranscript("");
+                        setManualCR("");
+                        setManualSummaryEmail("");
+                        setSessionDateInput("");
+                        setNewSessionForm({ type: "Kick-Off", leexiId: "", notifyByEmail: false, customTypeLabel: "" });
+                    }
+                }}
                 title="Nouvelle session"
-                description="Sélectionnez une transcription Leexi pour générer automatiquement le CR et le mail de synthèse."
+                description="Générez un CR et un mail de synthèse à partir d'une transcription Leexi ou d'un texte collé."
                 size="xl"
             >
                 {!generatedCR ? (
                     <div className="space-y-5">
                         {/* Session type */}
-                        <div>
-                            <label className="text-sm font-semibold text-slate-700 block mb-2">Type de session</label>
-                            <div className="flex flex-wrap gap-2">
-                                {(["Kick-Off", "Onboarding", "Validation", "Reporting", "Suivi", "Autre"] as SessionType[]).map((t) => (
-                                    <button
-                                        key={t}
-                                        onClick={() => setNewSessionForm(p => ({ ...p, type: t }))}
-                                        className={cn(
-                                            "px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all",
-                                            newSessionForm.type === t
-                                                ? SESSION_TYPE_COLORS[t] + " shadow-sm"
-                                                : "border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
-                                        )}
-                                    >
-                                        {t}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Leexi transcriptions */}
-                        <div>
-                            <div className="flex items-center justify-between mb-2">
-                                <label className="text-sm font-semibold text-slate-700">Transcription Leexi</label>
-                                <button onClick={fetchLeexiTranscriptions} className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
-                                    <RefreshCw className={cn("w-3 h-3", isLoadingLeexi && "animate-spin")} />
-                                    Actualiser
-                                </button>
-                            </div>
-                            {isLoadingLeexi ? (
-                                <div className="flex items-center justify-center py-8 border border-slate-200 rounded-xl">
-                                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-                                </div>
-                            ) : leexiTranscriptions.length === 0 ? (
-                                <div className="text-center py-8 border border-dashed border-slate-200 rounded-xl">
-                                    <Mic className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                                    <p className="text-sm text-slate-500">Aucune transcription trouvée dans Leexi</p>
-                                    <p className="text-xs text-slate-400 mt-1">Vérifiez que les enregistrements sont liés à ce client</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-2 max-h-60 overflow-y-auto">
-                                    {leexiTranscriptions.map((t) => (
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-sm font-semibold text-slate-700 block mb-2">Type de session</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {(["Kick-Off", "Onboarding", "Validation", "Reporting", "Suivi", "Autre"] as SessionType[]).map((t) => (
                                         <button
-                                            key={t.id}
-                                            onClick={() => setNewSessionForm(p => ({ ...p, leexiId: t.id }))}
+                                            key={t}
+                                            onClick={() =>
+                                                setNewSessionForm((p) => ({
+                                                    ...p,
+                                                    type: t,
+                                                    // Clear custom label when leaving "Autre"
+                                                    customTypeLabel: t === "Autre" ? p.customTypeLabel : "",
+                                                }))
+                                            }
                                             className={cn(
-                                                "w-full text-left p-3 rounded-xl border transition-all",
-                                                newSessionForm.leexiId === t.id
-                                                    ? "border-indigo-400 bg-indigo-50 shadow-sm"
-                                                    : "border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50"
+                                                "px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all",
+                                                newSessionForm.type === t
+                                                    ? SESSION_TYPE_COLORS[t] + " shadow-sm"
+                                                    : "border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
                                             )}
                                         >
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div className="flex items-center gap-3 min-w-0">
-                                                    <Mic className={cn("w-4 h-4 shrink-0", newSessionForm.leexiId === t.id ? "text-indigo-600" : "text-slate-400")} />
-                                                    <div className="min-w-0">
-                                                        <p className={cn("text-sm font-semibold truncate", newSessionForm.leexiId === t.id ? "text-indigo-900" : "text-slate-900")}>
-                                                            {t.title}
-                                                        </p>
-                                                        {t.participants.length > 0 && (
-                                                            <p className="text-xs text-slate-500 truncate">{t.participants.join(", ")}</p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="text-right shrink-0">
-                                                    <p className="text-xs font-medium text-slate-700">
-                                                        {new Date(t.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
-                                                    </p>
-                                                    <p className="text-xs text-slate-400">
-                                                        {Math.round(t.duration / 60)} min
-                                                    </p>
-                                                </div>
-                                            </div>
+                                            {t}
                                         </button>
                                     ))}
+                                </div>
+                            </div>
+                            {newSessionForm.type === "Autre" && (
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-medium text-slate-600">
+                                        Nom de la session (obligatoire pour "Autre")
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={newSessionForm.customTypeLabel}
+                                        onChange={(e) =>
+                                            setNewSessionForm((p) => ({ ...p, customTypeLabel: e.target.value }))
+                                        }
+                                        placeholder='Ex. "Atelier produit", "Point hebdo"...'
+                                        className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Session date */}
+                        <div className="space-y-1">
+                            <label className="text-sm font-semibold text-slate-700 block">Date de la session</label>
+                            <p className="text-xs text-slate-500 mb-1">
+                                Par défaut, on utilise la date de l&apos;enregistrement Leexi (ou la date du jour), mais vous
+                                pouvez la modifier ici.
+                            </p>
+                            <input
+                                type="date"
+                                value={sessionDateInput}
+                                onChange={(e) => setSessionDateInput(e.target.value)}
+                                className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </div>
+
+                        {/* Transcript / CR source selector + content */}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <label className="text-sm font-semibold text-slate-700">Source du contenu</label>
+                            </div>
+                            <div className="inline-flex rounded-full bg-slate-100 p-1 gap-1">
+                                <button
+                                    onClick={() => setTranscriptMode("leexi")}
+                                    className={cn(
+                                        "px-3 py-1.5 text-xs font-medium rounded-full flex items-center gap-1",
+                                        transcriptMode === "leexi"
+                                            ? "bg-white text-indigo-600 shadow-sm"
+                                            : "text-slate-600"
+                                    )}
+                                >
+                                    <Mic className="w-3 h-3" />
+                                    Depuis Leexi
+                                </button>
+                                <button
+                                    onClick={() => setTranscriptMode("text")}
+                                    className={cn(
+                                        "px-3 py-1.5 text-xs font-medium rounded-full flex items-center gap-1",
+                                        transcriptMode === "text"
+                                            ? "bg-white text-indigo-600 shadow-sm"
+                                            : "text-slate-600"
+                                    )}
+                                >
+                                    <FileText className="w-3 h-3" />
+                                    Coller une transcription
+                                </button>
+                                <button
+                                    onClick={() => setTranscriptMode("cr")}
+                                    className={cn(
+                                        "px-3 py-1.5 text-xs font-medium rounded-full flex items-center gap-1",
+                                        transcriptMode === "cr"
+                                            ? "bg-white text-indigo-600 shadow-sm"
+                                            : "text-slate-600"
+                                    )}
+                                >
+                                    <FileText className="w-3 h-3" />
+                                    CR déjà rédigé
+                                </button>
+                            </div>
+
+                            {transcriptMode === "leexi" ? (
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-sm font-semibold text-slate-700">Transcription Leexi</label>
+                                        <button onClick={fetchLeexiTranscriptions} className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+                                            <RefreshCw className={cn("w-3 h-3", isLoadingLeexi && "animate-spin")} />
+                                            Actualiser
+                                        </button>
+                                    </div>
+                                    {isLoadingLeexi ? (
+                                        <div className="flex items-center justify-center py-8 border border-slate-200 rounded-xl">
+                                            <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                                        </div>
+                                    ) : leexiTranscriptions.length === 0 ? (
+                                        <div className="text-center py-8 border border-dashed border-slate-200 rounded-xl">
+                                            <Mic className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                                            <p className="text-sm text-slate-500">Aucune transcription trouvée dans Leexi</p>
+                                            <p className="text-xs text-slate-400 mt-1">Vérifiez que les enregistrements sont liés à ce client ou utilisez le mode "Coller une transcription".</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                                            {leexiTranscriptions.map((t) => (
+                                                <button
+                                                    key={t.id}
+                                                    onClick={() =>
+                                                        setNewSessionForm((p) => ({
+                                                            ...p,
+                                                            leexiId: t.id,
+                                                        })) ||
+                                                        setSessionDateInput(
+                                                            t.date ? t.date.slice(0, 10) : ""
+                                                        )
+                                                    }
+                                                    className={cn(
+                                                        "w-full text-left p-3 rounded-xl border transition-all",
+                                                        newSessionForm.leexiId === t.id
+                                                            ? "border-indigo-400 bg-indigo-50 shadow-sm"
+                                                            : "border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-3 min-w-0">
+                                                            <Mic className={cn("w-4 h-4 shrink-0", newSessionForm.leexiId === t.id ? "text-indigo-600" : "text-slate-400")} />
+                                                            <div className="min-w-0">
+                                                                <p className={cn("text-sm font-semibold truncate", newSessionForm.leexiId === t.id ? "text-indigo-900" : "text-slate-900")}>
+                                                                    {t.title}
+                                                                </p>
+                                                                {t.participants.length > 0 && (
+                                                                    <p className="text-xs text-slate-500 truncate">{t.participants.join(", ")}</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right shrink-0">
+                                                            <p className="text-xs font-medium text-slate-700">
+                                                                {new Date(t.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                                                            </p>
+                                                            <p className="text-xs text-slate-400">
+                                                                {Math.round(t.duration / 60)} min
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : transcriptMode === "text" ? (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Transcription (texte)</label>
+                                    <textarea
+                                        value={manualTranscript}
+                                        onChange={(e) => setManualTranscript(e.target.value)}
+                                        rows={8}
+                                        placeholder="Collez ici la transcription de la session (ou un récap très détaillé)..."
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                                    />
+                                    <p className="text-[11px] text-slate-400">
+                                        {manualTranscript.length} caractères{" "}
+                                        {manualTranscript.length > 0 && manualTranscript.length < 20 && "(minimum 20)"}
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-sm font-semibold text-slate-700 block mb-1">
+                                            Compte rendu déjà préparé (markdown)
+                                        </label>
+                                        <textarea
+                                            value={manualCR}
+                                            onChange={(e) => setManualCR(e.target.value)}
+                                            rows={6}
+                                            placeholder="Collez ici le compte rendu final (titre, sections, prochaines étapes, etc.)..."
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-semibold text-slate-700 block mb-1">
+                                            Mail de synthèse déjà préparé (optionnel)
+                                        </label>
+                                        <textarea
+                                            value={manualSummaryEmail}
+                                            onChange={(e) => setManualSummaryEmail(e.target.value)}
+                                            rows={4}
+                                            placeholder="Collez ici le mail de synthèse si vous l'avez déjà rédigé..."
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-slate-400">
+                                        Le CR et le mail seront enregistrés tels quels, sans génération automatique.
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -1846,16 +2160,26 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         {/* Email notification toggle */}
                         <div className="flex items-start gap-3 p-4 rounded-xl border border-slate-200 bg-slate-50">
                             <button
-                                onClick={() => setNewSessionForm(p => ({ ...p, notifyByEmail: !p.notifyByEmail }))}
+                                onClick={() => {
+                                    if (!client?.email) return;
+                                    setNewSessionForm(p => ({ ...p, notifyByEmail: !p.notifyByEmail }));
+                                }}
+                                disabled={!client?.email}
                                 className={cn(
                                     "w-10 h-6 rounded-full relative transition-colors shrink-0 mt-0.5",
-                                    newSessionForm.notifyByEmail ? "bg-indigo-600" : "bg-slate-300"
+                                    !client?.email
+                                        ? "bg-slate-200 cursor-not-allowed opacity-60"
+                                        : newSessionForm.notifyByEmail
+                                            ? "bg-indigo-600"
+                                            : "bg-slate-300"
                                 )}
                             >
-                                <span className={cn(
-                                    "absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform",
-                                    newSessionForm.notifyByEmail ? "translate-x-5" : "translate-x-1"
-                                )} />
+                                <span
+                                    className={cn(
+                                        "absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform",
+                                        newSessionForm.notifyByEmail ? "translate-x-5" : "translate-x-1"
+                                    )}
+                                />
                             </button>
                             <div>
                                 <p className="text-sm font-semibold text-slate-900">
@@ -1878,16 +2202,33 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         </div>
 
                         <ModalFooter>
-                            <Button variant="ghost" onClick={() => setShowNewSessionModal(false)} disabled={isGeneratingCR}>Annuler</Button>
+                            <Button
+                                variant="ghost"
+                                onClick={() => {
+                                    if (!isGeneratingCR) {
+                                        setShowNewSessionModal(false);
+                                    }
+                                }}
+                                disabled={isGeneratingCR}
+                            >
+                                Annuler
+                            </Button>
                             <Button
                                 variant="primary"
                                 onClick={handleGenerateCR}
                                 isLoading={isGeneratingCR}
-                                disabled={!newSessionForm.leexiId || isGeneratingCR}
+                                disabled={
+                                    isGeneratingCR ||
+                                    (transcriptMode === "leexi"
+                                        ? !newSessionForm.leexiId
+                                        : transcriptMode === "text"
+                                            ? manualTranscript.trim().length < 20
+                                            : manualCR.trim().length === 0)
+                                }
                                 className="gap-2"
                             >
                                 <Sparkles className="w-4 h-4" />
-                                Générer le CR
+                                {transcriptMode === "cr" ? "Utiliser ce CR" : "Générer le CR"}
                             </Button>
                         </ModalFooter>
                     </div>
@@ -2076,6 +2417,40 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     </div>
                 )}
             </Modal>
+
+            {/* ── PORTAL CREDENTIALS MODAL ── */}
+            {portalCredentials && (
+                <Modal isOpen={true} onClose={() => setPortalCredentials(null)} title="Portail commercial activé">
+                    <div className="space-y-4 p-1">
+                        <p className="text-sm text-slate-600">
+                            Le compte portail a été créé. Transmettez ces identifiants au commercial.
+                        </p>
+                        {[
+                            { label: "Email", value: portalCredentials.email, mono: false },
+                            { label: "Mot de passe temporaire", value: portalCredentials.password, mono: true },
+                        ].map(({ label, value, mono }) => (
+                            <div key={label}>
+                                <p className="text-xs font-medium text-slate-500 mb-1">{label}</p>
+                                <div className={cn("flex items-center justify-between p-3 border rounded-lg", mono ? "bg-orange-50 border-orange-200" : "bg-slate-50 border-slate-200")}>
+                                    <span className={cn("text-sm font-medium select-all", mono ? "font-mono text-orange-900" : "text-slate-900")}>{value}</span>
+                                    <button onClick={() => { navigator.clipboard.writeText(value); success("Copié", ""); }} className={mono ? "text-orange-500 hover:text-orange-700" : "text-slate-400 hover:text-slate-600"}>
+                                        <Copy className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                        <p className="text-xs text-orange-600 flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            Ce mot de passe ne sera plus jamais affiché. Copiez-le maintenant.
+                        </p>
+                        <ModalFooter>
+                            <Button variant="primary" onClick={() => setPortalCredentials(null)}>
+                                J&apos;ai copié les identifiants
+                            </Button>
+                        </ModalFooter>
+                    </div>
+                </Modal>
+            )}
 
             {/* ── INTERLOCUTEUR MODAL ── */}
             <InterlocuteurModal

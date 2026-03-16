@@ -204,6 +204,8 @@ export default function SDRMissionEmailsSentPage() {
     const [missions, setMissions] = useState<MissionOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [stats, setStats] = useState<EmailStats | null>(null);
+    const [isBatchLoading, setIsBatchLoading] = useState(false);
+    const [batchMessage, setBatchMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     // Filters
     const [missionFilter, setMissionFilter] = useState<string>("");
@@ -342,6 +344,35 @@ export default function SDRMissionEmailsSentPage() {
     };
 
     const hasActiveFilters = missionFilter || searchQuery || statusFilter || hasOpenedFilter || dateFrom || dateTo;
+
+    const handleBatchAction = async (action: "delete" | "resend") => {
+        if (selected.size === 0) return;
+        const label = action === "delete" ? "supprimer" : "renvoyer";
+        if (!confirm(`Voulez-vous ${label} ${selected.size} email(s) sélectionné(s) ?`)) return;
+
+        setIsBatchLoading(true);
+        setBatchMessage(null);
+        try {
+            const res = await fetch("/api/sdr/emails/sent/batch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action, emailIds: Array.from(selected) }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                setBatchMessage({ type: "success", text: json.message || `${json.data?.affected || 0} email(s) traité(s)` });
+                setSelected(new Set());
+                fetchEmails();
+            } else {
+                setBatchMessage({ type: "error", text: json.error || "Erreur lors de l'opération" });
+            }
+        } catch {
+            setBatchMessage({ type: "error", text: "Erreur de connexion" });
+        } finally {
+            setIsBatchLoading(false);
+            setTimeout(() => setBatchMessage(null), 4000);
+        }
+    };
 
     const handleExport = async () => {
         const params = new URLSearchParams();
@@ -559,6 +590,13 @@ export default function SDRMissionEmailsSentPage() {
             </div>
 
             {/* Batch Actions */}
+            {batchMessage && (
+                <div className={cn("flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium", batchMessage.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200")}>
+                    {batchMessage.text}
+                </div>
+            )}
+
+            {/* Batch Actions */}
             {selected.size > 0 && (
                 <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-2xl px-5 py-3 animate-fade-in">
                     <div className="flex items-center gap-2.5">
@@ -568,13 +606,24 @@ export default function SDRMissionEmailsSentPage() {
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-all">
-                            <Trash2 className="w-3.5 h-3.5" />
+                        <button
+                            onClick={() => handleBatchAction("delete")}
+                            disabled={isBatchLoading}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-all disabled:opacity-50"
+                        >
+                            {isBatchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                             Supprimer
                         </button>
-                        <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-all">
-                            <RotateCcw className="w-3.5 h-3.5" />
+                        <button
+                            onClick={() => handleBatchAction("resend")}
+                            disabled={isBatchLoading}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-all disabled:opacity-50"
+                        >
+                            {isBatchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
                             Renvoyer
+                        </button>
+                        <button onClick={() => setSelected(new Set())} className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-lg transition-all">
+                            <X className="w-3.5 h-3.5" />
                         </button>
                     </div>
                 </div>

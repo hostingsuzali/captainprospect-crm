@@ -31,6 +31,8 @@ import {
     Copy,
     CheckCircle2,
     BarChart3,
+    GripVertical,
+    Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import { EditMissionDialog } from "./_components/EditMissionDialog";
@@ -52,6 +54,13 @@ interface Mission {
     client?: {
         id: string;
         name: string;
+        interlocuteurs?: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            title?: string | null;
+            isActive: boolean;
+        }[];
     };
     teamLeadSdrId?: string | null;
     teamLeadSdr?: { id: string; name: string; email: string } | null;
@@ -75,7 +84,14 @@ interface Mission {
         id: string;
         name: string;
         type: string;
-        _count?: { companies: number; contacts: number };
+        commercialInterlocuteurId?: string | null;
+        commercialInterlocuteur?: {
+            id: string;
+            firstName: string;
+            lastName: string;
+            title?: string | null;
+        } | null;
+        _count?: { companies: number; contacts?: number };
     }>;
     _count: {
         sdrAssignments: number;
@@ -88,6 +104,12 @@ interface Mission {
         opportunities: number;
     };
     defaultMailboxId?: string | null;
+    defaultInterlocuteur?: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        title?: string | null;
+    } | null;
 }
 
 interface AssignableUser {
@@ -183,6 +205,18 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [selectedTemplateToAdd, setSelectedTemplateToAdd] = useState<string>("");
     const [isAddingTemplate, setIsAddingTemplate] = useState(false);
     const [removingTemplateId, setRemovingTemplateId] = useState<string | null>(null);
+    const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
+    const [showEditTemplateModal, setShowEditTemplateModal] = useState(false);
+    const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
+    const [templateForm, setTemplateForm] = useState({ name: "", subject: "", bodyHtml: "", category: "OUTREACH" });
+    const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+    const [duplicatingTemplateId, setDuplicatingTemplateId] = useState<string | null>(null);
+    const [draggedTemplateIndex, setDraggedTemplateIndex] = useState<number | null>(null);
+    // Template modal tabs & AI
+    const [templateModalTab, setTemplateModalTab] = useState<"write" | "preview" | "ai">("write");
+    const [templateAiPrompt, setTemplateAiPrompt] = useState("");
+    const [templateAiSuggestions, setTemplateAiSuggestions] = useState<string[]>([]);
+    const [isGeneratingTemplateAi, setIsGeneratingTemplateAi] = useState(false);
 
     const [activeTab, setActiveTab] = useState("general");
     const [showStatusWorkflowDrawer, setShowStatusWorkflowDrawer] = useState(false);
@@ -498,6 +532,158 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
         }
     };
 
+    const handleCreateTemplate = async () => {
+        if (!mission || !templateForm.name || !templateForm.subject || !templateForm.bodyHtml) return;
+        setIsSavingTemplate(true);
+        try {
+            const res = await fetch(`/api/missions/${mission.id}/templates`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    createNew: true,
+                    name: templateForm.name,
+                    subject: templateForm.subject,
+                    bodyHtml: templateForm.bodyHtml,
+                    category: templateForm.category,
+                }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success("Template créé", "Le template a été créé et assigné à la mission");
+                setShowCreateTemplateModal(false);
+                setTemplateForm({ name: "", subject: "", bodyHtml: "", category: "OUTREACH" });
+                fetchMissionTemplates();
+            } else {
+                showError("Erreur", json.error);
+            }
+        } catch {
+            showError("Erreur", "Impossible de créer le template");
+        } finally {
+            setIsSavingTemplate(false);
+        }
+    };
+
+    const handleEditTemplate = async () => {
+        if (!mission || !editingTemplate) return;
+        setIsSavingTemplate(true);
+        try {
+            const res = await fetch(`/api/missions/${mission.id}/templates`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "update",
+                    templateId: editingTemplate.id,
+                    name: templateForm.name,
+                    subject: templateForm.subject,
+                    bodyHtml: templateForm.bodyHtml,
+                    category: templateForm.category,
+                }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success("Template mis à jour", "Les modifications ont été enregistrées");
+                setShowEditTemplateModal(false);
+                setEditingTemplate(null);
+                fetchMissionTemplates();
+            } else {
+                showError("Erreur", json.error);
+            }
+        } catch {
+            showError("Erreur", "Impossible de mettre à jour le template");
+        } finally {
+            setIsSavingTemplate(false);
+        }
+    };
+
+    const handleDuplicateTemplate = async (templateId: string) => {
+        if (!mission) return;
+        setDuplicatingTemplateId(templateId);
+        try {
+            const res = await fetch(`/api/missions/${mission.id}/templates`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "duplicate", templateId }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success("Template dupliqué", "Une copie a été créée et assignée à la mission");
+                fetchMissionTemplates();
+            } else {
+                showError("Erreur", json.error);
+            }
+        } catch {
+            showError("Erreur", "Impossible de dupliquer le template");
+        } finally {
+            setDuplicatingTemplateId(null);
+        }
+    };
+
+    const handleReorderTemplates = async (newTemplates: MissionTemplate[]) => {
+        if (!mission) return;
+        setMissionTemplates(newTemplates);
+        try {
+            await fetch(`/api/missions/${mission.id}/templates`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "reorder",
+                    orders: newTemplates.map((mt, i) => ({ missionTemplateId: mt.id, order: i + 1 })),
+                }),
+            });
+        } catch {
+            // Silent reorder failure - list stays optimistically updated
+        }
+    };
+
+    const handleDragStart = (index: number) => setDraggedTemplateIndex(index);
+
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        if (draggedTemplateIndex === null || draggedTemplateIndex === index) return;
+        const reordered = [...missionTemplates];
+        const [moved] = reordered.splice(draggedTemplateIndex, 1);
+        reordered.splice(index, 0, moved);
+        setDraggedTemplateIndex(index);
+        handleReorderTemplates(reordered);
+    };
+
+    const handleDragEnd = () => setDraggedTemplateIndex(null);
+
+    const handleGenerateTemplateAi = async () => {
+        if (!templateAiPrompt.trim() || isGeneratingTemplateAi) return;
+        setIsGeneratingTemplateAi(true);
+        try {
+            const res = await fetch("/api/ai/mistral/email-template", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    instruction: templateAiPrompt,
+                    subject: templateForm.subject || undefined,
+                    category: templateForm.category,
+                    missionName: mission?.name,
+                    clientName: mission?.client?.name,
+                    icp: campaignData?.icp || undefined,
+                    pitch: campaignData?.pitch || undefined,
+                    currentBody: templateForm.bodyHtml || undefined,
+                }),
+            });
+            const json = await res.json();
+            if (json.success && json.data?.bodyHtml) {
+                setTemplateAiSuggestions(prev => [json.data.bodyHtml, ...prev.slice(0, 2)]);
+                // If subject was suggested and current subject is empty, auto-fill
+                if (json.data.suggestedSubject && !templateForm.subject) {
+                    setTemplateForm(f => ({ ...f, subject: json.data.suggestedSubject }));
+                }
+            } else {
+                showError("Erreur IA", json.error || "Impossible de générer le template");
+            }
+        } catch {
+            showError("Erreur IA", "Erreur de connexion à Mistral AI");
+        } finally {
+            setIsGeneratingTemplateAi(false);
+        }
+    };
+
     // ============================================
     // TOGGLE ACTIVE STATUS
     // ============================================
@@ -754,7 +940,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {/* Infos mission */}
+                        {/* Infos mission */}
                             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                                 <h2 className="text-lg font-semibold text-slate-900 mb-4">Infos mission</h2>
                                 <dl className="space-y-3 text-sm">
@@ -768,6 +954,43 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                     <div>
                                         <dt className="text-slate-500 font-medium">Client</dt>
                                         <dd className="text-slate-900 mt-0.5">{mission.client?.name ?? "—"}</dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-slate-500 font-medium">Commercial par défaut</dt>
+                                        <dd className="mt-1">
+                                            <select
+                                                className="w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                value={mission.defaultInterlocuteur?.id ?? ""}
+                                                onChange={async (e) => {
+                                                    const value = e.target.value || null;
+                                                    try {
+                                                        const res = await fetch(`/api/missions/${mission.id}`, {
+                                                            method: "PUT",
+                                                            headers: { "Content-Type": "application/json" },
+                                                            body: JSON.stringify({ defaultInterlocuteurId: value }),
+                                                        });
+                                                        const json = await res.json();
+                                                        if (!json.success) {
+                                                            showError("Erreur", json.error || "Impossible de mettre à jour le commercial par défaut");
+                                                            return;
+                                                        }
+                                                        await fetchMission();
+                                                        success("Commercial mis à jour", "Le commercial par défaut de la mission a été mis à jour.");
+                                                    } catch (err) {
+                                                        console.error(err);
+                                                        showError("Erreur", "Impossible de mettre à jour le commercial par défaut");
+                                                    }
+                                                }}
+                                            >
+                                                <option value="">Aucun (par liste uniquement)</option>
+                                                {mission.client?.interlocuteurs?.map((it) => (
+                                                    <option key={it.id} value={it.id}>
+                                                        {it.firstName} {it.lastName}
+                                                        {it.title ? ` — ${it.title}` : ""}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </dd>
                                     </div>
                                     <div>
                                         <dt className="text-slate-500 font-medium">Début</dt>
@@ -1072,16 +1295,31 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                         <p className="text-sm text-slate-500">Templates pour envoi rapide</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => {
-                                        fetchAvailableTemplates();
-                                        setShowAddTemplateModal(true);
-                                    }}
-                                    className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                    Ajouter
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setTemplateForm({ name: "", subject: "", bodyHtml: "", category: "OUTREACH" });
+                                            setTemplateModalTab("write");
+                                            setTemplateAiPrompt("");
+                                            setTemplateAiSuggestions([]);
+                                            setShowCreateTemplateModal(true);
+                                        }}
+                                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                        Nouveau
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            fetchAvailableTemplates();
+                                            setShowAddTemplateModal(true);
+                                        }}
+                                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                                    >
+                                        <FileText className="w-4 h-4" />
+                                        Existant
+                                    </button>
+                                </div>
                             </div>
                             {isLoadingTemplates ? (
                                 <div className="flex items-center justify-center py-8">
@@ -1091,11 +1329,18 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                 <p className="text-sm text-slate-500 mb-3">Aucun template.</p>
                             ) : (
                                 <div className="grid gap-2">
-                                    {missionTemplates.map((mt) => (
+                                    {missionTemplates.map((mt, index) => (
                                         <div
                                             key={mt.id}
-                                            className="group flex items-center gap-4 p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all"
+                                            draggable
+                                            onDragStart={() => handleDragStart(index)}
+                                            onDragOver={(e) => handleDragOver(e, index)}
+                                            onDragEnd={handleDragEnd}
+                                            className={`group flex items-center gap-4 p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-grab active:cursor-grabbing ${draggedTemplateIndex === index ? "opacity-50 border-indigo-400 bg-indigo-50" : ""}`}
                                         >
+                                            <div className="text-slate-300 hover:text-slate-500 flex-shrink-0 cursor-grab">
+                                                <GripVertical className="w-4 h-4" />
+                                            </div>
                                             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center flex-shrink-0">
                                                 <Sparkles className="w-5 h-5 text-white" />
                                             </div>
@@ -1112,6 +1357,28 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                                     <Eye className="w-4 h-4" />
                                                 </button>
                                                 <button
+                                                    onClick={() => {
+                                                        setEditingTemplate(mt.template);
+                                                        setTemplateForm({ name: mt.template.name, subject: mt.template.subject, bodyHtml: mt.template.bodyHtml, category: mt.template.category });
+                                                        setTemplateModalTab("write");
+                                                        setTemplateAiPrompt("");
+                                                        setTemplateAiSuggestions([]);
+                                                        setShowEditTemplateModal(true);
+                                                    }}
+                                                    className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                                                    title="Modifier"
+                                                >
+                                                    <Pencil className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDuplicateTemplate(mt.template.id)}
+                                                    disabled={duplicatingTemplateId === mt.template.id}
+                                                    className="p-1.5 text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-lg disabled:opacity-50"
+                                                    title="Dupliquer"
+                                                >
+                                                    {duplicatingTemplateId === mt.template.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+                                                </button>
+                                                <button
                                                     onClick={() => handleRemoveTemplate(mt.template.id)}
                                                     disabled={removingTemplateId === mt.template.id}
                                                     className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
@@ -1125,16 +1392,19 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                 </div>
                             )}
                             {missionTemplates.length === 0 && (
-                                <a
-                                    href="/manager/email/templates"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                <button
+                                    onClick={() => {
+                                        setTemplateForm({ name: "", subject: "", bodyHtml: "", category: "OUTREACH" });
+                                        setTemplateModalTab("write");
+                                        setTemplateAiPrompt("");
+                                        setTemplateAiSuggestions([]);
+                                        setShowCreateTemplateModal(true);
+                                    }}
                                     className="inline-flex items-center gap-2 mt-2 text-sm font-medium text-indigo-600 hover:underline"
                                 >
                                     <Plus className="w-4 h-4" />
-                                    Créer un template
-                                    <ExternalLink className="w-4 h-4" />
-                                </a>
+                                    Créer votre premier template
+                                </button>
                             )}
                         </div>
                     </div>
@@ -1164,6 +1434,38 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                 <p className="text-sm text-slate-500">Aucune liste</p>
                             ) : (
                                 <div className="space-y-2">
+                                    {/* Bulk assign commercial to all lists */}
+                                    <div className="flex items-center justify-between mb-1">
+                                        <p className="text-xs text-slate-500">
+                                            Assigner un commercial à chaque liste pour router les RDV côté client.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            className="text-xs font-medium text-emerald-700 hover:text-emerald-800"
+                                            onClick={async () => {
+                                                if (!mission.client?.interlocuteurs || mission.client.interlocuteurs.length === 0) return;
+                                                const first = mission.client.interlocuteurs[0];
+                                                try {
+                                                    await Promise.all(
+                                                        mission.lists.map((list) =>
+                                                            fetch(`/api/lists/${list.id}`, {
+                                                                method: "PATCH",
+                                                                headers: { "Content-Type": "application/json" },
+                                                                body: JSON.stringify({ commercialInterlocuteurId: first.id }),
+                                                            })
+                                                        )
+                                                    );
+                                                    await fetchMission();
+                                                    success("Commerciaux assignés", "Toutes les listes utilisent maintenant ce commercial.");
+                                                } catch (err) {
+                                                    console.error(err);
+                                                    showError("Erreur", "Impossible d’assigner le commercial à toutes les listes");
+                                                }
+                                            }}
+                                        >
+                                            Assigner le premier commercial à toutes les listes
+                                        </button>
+                                    </div>
                                     {mission.lists.map((list) => (
                                         <div
                                             key={list.id}
@@ -1173,22 +1475,61 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                                 handleListContextMenu(e, list);
                                             }}
                                         >
-                                            <Link
-                                                href={`/manager/lists/${list.id}`}
-                                                className="mgr-mission-card group flex items-center gap-4 p-4 block"
-                                            >
-                                                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                                    <ListIcon className="w-5 h-5 text-amber-600" />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <p className="font-medium text-slate-900 group-hover:text-indigo-600 transition-colors">{list.name}</p>
-                                                    <p className="text-sm text-slate-500">
-                                                        {list._count?.companies || 0} sociétés · {list._count?.contacts || 0} contacts
-                                                    </p>
-                                                </div>
-                                                <span className="text-xs font-medium text-slate-500 px-2 py-1 bg-slate-100 rounded">{list.type}</span>
+                                            <div className="mgr-mission-card group flex items-center gap-4 p-4">
+                                                <Link
+                                                    href={`/manager/lists/${list.id}`}
+                                                    className="flex items-center gap-4 flex-1 min-w-0"
+                                                >
+                                                    <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                        <ListIcon className="w-5 h-5 text-amber-600" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-medium text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+                                                            {list.name}
+                                                        </p>
+                                                        <p className="text-sm text-slate-500">
+                                                            {list._count?.companies || 0} sociétés · {list._count?.contacts || 0} contacts
+                                                        </p>
+                                                    </div>
+                                                </Link>
+                                                <span className="text-xs font-medium text-slate-500 px-2 py-1 bg-slate-100 rounded">
+                                                    {list.type}
+                                                </span>
+                                                {/* Per-list commercial selector */}
+                                                <select
+                                                    className="ml-2 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                                                    value={list.commercialInterlocuteurId ?? ""}
+                                                    onChange={async (e) => {
+                                                        const value = e.target.value || null;
+                                                        try {
+                                                            const res = await fetch(`/api/lists/${list.id}`, {
+                                                                method: "PATCH",
+                                                                headers: { "Content-Type": "application/json" },
+                                                                body: JSON.stringify({ commercialInterlocuteurId: value }),
+                                                            });
+                                                            const json = await res.json();
+                                                            if (!json.success) {
+                                                                showError("Erreur", json.error || "Impossible de mettre à jour le commercial de la liste");
+                                                                return;
+                                                            }
+                                                            await fetchMission();
+                                                            success("Commercial mis à jour", `Commercial mis à jour pour la liste "${list.name}".`);
+                                                        } catch (err) {
+                                                            console.error(err);
+                                                            showError("Erreur", "Impossible de mettre à jour le commercial de la liste");
+                                                        }
+                                                    }}
+                                                >
+                                                    <option value="">{mission.defaultInterlocuteur ? "Hériter de la mission" : "Aucun"}</option>
+                                                    {mission.client?.interlocuteurs?.map((it) => (
+                                                        <option key={it.id} value={it.id}>
+                                                            {it.firstName} {it.lastName}
+                                                            {it.title ? ` — ${it.title}` : ""}
+                                                        </option>
+                                                    ))}
+                                                </select>
                                                 <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
-                                            </Link>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -1198,6 +1539,545 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                 )}
             </div>
+
+            {/* Create Template Modal */}
+            {showCreateTemplateModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowCreateTemplateModal(false)} />
+                    <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-emerald-600 to-teal-600 flex-shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                                    <Plus className="w-5 h-5 text-white" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-white">Nouveau template</h2>
+                                    <p className="text-xs text-white/70">Créez et assignez un template email à cette mission</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowCreateTemplateModal(false)} className="p-2 rounded-lg hover:bg-white/20 text-white transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Tab bar */}
+                        <div className="flex gap-1 px-6 pt-3 pb-0 border-b border-slate-200 bg-white flex-shrink-0">
+                            {(["write", "preview", "ai"] as const).map((tab) => {
+                                const labels = { write: "✏️ Éditeur", preview: "👁 Prévisualisation", ai: "✨ IA Mistral" };
+                                return (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setTemplateModalTab(tab)}
+                                        className={`px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 -mb-px transition-all ${templateModalTab === tab ? "text-emerald-700 border-emerald-600 bg-emerald-50/60" : "text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50"}`}
+                                    >
+                                        {labels[tab]}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Body */}
+                        <div className="flex-1 overflow-y-auto">
+                            {/* ── WRITE TAB ── */}
+                            {templateModalTab === "write" && (
+                                <div className="p-6 space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Nom du template <span className="text-red-500">*</span></label>
+                                            <input type="text" value={templateForm.name} onChange={(e) => setTemplateForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex: Introduction prospect chaud" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Catégorie</label>
+                                            <select value={templateForm.category} onChange={(e) => setTemplateForm(f => ({ ...f, category: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                                <option value="OUTREACH">Outreach</option>
+                                                <option value="FOLLOW_UP">Follow-up</option>
+                                                <option value="NURTURE">Nurture</option>
+                                                <option value="CLOSING">Closing</option>
+                                                <option value="OTHER">Autre</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Objet de l&apos;email <span className="text-red-500">*</span></label>
+                                        <input type="text" value={templateForm.subject} onChange={(e) => setTemplateForm(f => ({ ...f, subject: e.target.value }))} placeholder="Ex: À propos de {{company}}" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-sm font-medium text-slate-700">Contenu HTML <span className="text-red-500">*</span></label>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-slate-400">Variables : </span>
+                                                {["{{firstName}}", "{{company}}", "{{fullName}}"].map(v => (
+                                                    <button key={v} onClick={() => setTemplateForm(f => ({ ...f, bodyHtml: f.bodyHtml + v }))} className="text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 font-mono transition-colors">
+                                                        {v}
+                                                    </button>
+                                                ))}
+                                                <button
+                                                    onClick={() => setTemplateModalTab("preview")}
+                                                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-0.5 rounded border border-slate-200 transition-colors"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" /> Prévisualiser
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <textarea
+                                            value={templateForm.bodyHtml}
+                                            onChange={(e) => setTemplateForm(f => ({ ...f, bodyHtml: e.target.value }))}
+                                            rows={14}
+                                            placeholder="<p>Bonjour {{firstName}},</p>&#10;<p>Je me permets de vous contacter au sujet de...</p>"
+                                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── PREVIEW TAB ── */}
+                            {templateModalTab === "preview" && (
+                                <div className="p-6">
+                                    <div className="mb-3 flex items-center gap-2">
+                                        <Eye className="w-4 h-4 text-slate-500" />
+                                        <span className="text-sm font-medium text-slate-700">Aperçu de l&apos;email</span>
+                                        <span className="text-xs text-slate-400 ml-2">Les variables sont affichées telles quelles</span>
+                                    </div>
+                                    {templateForm.subject && (
+                                        <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Objet : </span>
+                                            <span className="text-sm font-medium text-slate-800">{templateForm.subject}</span>
+                                        </div>
+                                    )}
+                                    {templateForm.bodyHtml ? (
+                                        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                            <div className="bg-gradient-to-r from-slate-100 to-slate-50 px-4 py-2 border-b border-slate-200 flex items-center gap-2">
+                                                <div className="w-3 h-3 rounded-full bg-red-400" />
+                                                <div className="w-3 h-3 rounded-full bg-amber-400" />
+                                                <div className="w-3 h-3 rounded-full bg-emerald-400" />
+                                                <span className="text-xs text-slate-400 ml-2">Aperçu email</span>
+                                            </div>
+                                            <div className="bg-white p-6">
+                                                <div
+                                                    className="prose prose-sm max-w-none"
+                                                    style={{ fontFamily: "Arial, sans-serif", fontSize: "15px", lineHeight: "1.6" }}
+                                                    dangerouslySetInnerHTML={{ __html: templateForm.bodyHtml }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-xl">
+                                            <Eye className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                                            <p className="text-sm text-slate-500">Rédigez le contenu HTML dans l&apos;onglet <strong>Éditeur</strong> pour voir l&apos;aperçu</p>
+                                            <button onClick={() => setTemplateModalTab("write")} className="mt-3 text-xs text-indigo-600 hover:underline">Aller à l&apos;éditeur →</button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── AI TAB ── */}
+                            {templateModalTab === "ai" && (
+                                <div className="p-6 space-y-5">
+                                    {/* AI context summary */}
+                                    {(mission?.name || campaignData?.icp) && (
+                                        <div className="flex flex-wrap gap-2 p-3 bg-violet-50 border border-violet-200 rounded-xl">
+                                            <span className="text-xs font-medium text-violet-700">Contexte automatique :</span>
+                                            {mission?.name && <span className="text-xs bg-white text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">Mission : {mission.name}</span>}
+                                            {mission?.client?.name && <span className="text-xs bg-white text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">Client : {mission.client.name}</span>}
+                                            {campaignData?.icp && <span className="text-xs bg-white text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">ICP défini</span>}
+                                            {campaignData?.pitch && <span className="text-xs bg-white text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">Pitch défini</span>}
+                                        </div>
+                                    )}
+
+                                    {/* Quick prompts */}
+                                    <div>
+                                        <p className="text-sm font-medium text-slate-700 mb-2">Suggestions rapides</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {[
+                                                "Rédige un email de prospection court et percutant pour un premier contact",
+                                                "Génère un email de follow-up chaleureux pour relancer un prospect sans réponse",
+                                                "Crée un email de closing avec un CTA clair pour fixer un rendez-vous",
+                                                "Rédige un email de nurture avec de la valeur ajoutée et un contenu informatif",
+                                                "Améliore et reformule l'email actuel pour le rendre plus professionnel et engageant",
+                                            ].map((p) => (
+                                                <button
+                                                    key={p}
+                                                    onClick={() => setTemplateAiPrompt(p)}
+                                                    className={`text-xs px-3 py-1.5 rounded-full border transition-all ${templateAiPrompt === p ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-600 border-slate-200 hover:border-violet-400 hover:text-violet-600"}`}
+                                                >
+                                                    {p.length > 55 ? p.slice(0, 55) + "…" : p}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Prompt input */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Votre instruction <span className="text-red-500">*</span></label>
+                                        <div className="flex gap-2">
+                                            <textarea
+                                                value={templateAiPrompt}
+                                                onChange={(e) => setTemplateAiPrompt(e.target.value)}
+                                                rows={3}
+                                                placeholder="Ex: Rédige un email de prospection B2B court et percutant pour présenter notre solution à des directeurs commerciaux..."
+                                                className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+                                                onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerateTemplateAi(); }}
+                                            />
+                                            <button
+                                                onClick={handleGenerateTemplateAi}
+                                                disabled={!templateAiPrompt.trim() || isGeneratingTemplateAi}
+                                                className="flex flex-col items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 rounded-xl disabled:opacity-50 transition-all min-w-[80px]"
+                                            >
+                                                {isGeneratingTemplateAi ? (
+                                                    <><Loader2 className="w-4 h-4 animate-spin" /><span className="text-[11px]">Génère…</span></>
+                                                ) : (
+                                                    <><Sparkles className="w-4 h-4" /><span className="text-[11px]">Générer</span></>
+                                                )}
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-1">Ctrl+Entrée pour générer · Le contexte de la mission est automatiquement inclus</p>
+                                    </div>
+
+                                    {/* Suggestions */}
+                                    {templateAiSuggestions.length > 0 && (
+                                        <div className="space-y-3">
+                                            <p className="text-sm font-medium text-slate-700">Résultats générés — cliquez sur <strong>Utiliser</strong> pour l&apos;appliquer à l&apos;éditeur :</p>
+                                            {templateAiSuggestions.map((html, idx) => (
+                                                <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
+                                                    <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-200">
+                                                        <span className="text-xs font-semibold text-slate-600">Version {templateAiSuggestions.length - idx}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setTemplateForm(f => ({ ...f, bodyHtml: html }));
+                                                                    setTemplateModalTab("write");
+                                                                    success("Appliqué", "Le contenu généré a été appliqué à l'éditeur");
+                                                                }}
+                                                                className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1 rounded-lg border border-emerald-200 transition-colors"
+                                                            >
+                                                                <CheckCircle2 className="w-3 h-3" /> Utiliser
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setTemplateModalTab("preview")}
+                                                                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 px-2 py-1 rounded-lg hover:bg-indigo-50 border border-slate-200 transition-colors"
+                                                                title="Prévisualiser dans l'onglet preview"
+                                                            >
+                                                                <Eye className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div
+                                                        className="p-4 bg-white prose prose-sm max-w-none text-sm"
+                                                        style={{ fontFamily: "Arial, sans-serif", fontSize: "14px", lineHeight: "1.6", maxHeight: "220px", overflowY: "auto" }}
+                                                        dangerouslySetInnerHTML={{ __html: html }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {templateAiSuggestions.length === 0 && !isGeneratingTemplateAi && (
+                                        <div className="text-center py-10 border-2 border-dashed border-violet-200 rounded-xl bg-violet-50/30">
+                                            <Sparkles className="w-10 h-10 text-violet-300 mx-auto mb-3" />
+                                            <p className="text-sm font-medium text-slate-600">L&apos;IA va générer un email HTML professionnel</p>
+                                            <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Elle utilise automatiquement le contexte de la mission, du client, de l&apos;ICP et du pitch définis</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex justify-between items-center gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 flex-shrink-0">
+                            <div className="text-xs text-slate-400">
+                                {templateModalTab === "write" && templateForm.bodyHtml && (
+                                    <button onClick={() => setTemplateModalTab("preview")} className="text-indigo-500 hover:underline flex items-center gap-1">
+                                        <Eye className="w-3 h-3" /> Voir l&apos;aperçu
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setShowCreateTemplateModal(false)} className="px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded-lg transition-colors">
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={handleCreateTemplate}
+                                    disabled={!templateForm.name || !templateForm.subject || !templateForm.bodyHtml || isSavingTemplate}
+                                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg disabled:opacity-50 transition-all shadow-sm"
+                                >
+                                    {isSavingTemplate ? <><Loader2 className="w-4 h-4 animate-spin" />Création...</> : <><Plus className="w-4 h-4" />Créer et assigner</>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Template Modal */}
+            {showEditTemplateModal && editingTemplate && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowEditTemplateModal(false)} />
+                    <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-blue-600 to-indigo-600 flex-shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                                    <Pencil className="w-5 h-5 text-white" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-white">Modifier le template</h2>
+                                    <p className="text-xs text-white/70 truncate max-w-[300px]">{editingTemplate.name}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowEditTemplateModal(false)} className="p-2 rounded-lg hover:bg-white/20 text-white transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Tab bar */}
+                        <div className="flex gap-1 px-6 pt-3 pb-0 border-b border-slate-200 bg-white flex-shrink-0">
+                            {(["write", "preview", "ai"] as const).map((tab) => {
+                                const labels = { write: "✏️ Éditeur", preview: "👁 Prévisualisation", ai: "✨ IA Mistral" };
+                                return (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setTemplateModalTab(tab)}
+                                        className={`px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 -mb-px transition-all ${templateModalTab === tab ? "text-blue-700 border-blue-600 bg-blue-50/60" : "text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50"}`}
+                                    >
+                                        {labels[tab]}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Body */}
+                        <div className="flex-1 overflow-y-auto">
+                            {/* ── WRITE TAB ── */}
+                            {templateModalTab === "write" && (
+                                <div className="p-6 space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Nom du template</label>
+                                            <input type="text" value={templateForm.name} onChange={(e) => setTemplateForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Catégorie</label>
+                                            <select value={templateForm.category} onChange={(e) => setTemplateForm(f => ({ ...f, category: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                                <option value="OUTREACH">Outreach</option>
+                                                <option value="FOLLOW_UP">Follow-up</option>
+                                                <option value="NURTURE">Nurture</option>
+                                                <option value="CLOSING">Closing</option>
+                                                <option value="OTHER">Autre</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Objet de l&apos;email</label>
+                                        <input type="text" value={templateForm.subject} onChange={(e) => setTemplateForm(f => ({ ...f, subject: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-sm font-medium text-slate-700">Contenu HTML</label>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-slate-400">Variables : </span>
+                                                {["{{firstName}}", "{{company}}", "{{fullName}}"].map(v => (
+                                                    <button key={v} onClick={() => setTemplateForm(f => ({ ...f, bodyHtml: f.bodyHtml + v }))} className="text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 font-mono transition-colors">
+                                                        {v}
+                                                    </button>
+                                                ))}
+                                                <button
+                                                    onClick={() => setTemplateModalTab("preview")}
+                                                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-0.5 rounded border border-slate-200 transition-colors"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" /> Prévisualiser
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <textarea
+                                            value={templateForm.bodyHtml}
+                                            onChange={(e) => setTemplateForm(f => ({ ...f, bodyHtml: e.target.value }))}
+                                            rows={14}
+                                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── PREVIEW TAB ── */}
+                            {templateModalTab === "preview" && (
+                                <div className="p-6">
+                                    <div className="mb-3 flex items-center gap-2">
+                                        <Eye className="w-4 h-4 text-slate-500" />
+                                        <span className="text-sm font-medium text-slate-700">Aperçu de l&apos;email</span>
+                                        <span className="text-xs text-slate-400 ml-2">Les variables sont affichées telles quelles</span>
+                                    </div>
+                                    {templateForm.subject && (
+                                        <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Objet : </span>
+                                            <span className="text-sm font-medium text-slate-800">{templateForm.subject}</span>
+                                        </div>
+                                    )}
+                                    {templateForm.bodyHtml ? (
+                                        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                            <div className="bg-gradient-to-r from-slate-100 to-slate-50 px-4 py-2 border-b border-slate-200 flex items-center gap-2">
+                                                <div className="w-3 h-3 rounded-full bg-red-400" />
+                                                <div className="w-3 h-3 rounded-full bg-amber-400" />
+                                                <div className="w-3 h-3 rounded-full bg-emerald-400" />
+                                                <span className="text-xs text-slate-400 ml-2">Aperçu email</span>
+                                            </div>
+                                            <div className="bg-white p-6">
+                                                <div
+                                                    className="prose prose-sm max-w-none"
+                                                    style={{ fontFamily: "Arial, sans-serif", fontSize: "15px", lineHeight: "1.6" }}
+                                                    dangerouslySetInnerHTML={{ __html: templateForm.bodyHtml }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-xl">
+                                            <Eye className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                                            <p className="text-sm text-slate-500">Rédigez le contenu HTML dans l&apos;onglet <strong>Éditeur</strong> pour voir l&apos;aperçu</p>
+                                            <button onClick={() => setTemplateModalTab("write")} className="mt-3 text-xs text-indigo-600 hover:underline">Aller à l&apos;éditeur →</button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── AI TAB ── */}
+                            {templateModalTab === "ai" && (
+                                <div className="p-6 space-y-5">
+                                    {/* AI context summary */}
+                                    {(mission?.name || campaignData?.icp) && (
+                                        <div className="flex flex-wrap gap-2 p-3 bg-violet-50 border border-violet-200 rounded-xl">
+                                            <span className="text-xs font-medium text-violet-700">Contexte automatique :</span>
+                                            {mission?.name && <span className="text-xs bg-white text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">Mission : {mission.name}</span>}
+                                            {mission?.client?.name && <span className="text-xs bg-white text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">Client : {mission.client.name}</span>}
+                                            {campaignData?.icp && <span className="text-xs bg-white text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">ICP défini</span>}
+                                            {campaignData?.pitch && <span className="text-xs bg-white text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">Pitch défini</span>}
+                                        </div>
+                                    )}
+
+                                    {/* Quick prompts */}
+                                    <div>
+                                        <p className="text-sm font-medium text-slate-700 mb-2">Suggestions rapides</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {[
+                                                "Améliore et reformule l'email actuel pour le rendre plus professionnel et engageant",
+                                                "Rédige un email de prospection court et percutant pour un premier contact",
+                                                "Génère un email de follow-up chaleureux pour relancer un prospect sans réponse",
+                                                "Crée un email de closing avec un CTA clair pour fixer un rendez-vous",
+                                                "Simplifie et raccourcis l'email actuel tout en conservant le message clé",
+                                            ].map((p) => (
+                                                <button
+                                                    key={p}
+                                                    onClick={() => setTemplateAiPrompt(p)}
+                                                    className={`text-xs px-3 py-1.5 rounded-full border transition-all ${templateAiPrompt === p ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-600 border-slate-200 hover:border-violet-400 hover:text-violet-600"}`}
+                                                >
+                                                    {p.length > 55 ? p.slice(0, 55) + "…" : p}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Prompt input */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Votre instruction <span className="text-red-500">*</span></label>
+                                        <div className="flex gap-2">
+                                            <textarea
+                                                value={templateAiPrompt}
+                                                onChange={(e) => setTemplateAiPrompt(e.target.value)}
+                                                rows={3}
+                                                placeholder="Ex: Améliore cet email en le rendant plus percutant et en ajoutant un CTA clair..."
+                                                className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+                                                onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerateTemplateAi(); }}
+                                            />
+                                            <button
+                                                onClick={handleGenerateTemplateAi}
+                                                disabled={!templateAiPrompt.trim() || isGeneratingTemplateAi}
+                                                className="flex flex-col items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-br from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 rounded-xl disabled:opacity-50 transition-all min-w-[80px]"
+                                            >
+                                                {isGeneratingTemplateAi ? (
+                                                    <><Loader2 className="w-4 h-4 animate-spin" /><span className="text-[11px]">Génère…</span></>
+                                                ) : (
+                                                    <><Sparkles className="w-4 h-4" /><span className="text-[11px]">Générer</span></>
+                                                )}
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-1">Ctrl+Entrée pour générer · L&apos;email existant est transmis à l&apos;IA comme base</p>
+                                    </div>
+
+                                    {/* Suggestions */}
+                                    {templateAiSuggestions.length > 0 && (
+                                        <div className="space-y-3">
+                                            <p className="text-sm font-medium text-slate-700">Résultats générés — cliquez sur <strong>Utiliser</strong> pour l&apos;appliquer à l&apos;éditeur :</p>
+                                            {templateAiSuggestions.map((html, idx) => (
+                                                <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
+                                                    <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-200">
+                                                        <span className="text-xs font-semibold text-slate-600">Version {templateAiSuggestions.length - idx}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setTemplateForm(f => ({ ...f, bodyHtml: html }));
+                                                                    setTemplateModalTab("write");
+                                                                    success("Appliqué", "Le contenu généré a été appliqué à l'éditeur");
+                                                                }}
+                                                                className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1 rounded-lg border border-emerald-200 transition-colors"
+                                                            >
+                                                                <CheckCircle2 className="w-3 h-3" /> Utiliser
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setTemplateForm(f => ({ ...f, bodyHtml: html }));
+                                                                    setTemplateModalTab("preview");
+                                                                }}
+                                                                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 px-2 py-1 rounded-lg hover:bg-indigo-50 border border-slate-200 transition-colors"
+                                                            >
+                                                                <Eye className="w-3 h-3" /> Aperçu
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div
+                                                        className="p-4 bg-white prose prose-sm max-w-none text-sm"
+                                                        style={{ fontFamily: "Arial, sans-serif", fontSize: "14px", lineHeight: "1.6", maxHeight: "220px", overflowY: "auto" }}
+                                                        dangerouslySetInnerHTML={{ __html: html }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {templateAiSuggestions.length === 0 && !isGeneratingTemplateAi && (
+                                        <div className="text-center py-10 border-2 border-dashed border-violet-200 rounded-xl bg-violet-50/30">
+                                            <Sparkles className="w-10 h-10 text-violet-300 mx-auto mb-3" />
+                                            <p className="text-sm font-medium text-slate-600">L&apos;IA va améliorer ou réécrire votre email</p>
+                                            <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Elle utilise le contenu actuel de l&apos;email + le contexte de la mission comme base de travail</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex justify-between items-center gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 flex-shrink-0">
+                            <div className="text-xs text-slate-400">
+                                {templateModalTab === "write" && templateForm.bodyHtml && (
+                                    <button onClick={() => setTemplateModalTab("preview")} className="text-indigo-500 hover:underline flex items-center gap-1">
+                                        <Eye className="w-3 h-3" /> Voir l&apos;aperçu
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setShowEditTemplateModal(false)} className="px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded-lg transition-colors">
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={handleEditTemplate}
+                                    disabled={!templateForm.name || !templateForm.subject || !templateForm.bodyHtml || isSavingTemplate}
+                                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-lg disabled:opacity-50 transition-all shadow-sm"
+                                >
+                                    {isSavingTemplate ? <><Loader2 className="w-4 h-4 animate-spin" />Sauvegarde...</> : <><Save className="w-4 h-4" />Enregistrer</>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Add Template Modal */}
             {showAddTemplateModal && (

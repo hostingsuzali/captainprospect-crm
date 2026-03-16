@@ -15,6 +15,7 @@ declare module "next-auth" {
         role: UserRole;
         isActive: boolean;
         clientId?: string | null;
+        interlocuteurId?: string | null;
         clientOnboardingDismissedPermanently?: boolean;
     }
     interface Session {
@@ -28,6 +29,7 @@ declare module "next-auth/jwt" {
         role: UserRole;
         isActive: boolean;
         clientId?: string | null;
+        interlocuteurId?: string | null;
         clientOnboardingDismissedPermanently?: boolean;
     }
 }
@@ -126,6 +128,7 @@ export const authOptions: NextAuthOptions = {
                         role: user.role,
                         isActive: user.isActive ?? true, // Default to true for existing users
                         clientId: user.clientId,
+                        interlocuteurId: user.interlocuteurId,
                         clientOnboardingDismissedPermanently: user.clientOnboardingDismissedPermanently ?? false,
                     };
                 } catch (err) {
@@ -143,6 +146,7 @@ export const authOptions: NextAuthOptions = {
                 token.role = user.role;
                 token.isActive = user.isActive;
                 token.clientId = user.clientId;
+                token.interlocuteurId = user.interlocuteurId;
                 token.clientOnboardingDismissedPermanently = user.clientOnboardingDismissedPermanently ?? false;
             }
             return token;
@@ -153,6 +157,7 @@ export const authOptions: NextAuthOptions = {
                 session.user.role = token.role;
                 session.user.isActive = token.isActive;
                 session.user.clientId = token.clientId;
+                session.user.interlocuteurId = token.interlocuteurId;
                 // For CLIENT users, fetch fresh onboarding preference so update() reflects DB changes
                 if (token.role === "CLIENT") {
                     const u = await prisma.user.findUnique({
@@ -190,6 +195,8 @@ export function getRedirectPath(role: UserRole): string {
             return "/developer/dashboard";
         case "BUSINESS_DEVELOPER":
             return "/bd/dashboard";
+        case "COMMERCIAL":
+            return "/commercial/portal";
         default:
             return "/";
     }
@@ -221,6 +228,7 @@ export async function sessionFromToken(token: JWT | null): Promise<Session | nul
             role: token.role as UserRole,
             isActive: token.isActive ?? true,
             clientId: token.clientId ?? null,
+            interlocuteurId: token.interlocuteurId ?? null,
             clientOnboardingDismissedPermanently,
         },
         expires: "",

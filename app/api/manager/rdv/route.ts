@@ -118,12 +118,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     andClauses.push({ sdrId: { in: sdrIds } });
   }
   if (dateFrom) {
-    andClauses.push({ callbackDate: { gte: new Date(dateFrom) } });
+    andClauses.push({ createdAt: { gte: new Date(dateFrom) } });
   }
   if (dateTo) {
     const end = new Date(dateTo);
     end.setHours(23, 59, 59, 999);
-    andClauses.push({ callbackDate: { lte: end } });
+    andClauses.push({ createdAt: { lte: end } });
   }
 
   if (statuses.length > 0) {
@@ -177,7 +177,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     prisma.action.findMany({
       where,
       include,
-      orderBy: { callbackDate: "desc" },
+      orderBy: { createdAt: "desc" },
       skip,
       take: limit,
     }),

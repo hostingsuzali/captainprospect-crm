@@ -96,6 +96,7 @@ interface Mission {
     name: string;
     channel: string;
     client: { name: string };
+    defaultMailboxId?: string | null;
 }
 
 interface ListItem {
@@ -1067,6 +1068,7 @@ export default function SDRActionPage() {
         // For ENVOIE_MAIL, open the QuickEmailModal instead of submitting directly
         if (result === "ENVOIE_MAIL") {
             const mission = missions.find(m => m.name === row.missionName);
+            const missionId = mission?.id || selectedMissionId;
             setEmailModalContact(row.contact ? {
                 id: row.contact.id,
                 firstName: row.contact.firstName,
@@ -1076,8 +1078,45 @@ export default function SDRActionPage() {
                 company: { id: row.company.id, name: row.company.name }
             } : null);
             setEmailModalCompany(row.contact ? null : { id: row.company.id, name: row.company.name, phone: row.company.phone });
-            setEmailModalMissionId(mission?.id || selectedMissionId);
+            setEmailModalMissionId(missionId || null);
             setEmailModalMissionName(mission?.name || row.missionName);
+            // Always reset first so stale value from previous action never persists
+            setEmailModalPreferredMailboxId(null);
+
+            // If mission already has defaultMailboxId in local state, use it immediately
+            if (mission?.defaultMailboxId) {
+                setEmailModalPreferredMailboxId(mission.defaultMailboxId);
+            } else if (missionId) {
+                // Async fallback: fetch mission to get defaultMailboxId (and client fallback)
+                (async () => {
+                    try {
+                        const missionRes = await fetch(`/api/missions/${missionId}`);
+                        const missionJson = await missionRes.json();
+                        if (!missionJson.success) return;
+
+                        const missionDefaultMailboxId = missionJson.data?.defaultMailboxId as string | undefined;
+                        if (missionDefaultMailboxId) {
+                            setEmailModalPreferredMailboxId(missionDefaultMailboxId);
+                            return;
+                        }
+
+                        if (!missionJson.data?.client?.id) return;
+                        const clientId = missionJson.data.client.id as string;
+                        const clientRes = await fetch(`/api/clients/${clientId}`);
+                        const clientJson = await clientRes.json();
+                        if (!clientJson.success) return;
+                        const onboardingData = (clientJson.data?.onboarding?.onboardingData ?? {}) as {
+                            defaultMailboxId?: string;
+                        };
+                        if (onboardingData.defaultMailboxId) {
+                            setEmailModalPreferredMailboxId(onboardingData.defaultMailboxId);
+                        }
+                    } catch {
+                        // silently ignore
+                    }
+                })();
+            }
+
             setPendingEmailAction({ row, result });
             setShowQuickEmailModal(true);
             return;
@@ -2019,7 +2058,6 @@ export default function SDRActionPage() {
                             missionName={unifiedDrawerMissionName}
                             clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
                             clientInterlocuteurs={unifiedDrawerInterlocuteurs}
-                            onOpenEmailModal={openEmailModalFromDrawer}
                             onActionRecorded={() => {
                                 const rowKey = unifiedDrawerContactId ?? unifiedDrawerCompanyId ?? "";
                                 if (rowKey) {
@@ -2981,7 +3019,6 @@ export default function SDRActionPage() {
                     missionName={unifiedDrawerMissionName}
                     clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
                     clientInterlocuteurs={unifiedDrawerInterlocuteurs}
-                    onOpenEmailModal={openEmailModalFromDrawer}
                     onActionRecorded={() => {
                         const rowKey = unifiedDrawerContactId ?? unifiedDrawerCompanyId ?? "";
                         if (rowKey) setActionsCompleted((c) => c + 1);

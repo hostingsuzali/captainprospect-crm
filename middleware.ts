@@ -36,6 +36,10 @@ export default withAuth(
             return NextResponse.redirect(new URL("/unauthorized", req.url));
         }
 
+        if (path.startsWith("/commercial") && token?.role !== "COMMERCIAL") {
+            return NextResponse.redirect(new URL("/unauthorized", req.url));
+        }
+
         return NextResponse.next();
     },
     {
@@ -46,5 +50,5 @@ export default withAuth(
 );
 
 export const config = {
-    matcher: ["/sdr/:path*", "/manager/:path*", "/client/:path*", "/developer/:path*", "/bd/:path*"],
+    matcher: ["/sdr/:path*", "/manager/:path*", "/client/:path*", "/developer/:path*", "/bd/:path*", "/commercial/:path*"],
 };

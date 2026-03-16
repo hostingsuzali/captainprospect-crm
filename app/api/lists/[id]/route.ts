@@ -28,9 +28,18 @@ export const GET = withErrorHandler(async (
                     name: true,
                     client: {
                         select: {
+                            id: true,
                             name: true,
                         },
                     },
+                },
+            },
+            commercialInterlocuteur: {
+                select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    title: true,
                 },
             },
             _count: {
@@ -79,7 +88,61 @@ export const PATCH = withErrorHandler(async (
     const { id } = await params;
     const body = await request.json();
 
-    const { name, type, source, missionId } = body;
+    const { name, type, source, missionId, commercialInterlocuteurId } = body;
+
+    // Load current list with mission + client for validation
+    const existing = await prisma.list.findUnique({
+        where: { id },
+        include: {
+            mission: {
+                select: {
+                    id: true,
+                    clientId: true,
+                },
+            },
+        },
+    });
+
+    if (!existing) {
+        return errorResponse('Liste introuvable', 404);
+    }
+
+    // If missionId is changing, we will treat the list as moved to another mission.
+    // In that case, we clear any explicit commercialInterlocuteurId to avoid mismatched clients.
+    let nextMissionId: string | undefined;
+    if (missionId && missionId !== existing.missionId) {
+        nextMissionId = missionId;
+    }
+
+    // Validate commercialInterlocuteurId, if provided (non-null)
+    let commercialInterlocuteurConnect:
+        | { connect: { id: string } }
+        | { disconnect: true }
+        | undefined;
+
+    if (commercialInterlocuteurId !== undefined) {
+        if (commercialInterlocuteurId === null) {
+            commercialInterlocuteurConnect = { disconnect: true };
+        } else {
+            // Ensure interlocuteur belongs to the same client as the (current) mission
+            const interlocuteur = await prisma.clientInterlocuteur.findFirst({
+                where: {
+                    id: commercialInterlocuteurId,
+                    clientId: existing.mission.clientId,
+                },
+                select: { id: true },
+            });
+
+            if (!interlocuteur) {
+                return errorResponse(
+                    'Ce commercial n’appartient pas au même client que la mission de cette liste',
+                    400
+                );
+            }
+
+            commercialInterlocuteurConnect = { connect: { id: commercialInterlocuteurId } };
+        }
+    }
 
     const updatedList = await prisma.list.update({
         where: { id },
@@ -87,13 +150,24 @@ export const PATCH = withErrorHandler(async (
             ...(name && { name }),
             ...(type && { type }),
             ...(source !== undefined && { source }),
-            ...(missionId && { missionId }),
+            ...(nextMissionId && { missionId: nextMissionId }),
+            ...(commercialInterlocuteurConnect && {
+                commercialInterlocuteur: commercialInterlocuteurConnect,
+            }),
         },
         include: {
             mission: {
                 select: {
                     id: true,
                     name: true,
+                },
+            },
+            commercialInterlocuteur: {
+                select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    title: true,
                 },
             },
         },
