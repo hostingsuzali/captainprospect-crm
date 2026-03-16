@@ -40,6 +40,7 @@ import {
     ShieldCheck, BarChart3, Loader2, ExternalLink, Zap, Video,
     MapPin, ChevronDown, ChevronUp, Mic, Sparkles, Clock,
     AlertCircle, RefreshCw, Send, Eye, List, Hash, ArrowUpRight,
+    PenLine,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
