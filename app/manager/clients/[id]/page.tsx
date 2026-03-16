@@ -547,14 +547,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             return;
         }
 
-        // Determine transcript source (Leexi vs manual text)
+        // Determine transcript source (Leexi vs manual text / imported CR)
         const isLeexiMode = transcriptMode === "leexi";
+        const isTextMode = transcriptMode === "text";
+
         if (isLeexiMode && !newSessionForm.leexiId) {
             showError("Erreur", "Sélectionnez une transcription Leexi");
             return;
         }
 
-        if (!isLeexiMode && (!manualTranscript.trim() || manualTranscript.trim().length < 20)) {
+        // Only enforce the 20‑character minimum when user pastes a raw transcription
+        if (isTextMode && (!manualTranscript.trim() || manualTranscript.trim().length < 20)) {
             showError("Erreur", "La transcription doit contenir au moins 20 caractères");
             return;
         }
