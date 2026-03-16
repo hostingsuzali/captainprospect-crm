@@ -107,24 +107,29 @@ function extractCompanyFromRow(
     companyData: Record<string, string>;
     companyCustomData: Record<string, string>;
     hasCompanyData: boolean;
+    additionalPhones: string[];
 } {
     const companyData: Record<string, string> = {};
     const companyCustomData: Record<string, string> = {};
     let hasCompanyData = false;
     const standardFields = ["name", "industry", "country", "website", "size", "phone"];
+    const additionalPhones: string[] = [];
+
     for (const mapping of mappings) {
         if (!mapping.targetField.startsWith("company.")) continue;
         const field = mapping.targetField.replace("company.", "");
         const value = row[mapping.csvColumn];
         if (!value) continue;
-        if (standardFields.includes(field)) {
+        if (field === "additionalPhones") {
+            additionalPhones.push(value.trim());
+        } else if (standardFields.includes(field)) {
             companyData[field] = value.trim();
         } else {
             companyCustomData[field] = value.trim();
         }
         hasCompanyData = true;
     }
-    return { companyData, companyCustomData, hasCompanyData };
+    return { companyData, companyCustomData, hasCompanyData, additionalPhones };
 }
 
 /** Extract contact data from a row using mappings (unchanged business logic). */
@@ -135,24 +140,43 @@ function extractContactFromRow(
     contactData: Record<string, string>;
     contactCustomData: Record<string, string>;
     hasContactData: boolean;
+    additionalPhones: string[];
 } {
     const contactData: Record<string, string> = {};
     const contactCustomData: Record<string, string> = {};
     let hasContactData = false;
     const standardFields = ["firstName", "lastName", "email", "phone", "title", "linkedin"];
+    const phoneColumns: string[] = [];
+    const additionalPhones: string[] = [];
+
     for (const mapping of mappings) {
         if (!mapping.targetField.startsWith("contact.")) continue;
         const field = mapping.targetField.replace("contact.", "");
         const value = row[mapping.csvColumn];
         if (!value) continue;
-        if (standardFields.includes(field)) {
-            contactData[field] = value.trim();
+        const trimmed = value.trim();
+
+        if (field === "phone") {
+            phoneColumns.push(trimmed);
+        } else if (field === "additionalPhones") {
+            additionalPhones.push(trimmed);
+        } else if (standardFields.includes(field)) {
+            contactData[field] = trimmed;
         } else {
-            contactCustomData[field] = value.trim();
+            contactCustomData[field] = trimmed;
         }
         hasContactData = true;
     }
-    return { contactData, contactCustomData, hasContactData };
+
+    // Primary phone from the first mapped phone column, extras into additionalPhones
+    if (phoneColumns.length > 0) {
+        contactData.phone = phoneColumns[0];
+        if (phoneColumns.length > 1) {
+            additionalPhones.push(...phoneColumns.slice(1));
+        }
+    }
+
+    return { contactData, contactCustomData, hasContactData, additionalPhones };
 }
 
 export async function POST(req: NextRequest) {
@@ -423,11 +447,18 @@ async function processBatch(
         companyName: string;
         contactData?: Record<string, string>;
         contactCustomData?: Record<string, string>;
+        contactAdditionalPhones?: string[];
+        companyAdditionalPhones?: string[];
     };
     const validRows: RowInfo[] = [];
 
     for (const { rowIndex, row } of rows) {
-        const { companyData, companyCustomData, hasCompanyData } = extractCompanyFromRow(row, mappings);
+        const {
+            companyData,
+            companyCustomData,
+            hasCompanyData,
+            additionalPhones: companyAdditionalPhones,
+        } = extractCompanyFromRow(row, mappings);
         if (!hasCompanyData || !companyData.name) {
             errs.push(`Ligne ${rowIndex + 1}: Nom de société manquant`);
             continue;
@@ -438,12 +469,19 @@ async function processBatch(
             companyData,
             companyCustomData,
             companyName: companyData.name,
+            companyAdditionalPhones,
         };
         if (importType === "companies-contacts") {
-            const { contactData, contactCustomData, hasContactData } = extractContactFromRow(row, mappings);
+            const {
+                contactData,
+                contactCustomData,
+                hasContactData,
+                additionalPhones: contactAdditionalPhones,
+            } = extractContactFromRow(row, mappings);
             if (hasContactData && (contactData.email || contactData.firstName || contactData.lastName)) {
                 info.contactData = contactData;
                 info.contactCustomData = contactCustomData;
+                info.contactAdditionalPhones = contactAdditionalPhones;
             }
         }
         validRows.push(info);
@@ -465,13 +503,18 @@ async function processBatch(
     const namesToCreate = uniqueNames.filter((n) => !companyMap.has(n));
     const companyPayloadByName = new Map<
         string,
-        { companyData: Record<string, string>; companyCustomData: Record<string, string> }
+        {
+            companyData: Record<string, string>;
+            companyCustomData: Record<string, string>;
+            companyAdditionalPhones: string[];
+        }
     >();
     for (const r of validRows) {
         if (!companyMap.has(r.companyName) && !companyPayloadByName.has(r.companyName)) {
             companyPayloadByName.set(r.companyName, {
                 companyData: r.companyData,
                 companyCustomData: r.companyCustomData,
+                companyAdditionalPhones: r.companyAdditionalPhones ?? [],
             });
         }
     }
@@ -482,6 +525,23 @@ async function processBatch(
             const payload = companyPayloadByName.get(name);
             if (!payload) continue;
             const { companyData, companyCustomData } = payload;
+
+            // Normalize company phone: allow multiple numbers in one cell, separated by ; or ,
+            let companyPhone: string | null = null;
+            let companyExtraPhones: string[] = [];
+            if (companyData.phone) {
+                const parts = companyData.phone
+                    .split(/[;,]/)
+                    .map((p) => p.trim())
+                    .filter((p) => p.length > 0);
+                if (parts.length > 0) {
+                    companyPhone = parts[0];
+                    if (parts.length > 1) {
+                        companyExtraPhones = parts.slice(1);
+                    }
+                }
+            }
+
             const createData: Record<string, unknown> = {
                 name: companyData.name,
                 industry: companyData.industry || null,
@@ -490,11 +550,17 @@ async function processBatch(
                 size: companyData.size || null,
                 listId,
             };
-            if (companyData.phone !== undefined && companyData.phone !== null && companyData.phone !== "") {
-                (createData as Record<string, string>).phone = companyData.phone.trim();
+
+            if (companyPhone) {
+                (createData as Record<string, string>).phone = companyPhone;
             }
-            if (Object.keys(companyCustomData).length > 0) {
-                createData.customData = companyCustomData;
+
+            const customData: Record<string, unknown> = { ...companyCustomData };
+            if (companyExtraPhones.length > 0) {
+                customData.additionalPhones = companyExtraPhones;
+            }
+            if (Object.keys(customData).length > 0) {
+                createData.customData = customData;
             }
             const created = await prisma.company.create({
                 data: createData as Parameters<typeof prisma.company.create>[0]["data"],
@@ -530,6 +596,7 @@ async function processBatch(
         lastName: string | null;
         email: string | null;
         phone: string | null;
+        additionalPhones?: string[] | undefined;
         title: string | null;
         linkedin: string | null;
         customData: Record<string, string> | undefined;
@@ -546,12 +613,48 @@ async function processBatch(
         // Mark as seen for this batch (avoid duplicate contacts within batch)
         if (email) existingContactKeys.add(`${company.id}:email:${email}`);
         existingContactKeys.add(`${company.id}:name:${firstName ?? ""}:${lastName ?? ""}`);
+        // Normalize contact phone: allow multiple numbers in one cell, separated by ; or ,
+        let phone: string | null = null;
+        let additionalPhones: string[] = [];
+        if (cd.phone) {
+            const parts = cd.phone
+                .split(/[;,]/)
+                .map((p) => p.trim())
+                .filter((p) => p.length > 0);
+            if (parts.length > 0) {
+                phone = parts[0];
+                if (parts.length > 1) {
+                    additionalPhones = parts.slice(1);
+                }
+            }
+        }
+
+        // Also merge additional phones coming from separately mapped columns
+        if (r.contactAdditionalPhones && r.contactAdditionalPhones.length > 0) {
+            const extraFromColumns = r.contactAdditionalPhones
+                .flatMap((raw) =>
+                    raw
+                        .split(/[;,]/)
+                        .map((p) => p.trim())
+                        .filter((p) => p.length > 0)
+                );
+            additionalPhones = [...additionalPhones, ...extraFromColumns];
+        }
+
+        // Deduplicate additional phones and ensure they don't include the primary phone
+        const additionalSet = new Set(
+            additionalPhones.filter((p) => !phone || p !== phone)
+        );
+        const normalizedAdditionalPhones = Array.from(additionalSet);
+
         contactsToCreate.push({
             companyId: company.id,
             firstName,
             lastName,
             email,
-            phone: cd.phone || null,
+            phone,
+            additionalPhones:
+                normalizedAdditionalPhones.length > 0 ? normalizedAdditionalPhones : undefined,
             title: cd.title || null,
             linkedin: cd.linkedin || null,
             customData:
@@ -569,6 +672,7 @@ async function processBatch(
                 phone: c.phone,
                 title: c.title,
                 linkedin: c.linkedin,
+                ...(c.additionalPhones ? { additionalPhones: c.additionalPhones } : {}),
                 ...(c.customData ? { customData: c.customData } : {}),
             })),
         });

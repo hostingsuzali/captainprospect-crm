@@ -96,6 +96,7 @@ const COMPANY_FIELDS = [
     { value: "company.country", label: "Pays" },
     { value: "company.website", label: "Site web" },
     { value: "company.phone", label: "Téléphone société" },
+    { value: "company.additionalPhones", label: "Téléphones société (suppl.)" },
     { value: "company.size", label: "Taille" },
     { value: "__custom_company__", label: "➕ Champ personnalisé société..." },
 ];
@@ -105,6 +106,7 @@ const CONTACT_FIELDS = [
     { value: "contact.lastName", label: "Nom" },
     { value: "contact.email", label: "Email" },
     { value: "contact.phone", label: "Téléphone" },
+     { value: "contact.additionalPhones", label: "Téléphones (suppl.)" },
     { value: "contact.title", label: "Fonction" },
     { value: "contact.linkedin", label: "LinkedIn" },
     { value: "__custom_contact__", label: "➕ Champ personnalisé contact..." },

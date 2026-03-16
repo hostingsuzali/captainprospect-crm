@@ -346,6 +346,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [isLoadingSessions, setIsLoadingSessions] = useState(false);
     const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
     const [showCRTab, setShowCRTab] = useState<"cr" | "email">("cr");
+    const [editingSession, setEditingSession] = useState<ClientSession | null>(null);
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+    const [isDeletingSession, setIsDeletingSession] = useState<string | null>(null);
 
     // Leexi
     const [leexiTranscriptions, setLeexiTranscriptions] = useState<LeexiTranscription[]>([]);
@@ -704,6 +707,61 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             showError("Erreur", "Impossible d'enregistrer la session");
         } finally {
             setIsSavingSession(false);
+        }
+    };
+
+    // ============================================================
+    // EDIT / DELETE SESSION
+    // ============================================================
+
+    const handleUpdateSession = async () => {
+        if (!client || !editingSession) return;
+        setIsSavingEdit(true);
+        try {
+            const res = await fetch(`/api/clients/${client.id}/sessions/${editingSession.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: editingSession.type,
+                    date: editingSession.date,
+                    crMarkdown: editingSession.crMarkdown,
+                    summaryEmail: editingSession.summaryEmail,
+                }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible de mettre à jour la session");
+                return;
+            }
+            success("Session mise à jour", "");
+            setEditingSession(null);
+            await fetchSessions();
+        } catch {
+            showError("Erreur", "Impossible de mettre à jour la session");
+        } finally {
+            setIsSavingEdit(false);
+        }
+    };
+
+    const handleDeleteSession = async (sessionId: string) => {
+        if (!client) return;
+        setIsDeletingSession(sessionId);
+        try {
+            const res = await fetch(`/api/clients/${client.id}/sessions/${sessionId}`, {
+                method: "DELETE",
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible de supprimer la session");
+                return;
+            }
+            success("Session supprimée", "");
+            setExpandedSessionId((prev) => (prev === sessionId ? null : prev));
+            await fetchSessions();
+        } catch {
+            showError("Erreur", "Impossible de supprimer la session");
+        } finally {
+            setIsDeletingSession(null);
         }
     };
 
@@ -1678,6 +1736,36 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                         <Mic className="w-3.5 h-3.5" /> Enregistrement
                                                     </a>
                                                 )}
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-xs text-slate-500 hover:text-indigo-600 px-2 py-1"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingSession({
+                                                            ...session,
+                                                            date: session.date.slice(0, 10),
+                                                        } as any);
+                                                    }}
+                                                >
+                                                    <PenLine className="w-3.5 h-3.5 mr-1" />
+                                                    Éditer
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-xs text-red-500 hover:text-red-600 px-2 py-1"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (window.confirm("Supprimer définitivement cette session ?")) {
+                                                            handleDeleteSession(session.id);
+                                                        }
+                                                    }}
+                                                    isLoading={isDeletingSession === session.id}
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                                    Supprimer
+                                                </Button>
                                                 {openTasks.length > 0 && (
                                                     <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-200">
                                                         {openTasks.length} tâche{openTasks.length > 1 ? "s" : ""}
@@ -1799,6 +1887,98 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     )}
                 </div>
             )}
+
+            {/* ════════════════════════════════════════════
+                MODAL — EDIT SESSION
+            ════════════════════════════════════════════ */}
+            <Modal
+                isOpen={!!editingSession}
+                onClose={() => { if (!isSavingEdit) setEditingSession(null); }}
+                title="Modifier la session"
+                description="Ajustez le type, la date, le compte rendu et le mail de synthèse."
+                size="xl"
+            >
+                {editingSession && (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-sm font-semibold text-slate-700 block mb-1">Type</label>
+                                <select
+                                    value={editingSession.type}
+                                    onChange={(e) =>
+                                        setEditingSession((prev) =>
+                                            prev ? { ...prev, type: e.target.value as SessionType } : prev
+                                        )
+                                    }
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                >
+                                    {(["Kick-Off", "Onboarding", "Validation", "Reporting", "Suivi", "Autre"] as SessionType[]).map((t) => (
+                                        <option key={t} value={t}>{t}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-sm font-semibold text-slate-700 block mb-1">Date</label>
+                                <input
+                                    type="date"
+                                    value={editingSession.date.slice(0, 10)}
+                                    onChange={(e) =>
+                                        setEditingSession((prev) =>
+                                            prev ? { ...prev, date: e.target.value } : prev
+                                        )
+                                    }
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-semibold text-slate-700 block mb-1">Compte rendu (markdown)</label>
+                            <textarea
+                                rows={8}
+                                value={editingSession.crMarkdown || ""}
+                                onChange={(e) =>
+                                    setEditingSession((prev) =>
+                                        prev ? { ...prev, crMarkdown: e.target.value } : prev
+                                    )
+                                }
+                                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                                placeholder="Modifiez ici le compte rendu..."
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-semibold text-slate-700 block mb-1">Mail de synthèse</label>
+                            <textarea
+                                rows={5}
+                                value={editingSession.summaryEmail || ""}
+                                onChange={(e) =>
+                                    setEditingSession((prev) =>
+                                        prev ? { ...prev, summaryEmail: e.target.value } : prev
+                                    )
+                                }
+                                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                                placeholder="Modifiez ici le mail de synthèse..."
+                            />
+                        </div>
+
+                        <ModalFooter>
+                            <Button variant="ghost" onClick={() => setEditingSession(null)} disabled={isSavingEdit}>
+                                Annuler
+                            </Button>
+                            <Button
+                                variant="primary"
+                                onClick={handleUpdateSession}
+                                isLoading={isSavingEdit}
+                                className="gap-2"
+                            >
+                                <CheckCircle2 className="w-4 h-4" />
+                                Enregistrer les modifications
+                            </Button>
+                        </ModalFooter>
+                    </div>
+                )}
+            </Modal>
 
             {/* ════════════════════════════════════════════
                 TAB 4 — ANALYTICS & PERSONA

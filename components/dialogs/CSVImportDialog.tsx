@@ -51,6 +51,7 @@ const FIELD_OPTIONS = [
     { value: "company.country", label: "🌍 Pays", group: "Société" },
     { value: "company.website", label: "🌐 Site web", group: "Société" },
     { value: "company.phone", label: "📞 Téléphone société", group: "Société" },
+    { value: "company.additionalPhones", label: "📞 Téléphones société (suppl.)", group: "Société" },
     { value: "company.size", label: "👥 Taille", group: "Société" },
 
     // Contact fields
@@ -58,6 +59,7 @@ const FIELD_OPTIONS = [
     { value: "contact.lastName", label: "👤 Nom", group: "Contact" },
     { value: "contact.email", label: "📧 Email", group: "Contact" },
     { value: "contact.phone", label: "📱 Téléphone", group: "Contact" },
+    { value: "contact.additionalPhones", label: "📱 Téléphones (suppl.)", group: "Contact" },
     { value: "contact.title", label: "💼 Fonction", group: "Contact" },
     { value: "contact.linkedin", label: "🔗 LinkedIn", group: "Contact" },
 ];
