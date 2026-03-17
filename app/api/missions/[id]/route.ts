@@ -69,6 +69,7 @@ export const GET = withErrorHandler(async (
             campaigns: true,
             lists: {
                 include: {
+                    // List has no "contacts" relation; only "companies". Contact count is per company below.
                     _count: { select: { companies: true } },
                     companies: {
                         select: {
