@@ -52,8 +52,10 @@ enum ActionResult {
   CALLBACK_REQUESTED
   MEETING_BOOKED
   MEETING_CANCELLED
+  INVALIDE             // Invalid lead (distinct from meeting cancelled)
   DISQUALIFIED
-  ENVOIE_MAIL
+  ENVOIE_MAIL   // Mail à envoyer (planned; note only)
+  MAIL_ENVOYE   // Mail envoyé (email actually sent)
   // LinkedIn hub
   CONNECTION_SENT
   MESSAGE_SENT

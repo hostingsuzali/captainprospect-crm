@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import AITaskExtractor, { type ExtractedTask } from "@/components/sessions/AITaskExtractor";
 
 // ============================================================
 // TYPES
@@ -185,8 +186,24 @@ interface SessionTask {
     id: string;
     label: string;
     assignee?: string;
+    assigneeRole?: "SDR" | "MANAGER" | "DEV" | "ALWAYS";
+    priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
     doneAt?: string | null;
 }
+
+const ROLE_BADGE_COLORS: Record<string, { color: string; bg: string; label: string }> = {
+    SDR: { color: "#10B981", bg: "rgba(16,185,129,0.1)", label: "SDR" },
+    MANAGER: { color: "#F59E0B", bg: "rgba(245,158,11,0.1)", label: "Manager" },
+    DEV: { color: "#3B82F6", bg: "rgba(59,130,246,0.1)", label: "Dev" },
+    ALWAYS: { color: "#8B5CF6", bg: "rgba(139,92,246,0.1)", label: "Tous" },
+};
+
+const PRIORITY_INDICATOR: Record<string, { color: string; label: string }> = {
+    URGENT: { color: "#EF4444", label: "⚡" },
+    HIGH: { color: "#F59E0B", label: "↑" },
+    MEDIUM: { color: "#3B82F6", label: "→" },
+    LOW: { color: "#6B7280", label: "↓" },
+};
 
 interface ClientSession {
     id: string;
@@ -369,6 +386,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [isGeneratingCR, setIsGeneratingCR] = useState(false);
     const [generatedCR, setGeneratedCR] = useState<{ cr: string; email: string } | null>(null);
     const [isSavingSession, setIsSavingSession] = useState(false);
+    const [extractedTasks, setExtractedTasks] = useState<ExtractedTask[]>([]);
 
     // ============================================================
     // FETCH CLIENT
@@ -683,6 +701,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         newSessionForm.type === "Autre" && newSessionForm.customTypeLabel.trim().length > 0
                             ? newSessionForm.customTypeLabel.trim()
                             : undefined,
+                    // AI-extracted tasks
+                    tasks: extractedTasks.filter(t => t.label.trim().length > 0).map(t => ({
+                        label: t.label.trim(),
+                        assignee: t.assignee || undefined,
+                        assigneeRole: t.assigneeRole,
+                        priority: t.priority,
+                    })),
                 }),
             });
             const json = await res.json();
@@ -700,6 +725,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 setManualTranscript("");
                 setManualCR("");
                 setManualSummaryEmail("");
+                setExtractedTasks([]);
                 await fetchSessions();
             } else {
                 showError("Erreur", json.error);
@@ -1859,22 +1885,38 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                         ) : <p className="text-sm text-slate-400 italic">Pas de mail de synthèse disponible.</p>
                                                     )}
 
-                                                    {/* Tasks */}
+                                                    {/* Tasks — Enhanced with role badges */}
                                                     {session.tasks.length > 0 && (
                                                         <div className="mt-5 pt-5 border-t border-slate-100">
-                                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Tâches</h4>
+                                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Tâches d'équipe</h4>
                                                             <div className="space-y-2">
-                                                                {session.tasks.map((task) => (
-                                                                    <div key={task.id} className="flex items-center gap-3">
-                                                                        <div className={cn("w-4 h-4 rounded-full border-2 shrink-0",
-                                                                            task.doneAt ? "bg-emerald-500 border-emerald-500" : "border-slate-300"
-                                                                        )} />
-                                                                        <span className={cn("text-sm", task.doneAt ? "line-through text-slate-400" : "text-slate-700")}>
-                                                                            {task.label}
-                                                                        </span>
-                                                                        {task.assignee && <span className="text-xs text-slate-400">— {task.assignee}</span>}
-                                                                    </div>
-                                                                ))}
+                                                                {session.tasks.map((task) => {
+                                                                    const roleBadge = ROLE_BADGE_COLORS[task.assigneeRole || "ALWAYS"];
+                                                                    const priorityInfo = PRIORITY_INDICATOR[task.priority || "MEDIUM"];
+                                                                    return (
+                                                                        <div key={task.id} className="flex items-center gap-3 group">
+                                                                            <div className={cn("w-4 h-4 rounded-full border-2 shrink-0",
+                                                                                task.doneAt ? "bg-emerald-500 border-emerald-500" : "border-slate-300"
+                                                                            )} />
+                                                                            <span className={cn("text-sm flex-1", task.doneAt ? "line-through text-slate-400" : "text-slate-700")}>
+                                                                                {task.label}
+                                                                            </span>
+                                                                            <span
+                                                                                className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                                                                                style={{ color: roleBadge.color, background: roleBadge.bg }}
+                                                                            >
+                                                                                {roleBadge.label}
+                                                                            </span>
+                                                                            <span
+                                                                                className="text-[10px] font-medium"
+                                                                                style={{ color: priorityInfo.color }}
+                                                                            >
+                                                                                {priorityInfo.label}
+                                                                            </span>
+                                                                            {task.assignee && <span className="text-xs text-slate-400">— {task.assignee}</span>}
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </div>
                                                     )}
@@ -1962,6 +2004,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 placeholder="Modifiez ici le mail de synthèse..."
                             />
                         </div>
+
+                        {/* ── AI Task Extraction for Editing ── */}
+                        {editingSession.crMarkdown && (
+                            <div className="border border-slate-200 rounded-xl p-4 bg-white">
+                                <AITaskExtractor
+                                    content={editingSession.crMarkdown}
+                                    clientName={client.name}
+                                    sessionType={editingSession.type}
+                                    tasks={extractedTasks}
+                                    onTasksChange={setExtractedTasks}
+                                    compact
+                                />
+                            </div>
+                        )}
 
                         <ModalFooter>
                             <Button variant="ghost" onClick={() => setEditingSession(null)} disabled={isSavingEdit}>
@@ -2456,6 +2512,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 ? <>Le mail de synthèse sera envoyé automatiquement à <span className="font-semibold">{client.email}</span> lors de la sauvegarde.</>
                                 : "Le mail de synthèse ne sera pas envoyé automatiquement — vous pourrez le copier depuis la fiche session."
                             }
+                        </div>
+
+                        {/* ── AI Task Extraction ── */}
+                        <div className="border border-slate-200 rounded-xl p-4 bg-white">
+                            <AITaskExtractor
+                                content={generatedCR.cr}
+                                clientName={client.name}
+                                sessionType={newSessionForm.type}
+                                tasks={extractedTasks}
+                                onTasksChange={setExtractedTasks}
+                            />
                         </div>
 
                         <ModalFooter>

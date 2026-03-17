@@ -218,6 +218,17 @@ const RESULT_CHIP_CONFIG: Record<
         selectedText: "text-red-800",
         selectedBorder: "border-red-400",
     },
+    INVALIDE: {
+        label: "Invalide",
+        icon: Ban,
+        bg: "bg-gray-100",
+        text: "text-gray-600",
+        border: "border-gray-200",
+        dot: "bg-gray-400",
+        selectedBg: "bg-gray-200",
+        selectedText: "text-gray-800",
+        selectedBorder: "border-gray-400",
+    },
     DISQUALIFIED: {
         label: "Disqualifié",
         icon: Ban,
@@ -828,7 +839,7 @@ export function UnifiedActionDrawer({
                         companyId: contactId ? undefined : companyId,
                         campaignId,
                         channel: "EMAIL",
-                        result: "ENVOIE_MAIL",
+                        result: "MAIL_ENVOYE",
                         note: template ? `Email envoyé : ${template.subject}` : "Email envoyé",
                     }),
                 });

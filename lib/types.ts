@@ -26,8 +26,10 @@ export type ActionResult =
     | "CALLBACK_REQUESTED"
     | "MEETING_BOOKED"
     | "MEETING_CANCELLED"
+    | "INVALIDE"
     | "DISQUALIFIED"
     | "ENVOIE_MAIL"
+    | "MAIL_ENVOYE"
     | "CONNECTION_SENT"
     | "MESSAGE_SENT"
     | "REPLIED"
@@ -46,8 +48,10 @@ export const ACTION_RESULT_LABELS: Record<string, string> = {
     CALLBACK_REQUESTED: "Rappel demandé",
     MEETING_BOOKED: "Meeting booké",
     MEETING_CANCELLED: "Meeting annulé",
+    INVALIDE: "Invalide",
     DISQUALIFIED: "Disqualifié",
-    ENVOIE_MAIL: "Envoie mail",
+    ENVOIE_MAIL: "Mail à envoyer",
+    MAIL_ENVOYE: "Mail envoyé",
     CONNECTION_SENT: "Demande de connexion envoyée",
     MESSAGE_SENT: "Message envoyé",
     REPLIED: "A répondu",

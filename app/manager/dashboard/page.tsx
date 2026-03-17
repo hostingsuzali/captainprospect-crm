@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
     Phone, RefreshCw, TrendingUp, ArrowUpRight, Flame, Trophy,

@@ -368,7 +368,7 @@ export class ActionService {
  ? ((resultBreakdown.MEETING_BOOKED ?? 0) / total * 100).toFixed(2)
  : '0.00';
 
- const sent = (resultBreakdown.ENVOIE_MAIL ?? 0) + (resultBreakdown.CONNECTION_SENT ?? 0) + (resultBreakdown.MESSAGE_SENT ?? 0);
+ const sent = (resultBreakdown.MAIL_ENVOYE ?? 0) + (resultBreakdown.CONNECTION_SENT ?? 0) + (resultBreakdown.MESSAGE_SENT ?? 0);
  const replied = resultBreakdown.REPLIED ?? 0;
  const repliedRate = total > 0 ? ((replied / total) * 100).toFixed(2) : '0.00';
 

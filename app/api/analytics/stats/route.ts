@@ -214,8 +214,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     // Grouped Status Segments per User Request
     const segments = {
         success: meetings + interested,
-        neutral: callbacks + noResponse + (statuses['ENVOIE_MAIL'] || 0),
-        failure: (statuses['BAD_CONTACT'] || 0) + (statuses['DISQUALIFIED'] || 0) + (statuses['MEETING_CANCELLED'] || 0) + (statuses['NOT_INTERESTED'] || 0),
+        neutral: callbacks + noResponse + (statuses['ENVOIE_MAIL'] || 0) + (statuses['MAIL_ENVOYE'] || 0),
+        failure: (statuses['BAD_CONTACT'] || 0) + (statuses['DISQUALIFIED'] || 0) + (statuses['MEETING_CANCELLED'] || 0) + (statuses['INVALIDE'] || 0) + (statuses['NOT_INTERESTED'] || 0),
     };
 
     // Funnel Steps 

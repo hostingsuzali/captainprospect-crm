@@ -20,9 +20,11 @@ const ACTION_RESULT_LABELS: Record<string, string> = {
     CALLBACK_REQUESTED: "Rappel demandé",
     MEETING_BOOKED: "Meeting booké",
     MEETING_CANCELLED: "Meeting annulé",
+    INVALIDE: "Invalide",
     DISQUALIFIED: "Disqualifié",
     NOT_INTERESTED: "Pas intéressé",
-    ENVOIE_MAIL: "Envoie mail",
+    ENVOIE_MAIL: "Mail à envoyer",
+    MAIL_ENVOYE: "Mail envoyé",
 };
 
 const requestSchema = z.object({

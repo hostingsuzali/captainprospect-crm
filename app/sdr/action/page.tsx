@@ -35,6 +35,7 @@ import {
     PenLine,
     BarChart2,
     Trash2,
+    Send,
 } from "lucide-react";
 import { Card, Badge, Button, LoadingState, EmptyState, Tabs, Drawer, DataTable, Select, useToast, TableSkeleton, CardSkeleton, Modal, DateTimePicker } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
@@ -183,7 +184,8 @@ const RESULT_OPTIONS_FALLBACK: { value: ActionResult; label: string; icon: React
     { value: "CALLBACK_REQUESTED", label: "Rappel demandé", icon: <Clock className="w-4 h-4" />, key: "4", color: "amber" },
     { value: "MEETING_BOOKED", label: "RDV pris", icon: <Calendar className="w-4 h-4" />, key: "5", color: "indigo" },
     { value: "DISQUALIFIED", label: "Disqualifié", icon: <XCircle className="w-4 h-4" />, key: "6", color: "slate" },
-    { value: "ENVOIE_MAIL", label: "Envoie mail", icon: <Mail className="w-4 h-4" />, key: "7", color: "blue" },
+    { value: "ENVOIE_MAIL", label: "Mail à envoyer", icon: <Mail className="w-4 h-4" />, key: "7", color: "blue" },
+    { value: "MAIL_ENVOYE", label: "Mail envoyé", icon: <Send className="w-4 h-4" />, key: "8", color: "emerald" },
 ];
 
 const RESULT_ICON_MAP: Record<string, React.ReactNode> = {
@@ -195,6 +197,7 @@ const RESULT_ICON_MAP: Record<string, React.ReactNode> = {
     MEETING_CANCELLED: <XCircle className="w-4 h-4" />,
     DISQUALIFIED: <XCircle className="w-4 h-4" />,
     ENVOIE_MAIL: <Mail className="w-4 h-4" />,
+    MAIL_ENVOYE: <Send className="w-4 h-4" />,
 };
 
 const PRIORITY_LABELS: Record<string, { label: string; color: string }> = {
@@ -528,6 +531,10 @@ export default function SDRActionPage() {
     const [emailModalMissionName, setEmailModalMissionName] = useState<string | null>(null);
     const [emailModalCompany, setEmailModalCompany] = useState<{ id: string; name: string; phone?: string | null } | null>(null);
     const [pendingEmailAction, setPendingEmailAction] = useState<{ row: QueueItem; result: ActionResult } | { cardMode: true; result: ActionResult } | null>(null);
+    // Queue: "Mail à envoyer" choice modal — note only vs open email composer
+    const [showMailToSendChoiceModal, setShowMailToSendChoiceModal] = useState(false);
+    const [mailToSendChoiceRow, setMailToSendChoiceRow] = useState<QueueItem | null>(null);
+    const [mailToSendChoiceNote, setMailToSendChoiceNote] = useState("");
 
     // Config-driven status options (from API)
     const [statusConfig, setStatusConfig] = useState<{ statuses: Array<{ code: string; label: string; requiresNote: boolean }> } | null>(null);
@@ -1099,60 +1106,11 @@ export default function SDRActionPage() {
             openDrawerForRow(row);
             return;
         }
-        // For ENVOIE_MAIL, open the QuickEmailModal instead of submitting directly
+        // For ENVOIE_MAIL, open choice modal: note only (Mail à envoyer) or send email (Mail envoyé)
         if (result === "ENVOIE_MAIL") {
-            const mission = missions.find(m => m.name === row.missionName);
-            const missionId = mission?.id || selectedMissionId;
-            setEmailModalContact(row.contact ? {
-                id: row.contact.id,
-                firstName: row.contact.firstName,
-                lastName: row.contact.lastName,
-                email: row.contact.email,
-                title: row.contact.title,
-                company: { id: row.company.id, name: row.company.name }
-            } : null);
-            setEmailModalCompany(row.contact ? null : { id: row.company.id, name: row.company.name, phone: row.company.phone });
-            setEmailModalMissionId(missionId || null);
-            setEmailModalMissionName(mission?.name || row.missionName);
-            // Always reset first so stale value from previous action never persists
-            setEmailModalPreferredMailboxId(null);
-
-            // If mission already has defaultMailboxId in local state, use it immediately
-            if (mission?.defaultMailboxId) {
-                setEmailModalPreferredMailboxId(mission.defaultMailboxId);
-            } else if (missionId) {
-                // Async fallback: fetch mission to get defaultMailboxId (and client fallback)
-                (async () => {
-                    try {
-                        const missionRes = await fetch(`/api/missions/${missionId}`);
-                        const missionJson = await missionRes.json();
-                        if (!missionJson.success) return;
-
-                        const missionDefaultMailboxId = missionJson.data?.defaultMailboxId as string | undefined;
-                        if (missionDefaultMailboxId) {
-                            setEmailModalPreferredMailboxId(missionDefaultMailboxId);
-                            return;
-                        }
-
-                        if (!missionJson.data?.client?.id) return;
-                        const clientId = missionJson.data.client.id as string;
-                        const clientRes = await fetch(`/api/clients/${clientId}`);
-                        const clientJson = await clientRes.json();
-                        if (!clientJson.success) return;
-                        const onboardingData = (clientJson.data?.onboarding?.onboardingData ?? {}) as {
-                            defaultMailboxId?: string;
-                        };
-                        if (onboardingData.defaultMailboxId) {
-                            setEmailModalPreferredMailboxId(onboardingData.defaultMailboxId);
-                        }
-                    } catch {
-                        // silently ignore
-                    }
-                })();
-            }
-
-            setPendingEmailAction({ row, result });
-            setShowQuickEmailModal(true);
+            setMailToSendChoiceRow(row);
+            setMailToSendChoiceNote("");
+            setShowMailToSendChoiceModal(true);
             return;
         }
 
@@ -1188,6 +1146,92 @@ export default function SDRActionPage() {
         } finally {
             setSubmittingRowKey(null);
         }
+    };
+
+    // Queue: save "Mail à envoyer" with note only (no email sent)
+    const handleMailToSendChoiceSaveOnly = async () => {
+        const row = mailToSendChoiceRow;
+        if (!row || !mailToSendChoiceNote.trim()) {
+            showError("Erreur", "Une note est requise pour Mail à envoyer.");
+            return;
+        }
+        setSubmittingRowKey(queueRowKey(row));
+        try {
+            const res = await fetch("/api/actions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contactId: row.contactId ?? undefined,
+                    companyId: row.contactId ? undefined : row.companyId,
+                    campaignId: row.campaignId,
+                    channel: row.channel,
+                    result: "ENVOIE_MAIL" as const,
+                    note: mailToSendChoiceNote.trim(),
+                }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                queryClient.invalidateQueries({ queryKey: queueQueryKey });
+                setActionsCompleted((c) => c + 1);
+                success("Enregistré", "Statut Mail à envoyer enregistré.");
+                setShowMailToSendChoiceModal(false);
+                setMailToSendChoiceRow(null);
+                setMailToSendChoiceNote("");
+            } else {
+                showError(json.error || "Erreur lors de l'enregistrement");
+            }
+        } catch {
+            showError("Erreur de connexion");
+        } finally {
+            setSubmittingRowKey(null);
+        }
+    };
+
+    // Queue: open email composer (will record MAIL_ENVOYE when sent)
+    const handleMailToSendChoiceOpenComposer = () => {
+        const row = mailToSendChoiceRow;
+        if (!row) return;
+        const mission = missions.find(m => m.name === row.missionName);
+        const missionId = mission?.id || selectedMissionId;
+        setEmailModalContact(row.contact ? {
+            id: row.contact.id,
+            firstName: row.contact.firstName,
+            lastName: row.contact.lastName,
+            email: row.contact.email,
+            title: row.contact.title,
+            company: { id: row.company.id, name: row.company.name }
+        } : null);
+        setEmailModalCompany(row.contact ? null : { id: row.company.id, name: row.company.name, phone: row.company.phone });
+        setEmailModalMissionId(missionId || null);
+        setEmailModalMissionName(mission?.name || row.missionName);
+        setEmailModalPreferredMailboxId(null);
+        if (mission?.defaultMailboxId) setEmailModalPreferredMailboxId(mission.defaultMailboxId);
+        else if (missionId) {
+            (async () => {
+                try {
+                    const missionRes = await fetch(`/api/missions/${missionId}`);
+                    const missionJson = await missionRes.json();
+                    if (!missionJson.success) return;
+                    const missionDefaultMailboxId = missionJson.data?.defaultMailboxId as string | undefined;
+                    if (missionDefaultMailboxId) {
+                        setEmailModalPreferredMailboxId(missionDefaultMailboxId);
+                        return;
+                    }
+                    if (!missionJson.data?.client?.id) return;
+                    const clientId = missionJson.data.client.id as string;
+                    const clientRes = await fetch(`/api/clients/${clientId}`);
+                    const clientJson = await clientRes.json();
+                    if (!clientJson.success) return;
+                    const onboardingData = (clientJson.data?.onboarding?.onboardingData ?? {}) as { defaultMailboxId?: string };
+                    if (onboardingData.defaultMailboxId) setEmailModalPreferredMailboxId(onboardingData.defaultMailboxId);
+                } catch { /* ignore */ }
+            })();
+        }
+        setPendingEmailAction({ row, result: "MAIL_ENVOYE" });
+        setShowMailToSendChoiceModal(false);
+        setMailToSendChoiceRow(null);
+        setMailToSendChoiceNote("");
+        setShowQuickEmailModal(true);
     };
 
     const handleBulkDisqualify = async () => {
@@ -1235,10 +1279,10 @@ export default function SDRActionPage() {
         }
     };
 
-    // Handle email sent from QuickEmailModal
+    // Handle email sent from QuickEmailModal — record as MAIL_ENVOYE (email actually sent)
     const handleEmailSent = async () => {
         if (!pendingEmailAction) return;
-        const { result } = pendingEmailAction;
+        const result = "MAIL_ENVOYE" as const;
 
         const isCardMode = "cardMode" in pendingEmailAction && pendingEmailAction.cardMode;
 
@@ -1265,7 +1309,6 @@ export default function SDRActionPage() {
                 await loadNextAction();
             } else if (!isCardMode && "row" in pendingEmailAction) {
                 const { row } = pendingEmailAction;
-                const key = queueRowKey(row);
                 const res = await fetch("/api/actions", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -1297,6 +1340,47 @@ export default function SDRActionPage() {
         setEmailModalMissionName(null);
     };
 
+    // Open QuickEmailModal for current card (when SDR chooses "Envoyer un email" for ENVOIE_MAIL)
+    const openEmailModalForCard = () => {
+        if (!currentAction) return;
+        const contact = currentAction.contact;
+        setEmailModalContact(contact ? {
+            id: contact.id,
+            firstName: contact.firstName,
+            lastName: contact.lastName,
+            email: contact.email,
+            title: contact.title,
+            company: currentAction.company ? { id: currentAction.company.id, name: currentAction.company.name } : undefined,
+        } : null);
+        setEmailModalCompany(!contact && currentAction.company ? { id: currentAction.company.id, name: currentAction.company.name, phone: currentAction.company.phone } : null);
+        setEmailModalMissionId(selectedMissionId ?? null);
+        setEmailModalMissionName(currentAction.missionName ?? null);
+        setEmailModalPreferredMailboxId(null);
+        setPendingEmailAction({ cardMode: true, result: "MAIL_ENVOYE" });
+        setShowQuickEmailModal(true);
+        if (selectedMissionId) {
+            (async () => {
+                try {
+                    const missionRes = await fetch(`/api/missions/${selectedMissionId}`);
+                    const missionJson = await missionRes.json();
+                    if (!missionJson.success) return;
+                    const missionDefaultMailboxId = missionJson.data?.defaultMailboxId as string | undefined;
+                    if (missionDefaultMailboxId) {
+                        setEmailModalPreferredMailboxId(missionDefaultMailboxId);
+                        return;
+                    }
+                    if (!missionJson.data?.client?.id) return;
+                    const clientId = missionJson.data.client.id as string;
+                    const clientRes = await fetch(`/api/clients/${clientId}`);
+                    const clientJson = await clientRes.json();
+                    if (!clientJson.success) return;
+                    const onboardingData = (clientJson.data?.onboarding?.onboardingData ?? {}) as { defaultMailboxId?: string };
+                    if (onboardingData.defaultMailboxId) setEmailModalPreferredMailboxId(onboardingData.defaultMailboxId);
+                } catch { /* ignore */ }
+            })();
+        }
+    };
+
     // Submit (wrapped in useCallback so keyboard shortcut always has latest)
     const handleSubmit = useCallback(async () => {
         if (!selectedResult || !currentAction?.campaignId) return;
@@ -1315,58 +1399,7 @@ export default function SDRActionPage() {
             return;
         }
 
-        // For ENVOIE_MAIL, open QuickEmailModal instead of submitting
-        if (selectedResult === "ENVOIE_MAIL") {
-            const contact = currentAction.contact;
-            setEmailModalContact(contact ? {
-                id: contact.id,
-                firstName: contact.firstName,
-                lastName: contact.lastName,
-                email: contact.email,
-                title: contact.title,
-                company: currentAction.company ? { id: currentAction.company.id, name: currentAction.company.name } : undefined,
-            } : null);
-            setEmailModalCompany(!contact && currentAction.company ? { id: currentAction.company.id, name: currentAction.company.name, phone: currentAction.company.phone } : null);
-            setEmailModalMissionId(selectedMissionId ?? null);
-            setEmailModalMissionName(currentAction.missionName ?? null);
-            setEmailModalPreferredMailboxId(null);
-            setPendingEmailAction({ cardMode: true, result: selectedResult });
-
-            // Fetch preferred mailbox from mission/client
-            if (selectedMissionId) {
-                (async () => {
-                    try {
-                        const missionRes = await fetch(`/api/missions/${selectedMissionId}`);
-                        const missionJson = await missionRes.json();
-                        if (!missionJson.success) return;
-
-                        const missionDefaultMailboxId = missionJson.data?.defaultMailboxId as string | undefined;
-                        if (missionDefaultMailboxId) {
-                            setEmailModalPreferredMailboxId(missionDefaultMailboxId);
-                            return;
-                        }
-
-                        if (!missionJson.data?.client?.id) return;
-                        const clientId = missionJson.data.client.id as string;
-                        const clientRes = await fetch(`/api/clients/${clientId}`);
-                        const clientJson = await clientRes.json();
-                        if (!clientJson.success) return;
-                        const onboardingData = (clientJson.data?.onboarding?.onboardingData ?? {}) as {
-                            defaultMailboxId?: string;
-                        };
-                        if (onboardingData.defaultMailboxId) {
-                            setEmailModalPreferredMailboxId(onboardingData.defaultMailboxId);
-                        }
-                    } catch {
-                        // silently ignore
-                    }
-                })();
-            }
-
-            setShowQuickEmailModal(true);
-            return;
-        }
-
+        // ENVOIE_MAIL: submit with note only (Mail à envoyer). Use "Envoyer un email" button to open composer and record MAIL_ENVOYE.
         setIsSubmitting(true);
         setError(null);
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -1647,6 +1680,7 @@ export default function SDRActionPage() {
                         MEETING_BOOKED: { badge: "bg-indigo-50 text-indigo-700 border-indigo-200", dot: "bg-indigo-400" },
                         DISQUALIFIED: { badge: "bg-slate-100 text-slate-500 border-slate-200", dot: "bg-slate-400" },
                         ENVOIE_MAIL: { badge: "bg-blue-50 text-blue-700 border-blue-200", dot: "bg-blue-400" },
+                        MAIL_ENVOYE: { badge: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-400" },
                     };
                     const color = resultColor[row.lastAction.result] || { badge: "bg-slate-100 text-slate-600 border-slate-200", dot: "bg-slate-400" };
                     const contactedByOther = row.lastActionBy?.id && row.lastActionBy.id !== session?.user?.id;
@@ -1707,6 +1741,7 @@ export default function SDRActionPage() {
                                     MEETING_BOOKED: "hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 hover:shadow-sm hover:shadow-indigo-100",
                                     DISQUALIFIED: "hover:border-slate-400 hover:bg-slate-100 hover:text-slate-600 hover:shadow-sm",
                                     ENVOIE_MAIL: "hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 hover:shadow-sm hover:shadow-blue-100",
+                                    MAIL_ENVOYE: "hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600 hover:shadow-sm hover:shadow-emerald-100",
                                 };
                                 return (
                                     <button
@@ -2132,6 +2167,51 @@ export default function SDRActionPage() {
                     missionName={emailModalMissionName}
                     preferredMailboxId={emailModalPreferredMailboxId ?? undefined}
                 />
+
+                {/* Queue: Mail à envoyer — note only or open composer */}
+                <Modal
+                    isOpen={showMailToSendChoiceModal}
+                    onClose={() => { setShowMailToSendChoiceModal(false); setMailToSendChoiceRow(null); setMailToSendChoiceNote(""); }}
+                    title="Mail à envoyer"
+                    description={mailToSendChoiceRow ? (mailToSendChoiceRow.contact ? `${mailToSendChoiceRow.contact.firstName ?? ""} ${mailToSendChoiceRow.contact.lastName ?? ""}`.trim() || mailToSendChoiceRow.company?.name : mailToSendChoiceRow.company?.name) ?? "" : ""}
+                    size="sm"
+                >
+                    <div className="space-y-4">
+                        <p className="text-sm text-slate-600">Enregistrer une note (Mail à envoyer) ou envoyer un email maintenant (Mail envoyé).</p>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Note *</label>
+                            <textarea
+                                value={mailToSendChoiceNote}
+                                onChange={(e) => setMailToSendChoiceNote(e.target.value)}
+                                placeholder="Ex: Mail à envoyer après validation du devis..."
+                                rows={3}
+                                maxLength={500}
+                                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-end pt-2">
+                            <Button variant="ghost" onClick={() => { setShowMailToSendChoiceModal(false); setMailToSendChoiceRow(null); setMailToSendChoiceNote(""); }}>
+                                Annuler
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={handleMailToSendChoiceOpenComposer}
+                                className="gap-2 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                            >
+                                <Send className="w-4 h-4" />
+                                Envoyer un email
+                            </Button>
+                            <Button
+                                variant="primary"
+                                onClick={handleMailToSendChoiceSaveOnly}
+                                disabled={!mailToSendChoiceNote.trim() || submittingRowKey !== null}
+                                isLoading={submittingRowKey !== null}
+                            >
+                                Enregistrer (Mail à envoyer)
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
 
                 {/* Stats modal: summary + list of contacts with status (click to open drawer) */}
                 <Modal
@@ -2701,6 +2781,7 @@ export default function SDRActionPage() {
                                         "bg-amber-100 text-amber-700 border-amber-200": currentAction.lastAction.result === "CALLBACK_REQUESTED",
                                         "bg-indigo-50 text-indigo-700 border-indigo-200": currentAction.lastAction.result === "MEETING_BOOKED",
                                         "bg-blue-50 text-blue-700 border-blue-200": currentAction.lastAction.result === "ENVOIE_MAIL",
+                                        "bg-emerald-50 text-emerald-700 border-emerald-200": currentAction.lastAction.result === "MAIL_ENVOYE",
                                     })}>
                                         {RESULT_ICON_MAP[currentAction.lastAction.result]}
                                         <span className="ml-1">{statusLabels[currentAction.lastAction.result] ?? currentAction.lastAction.result}</span>
@@ -2983,6 +3064,19 @@ export default function SDRActionPage() {
                     Passer
                 </Button>
 
+                {selectedResult === "ENVOIE_MAIL" && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        onClick={openEmailModalForCard}
+                        disabled={isSubmitting}
+                        className="gap-2 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                    >
+                        <Send className="w-4 h-4" />
+                        Envoyer un email
+                    </Button>
+                )}
                 <Button
                     variant="primary"
                     size="lg"
@@ -2991,7 +3085,7 @@ export default function SDRActionPage() {
                     isLoading={isSubmitting}
                     className="gap-2 px-8 shadow-lg shadow-indigo-500/20 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600"
                 >
-                    {isSubmitting ? "Enregistrement..." : "Valider & Suivant"}
+                    {isSubmitting ? "Enregistrement..." : selectedResult === "ENVOIE_MAIL" ? "Enregistrer (Mail à envoyer)" : "Valider & Suivant"}
                     <ChevronRight className="w-4 h-4" />
                 </Button>
             </div>

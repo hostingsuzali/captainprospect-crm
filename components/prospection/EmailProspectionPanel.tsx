@@ -68,7 +68,7 @@ export function EmailProspectionPanel({ missionId, listId }: EmailProspectionPan
                     companyId: currentAction.companyId,
                     campaignId: currentAction.campaignId,
                     channel: "EMAIL",
-                    result: "ENVOIE_MAIL",
+                    result: "MAIL_ENVOYE",
                     note: "Email envoyé",
                 }),
             });

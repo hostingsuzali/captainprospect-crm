@@ -439,7 +439,7 @@ export function CompanyDrawer({
     };
 
     const handleEmailSent = () => {
-        recordAction("ENVOIE_MAIL", "Email envoyé via template");
+        recordAction("MAIL_ENVOYE", "Email envoyé via template");
         setShowQuickEmailModal(false);
     };
 

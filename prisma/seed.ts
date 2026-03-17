@@ -129,6 +129,17 @@ const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
         "actions.make_calls", "actions.send_emails", "actions.send_linkedin", 
         "actions.book_meetings", "actions.create_opportunity", "actions.edit_contacts",
     ],
+    BOOKER: [
+        // Same as SDR: lists, action, callbacks, meetings
+        "pages.dashboard", "pages.action", "pages.lists", "pages.opportunities", "pages.settings",
+        "features.export_data",
+        "actions.make_calls", "actions.send_emails", "actions.send_linkedin",
+        "actions.book_meetings", "actions.create_opportunity", "actions.edit_contacts",
+    ],
+    COMMERCIAL: [
+        // Client portal: meetings, contacts, settings (access enforced by route/session)
+        "pages.dashboard",
+    ],
     BUSINESS_DEVELOPER: [
         // BD pages (superset of SDR)
         "pages.dashboard", "pages.action", "pages.lists", "pages.opportunities", "pages.settings", "pages.email", "pages.comms",
@@ -211,6 +222,7 @@ const RESULT_CATEGORY_MAP: Record<string, string> = {
     CALLBACK_REQUESTED: "CALLBACK_REQUESTED",
     MEETING_BOOKED: "MEETING_BOOKED",
     MEETING_CANCELLED: "OTHER",
+    INVALIDE: "OTHER",
     DISQUALIFIED: "DISQUALIFIED",
     ENVOIE_MAIL: "OTHER",
     CONNECTION_SENT: "OTHER",
@@ -228,8 +240,9 @@ const GLOBAL_STATUS_DEFINITIONS = [
     { code: "CALLBACK_REQUESTED", label: "Rappel demandé", sortOrder: 6, requiresNote: true, priorityLabel: "CALLBACK" as const, priorityOrder: 1, triggersOpportunity: false, triggersCallback: true },
     { code: "MEETING_BOOKED", label: "Meeting booké", sortOrder: 7, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: true, triggersCallback: false },
     { code: "MEETING_CANCELLED", label: "Meeting annulé", sortOrder: 8, requiresNote: false, priorityLabel: "RETRY" as const, priorityOrder: 4, triggersOpportunity: false, triggersCallback: false },
-    { code: "DISQUALIFIED", label: "Disqualifié", sortOrder: 9, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
-    { code: "ENVOIE_MAIL", label: "Envoie mail", sortOrder: 10, requiresNote: true, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "INVALIDE", label: "Invalide", sortOrder: 9, requiresNote: false, priorityLabel: "RETRY" as const, priorityOrder: 4, triggersOpportunity: false, triggersCallback: false },
+    { code: "DISQUALIFIED", label: "Disqualifié", sortOrder: 10, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "ENVOIE_MAIL", label: "Envoie mail", sortOrder: 11, requiresNote: true, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
 ];
 
 async function seedResultCategories() {

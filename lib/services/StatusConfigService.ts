@@ -49,6 +49,7 @@ const LEGACY_PRIORITY: Record<string, { order: number; label: ActionPriorityLabe
     INTERESTED: { order: 2, label: "FOLLOW_UP" },
     NO_RESPONSE: { order: 4, label: "RETRY" },
     MEETING_CANCELLED: { order: 4, label: "RETRY" },
+    INVALIDE: { order: 4, label: "RETRY" },
     MEETING_BOOKED: { order: 999, label: "SKIP" },
     BAD_CONTACT: { order: 999, label: "SKIP" },
     BARRAGE_STANDARD: { order: 999, label: "SKIP" },
