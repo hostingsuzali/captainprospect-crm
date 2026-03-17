@@ -6,6 +6,7 @@ import {
     withErrorHandler,
     AuthError,
 } from '@/lib/api-utils';
+import { filterRdvList } from '@/lib/utils/meetingFilters';
 
 // ============================================
 // GET /api/commercial/meetings
@@ -87,7 +88,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         ];
     }
 
-    const meetings = await prisma.action.findMany({
+    const rawMeetings = await prisma.action.findMany({
         where,
         include: {
             contact: {
@@ -121,5 +122,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         orderBy: { callbackDate: 'asc' },
     });
 
+    const meetings = filterRdvList(rawMeetings);
     return successResponse({ total: meetings.length, allMeetings: meetings });
 });

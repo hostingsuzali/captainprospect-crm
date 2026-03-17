@@ -88,7 +88,7 @@ export const PATCH = withErrorHandler(async (
     const { id } = await params;
     const body = await request.json();
 
-    const { name, type, source, missionId, commercialInterlocuteurId } = body;
+    const { name, type, source, missionId, commercialInterlocuteurId, isActive } = body;
 
     // Load current list with mission + client for validation
     const existing = await prisma.list.findUnique({
@@ -144,34 +144,74 @@ export const PATCH = withErrorHandler(async (
         }
     }
 
-    const updatedList = await prisma.list.update({
-        where: { id },
-        data: {
-            ...(name && { name }),
-            ...(type && { type }),
-            ...(source !== undefined && { source }),
-            ...(nextMissionId && { missionId: nextMissionId }),
-            ...(commercialInterlocuteurConnect && {
-                commercialInterlocuteur: commercialInterlocuteurConnect,
-            }),
-        },
-        include: {
-            mission: {
-                select: {
-                    id: true,
-                    name: true,
-                },
-            },
-            commercialInterlocuteur: {
-                select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    title: true,
-                },
-            },
-        },
-    });
+    // isActive: use raw SQL so this works even if Prisma client was generated before the column existed
+    if (typeof isActive === 'boolean') {
+        await prisma.$executeRaw`UPDATE "List" SET "isActive" = ${isActive} WHERE id = ${id}`;
+    }
 
-    return successResponse(updatedList);
+    const hasOtherUpdates =
+        (name && name !== existing.name) ||
+        (type && type !== existing.type) ||
+        source !== undefined ||
+        nextMissionId ||
+        commercialInterlocuteurConnect !== undefined;
+
+    let updatedList;
+    if (hasOtherUpdates) {
+        updatedList = await prisma.list.update({
+            where: { id },
+            data: {
+                ...(name && { name }),
+                ...(type && { type }),
+                ...(source !== undefined && { source }),
+                ...(nextMissionId && { missionId: nextMissionId }),
+                ...(commercialInterlocuteurConnect && {
+                    commercialInterlocuteur: commercialInterlocuteurConnect,
+                }),
+            },
+            include: {
+                mission: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                commercialInterlocuteur: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        title: true,
+                    },
+                },
+            },
+        });
+    } else {
+        updatedList = await prisma.list.findUnique({
+            where: { id },
+            include: {
+                mission: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                commercialInterlocuteur: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        title: true,
+                    },
+                },
+            },
+        });
+    }
+
+    // Attach isActive from DB when we updated it (client may not have the field in its type yet)
+    if (typeof isActive === 'boolean' && updatedList) {
+        (updatedList as { isActive?: boolean }).isActive = isActive;
+    }
+
+    return successResponse(updatedList!);
 });

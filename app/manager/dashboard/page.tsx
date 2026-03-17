@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useMemo, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
     Phone, RefreshCw, TrendingUp, ArrowUpRight, Flame, Trophy,
     Clock, ArrowRight, Loader2, Calendar, ChevronDown, Target,
@@ -244,12 +245,38 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 }
 
 /* ════════════════════════════════════════════════════════
+   DASHBOARD DATA FETCH
+════════════════════════════════════════════════════════ */
+interface DashboardData {
+    stats: DashboardStats | null;
+    missions: MissionSummaryItem[];
+    recentActivity: RecentActivityItem[];
+}
+async function fetchDashboardData(
+    start: string,
+    end: string,
+    missionId: string
+): Promise<DashboardData> {
+    const statsUrl = `/api/stats?startDate=${start}&endDate=${end}${missionId ? `&missionId=${missionId}` : ""}`;
+    const [statsRes, missionsRes, recentRes] = await Promise.all([
+        fetch(statsUrl),
+        fetch(`/api/stats/missions-summary?startDate=${start}&endDate=${end}&limit=10`),
+        fetch("/api/actions/recent?limit=20"),
+    ]);
+    const [statsJson, missionsJson, recentJson] = await Promise.all([
+        statsRes.json(), missionsRes.json(), recentRes.json(),
+    ]);
+    return {
+        stats: statsJson.success ? statsJson.data : null,
+        missions: missionsJson.success ? missionsJson.data?.missions ?? [] : [],
+        recentActivity: recentJson.success ? recentJson.data ?? [] : [],
+    };
+}
+
+/* ════════════════════════════════════════════════════════
    MAIN COMPONENT
 ════════════════════════════════════════════════════════ */
 export default function ManagerDashboard() {
-    const [stats, setStats] = useState<DashboardStats | null>(null);
-    const [missions, setMissions] = useState<MissionSummaryItem[]>([]);
-    const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
     const [dateRange, setDateRange] = useState<DateRangeValue>(() => {
         const { start, end } = getPresetRange("lastMonth");
         return { preset: "lastMonth", startDate: toISO(start), endDate: toISO(end) };
@@ -257,33 +284,22 @@ export default function ManagerDashboard() {
     const [dateFilterOpen, setDateFilterOpen] = useState(false);
     const dateFilterRef = useRef<HTMLDivElement>(null);
     const [missionFilter, setMissionFilter] = useState("");
-    const [isLoading, setIsLoading] = useState(true);
 
-    const fetchData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            let start = dateRange.startDate, end = dateRange.endDate;
-            if (!start || !end) {
-                const r = getPresetRange((dateRange.preset as DateRangePreset) || "lastMonth");
-                start = toISO(r.start); end = toISO(r.end);
-            }
-            const statsUrl = `/api/stats?startDate=${start}&endDate=${end}${missionFilter ? `&missionId=${missionFilter}` : ""}`;
-            const [statsRes, missionsRes, recentRes] = await Promise.all([
-                fetch(statsUrl),
-                fetch(`/api/stats/missions-summary?startDate=${start}&endDate=${end}&limit=10`),
-                fetch("/api/actions/recent?limit=20"),
-            ]);
-            const [statsJson, missionsJson, recentJson] = await Promise.all([
-                statsRes.json(), missionsRes.json(), recentRes.json(),
-            ]);
-            if (statsJson.success) setStats(statsJson.data);
-            if (missionsJson.success) setMissions(missionsJson.data?.missions ?? []);
-            if (recentJson.success) setRecentActivity(recentJson.data ?? []);
-        } catch (e) { console.error(e); }
-        finally { setIsLoading(false); }
-    }, [dateRange, missionFilter]);
+    const start = dateRange.startDate && dateRange.endDate
+        ? dateRange.startDate
+        : toISO(getPresetRange((dateRange.preset as DateRangePreset) || "lastMonth").start);
+    const end = dateRange.startDate && dateRange.endDate
+        ? dateRange.endDate
+        : toISO(getPresetRange((dateRange.preset as DateRangePreset) || "lastMonth").end);
 
-    useEffect(() => { fetchData(); const t = setInterval(fetchData, 60000); return () => clearInterval(t); }, [fetchData]);
+    const { data, isLoading, isFetching, refetch } = useQuery({
+        queryKey: ["manager", "dashboard", start, end, missionFilter],
+        queryFn: () => fetchDashboardData(start, end, missionFilter),
+        refetchInterval: 60_000,
+    });
+    const stats = data?.stats ?? null;
+    const missions = data?.missions ?? [];
+    const recentActivity = data?.recentActivity ?? [];
 
     const rdvGoalPct = stats ? Math.min((stats.meetingsBooked / RDV_WEEKLY_GOAL) * 100, 100) : 0;
     const hotLeads = stats ? (stats.resultBreakdown.INTERESTED + stats.resultBreakdown.CALLBACK_REQUESTED) : 0;
@@ -358,9 +374,9 @@ export default function ManagerDashboard() {
                     </select>
 
                     {/* Refresh */}
-                    <button onClick={fetchData} disabled={isLoading}
+                    <button onClick={() => refetch()} disabled={isFetching}
                         className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-violet-600 hover:border-violet-300 hover:shadow-sm transition-all duration-150 shadow-sm disabled:opacity-50">
-                        <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
+                        <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
                     </button>
 
                     {/* New mission CTA */}

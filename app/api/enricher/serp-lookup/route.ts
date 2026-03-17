@@ -1,6 +1,7 @@
 // ============================================
-// POST /api/enricher/serp-lookup — SerpAPI Google Maps phone lookup
-// Searches places by company name + address, matches approx, returns phone
+// POST /api/enricher/serp-lookup — Website phone scraper
+// Fetches company website pages and extracts phone via regex
+// Falls back to web search (company name) if no website provided
 // ============================================
 
 import { NextRequest } from 'next/server';
@@ -13,55 +14,13 @@ import {
 } from '@/lib/api-utils';
 import { z } from 'zod';
 
-const serpLookupSchema = z.object({
+const scrapeSchema = z.object({
     company_name: z.string().optional(),
     address: z.string().optional(),
     website: z.string().optional(),
 });
 
-// Normalize string for fuzzy comparison
-function normalizeForMatch(s: string): string {
-    return (s || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '') // strip accents
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-// Get word overlap score (0–100) between company name and place title
-function fuzzyCompanyScore(companyName: string, placeTitle: string): number {
-    if (!companyName) return 50; // No company → accept first result
-    const c = normalizeForMatch(companyName);
-    const t = normalizeForMatch(placeTitle);
-    if (!c) return 50;
-    if (c === t) return 100;
-    if (t.includes(c) || c.includes(t)) return 90;
-    const cWords = new Set(c.split(/\s+/).filter((w) => w.length > 1));
-    const tWords = new Set(t.split(/\s+/).filter((w) => w.length > 1));
-    if (cWords.size === 0) return 50;
-    let overlap = 0;
-    for (const w of cWords) {
-        if (tWords.has(w)) overlap++;
-        else if ([...tWords].some((tw) => tw.includes(w) || w.includes(tw))) overlap += 0.8;
-    }
-    const score = Math.round((overlap / cWords.size) * 100);
-    return Math.min(100, score);
-}
-
-// Check if address overlaps with place address
-function addressOverlap(addr: string, placeAddr: string): boolean {
-    if (!addr || !placeAddr) return false;
-    const a = normalizeForMatch(addr);
-    const p = normalizeForMatch(placeAddr);
-    const aWords = a.split(/\s+/).filter((w) => w.length > 2);
-    let matches = 0;
-    for (const w of aWords) {
-        if (p.includes(w)) matches++;
-    }
-    return matches >= Math.min(2, aWords.length);
-}
+// ─── Phone utilities ───────────────────────────────────────────────
 
 const FAKE_NUMBERS = new Set([
     '0000000000', '1111111111', '2222222222', '3333333333', '4444444444',
@@ -78,108 +37,190 @@ function isValidPhone(phone: string): boolean {
     return true;
 }
 
-export const POST = withErrorHandler(async (request: NextRequest) => {
-    await requireAuth(request);
+// Extracts all phone candidates from raw HTML/text
+function extractPhones(text: string): string[] {
+    const patterns = [
+        // International format: +33 1 23 45 67 89 / +33123456789
+        /\+\d{1,3}[\s.\-]?\(?\d{1,4}\)?[\s.\-]?\d{1,4}[\s.\-]?\d{1,4}[\s.\-]?\d{1,9}/g,
+        // French 10-digit: 01 23 45 67 89 / 0123456789 / 01.23.45.67.89
+        /0[1-9](?:[\s.\-]?\d{2}){4}/g,
+        // tel: href
+        /tel:[+\d\s.\-]{7,20}/g,
+    ];
 
+    const found = new Set<string>();
+    for (const re of patterns) {
+        for (const m of text.matchAll(re)) {
+            const raw = m[0].replace(/^tel:/, '').trim();
+            if (isValidPhone(raw)) found.add(raw);
+        }
+    }
+    return [...found];
+}
+
+// Normalize to E.164-ish
+function normalizePhone(phone: string): string {
+    if (!phone) return '';
+    const clean = phone.replace(/\s/g, '');
+    if (/^\+\d{8,15}$/.test(clean)) return clean;
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('33') && digits.length === 11) return '+' + digits;
+    if (digits.startsWith('0') && digits.length === 10 && /^0[1-9]/.test(digits)) {
+        return '+33' + digits.substring(1);
+    }
+    return phone;
+}
+
+// ─── URL helpers ───────────────────────────────────────────────────
+
+function normalizeUrl(url: string): string {
+    let u = url.trim();
+    if (!u.startsWith('http://') && !u.startsWith('https://')) u = 'https://' + u;
+    // Remove trailing slash
+    return u.replace(/\/$/, '');
+}
+
+function buildPagesToCheck(baseUrl: string): string[] {
+    const base = normalizeUrl(baseUrl);
+    return [
+        base,
+        `${base}/contact`,
+        `${base}/about`,
+        `${base}/nous-contacter`,
+    ];
+}
+
+// ─── Fetcher ───────────────────────────────────────────────────────
+
+const FETCH_TIMEOUT_MS = 8000;
+const USER_AGENT = 'Mozilla/5.0 (compatible; PhoneEnricher/1.0)';
+
+async function fetchPageText(url: string): Promise<string | null> {
+    try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        const resp = await fetch(url, {
+            headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
+            signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (!resp.ok) return null;
+        const html = await resp.text();
+        // Strip tags for cleaner regex matching
+        return html.replace(/<[^>]+>/g, ' ');
+    } catch {
+        return null;
+    }
+}
+
+// ─── Scrape website ────────────────────────────────────────────────
+
+async function scrapeWebsite(website: string): Promise<{ phone: string; source: string; confidence: number } | null> {
+    const pages = buildPagesToCheck(website);
+
+    for (const pageUrl of pages) {
+        const text = await fetchPageText(pageUrl);
+        if (!text) continue;
+        const phones = extractPhones(text);
+        if (phones.length > 0) {
+            // Prefer numbers found on /contact or /nous-contacter (higher confidence)
+            const isContactPage = pageUrl.includes('contact') || pageUrl.includes('nous-contacter');
+            return {
+                phone: normalizePhone(phones[0]),
+                source: `website_scrape:${pageUrl}`,
+                confidence: isContactPage ? 90 : 75,
+            };
+        }
+    }
+    return null;
+}
+
+// ─── Fallback: web search ──────────────────────────────────────────
+
+async function searchPhoneViaWeb(
+    companyName: string,
+    address?: string
+): Promise<{ phone: string; source: string; confidence: number } | null> {
     const apiKey = process.env.SERP_API_KEY;
-    if (!apiKey) {
-        return errorResponse('SERP_API_KEY non configurée. Ajoutez-la dans .env', 503);
-    }
+    if (!apiKey) return null;
 
-    const { company_name, address, website } = await validateRequest(request, serpLookupSchema);
-
-    if (!company_name && !address) {
-        return errorResponse('Au moins company_name ou address requis', 400);
-    }
-
-    // Build search query: company + address for Google Maps
-    const queryParts: string[] = [];
-    if (company_name) queryParts.push(company_name.trim());
-    if (address) queryParts.push(address.trim());
-    const q = queryParts.join(' ');
-
-    if (!q.trim()) {
-        return errorResponse('Requête vide', 400);
-    }
-
+    const q = [companyName, address, 'téléphone'].filter(Boolean).join(' ');
     const params = new URLSearchParams({
-        engine: 'google_maps',
-        type: 'search',
-        q: q.trim(),
+        engine: 'google',
+        q,
         api_key: apiKey,
         hl: 'fr',
         gl: 'fr',
+        num: '5',
     });
 
     try {
         const resp = await fetch(`https://serpapi.com/search?${params.toString()}`, {
-            method: 'GET',
             headers: { Accept: 'application/json' },
         });
-
-        if (!resp.ok) {
-            const errText = await resp.text();
-            console.error('SerpAPI error:', resp.status, errText);
-            return errorResponse(`Erreur SerpAPI: ${resp.status}`, resp.status);
-        }
+        if (!resp.ok) return null;
 
         const data = (await resp.json()) as {
-            local_results?: Array<{
-                title?: string;
-                address?: string;
-                phone?: string;
-                place_id?: string;
-            }>;
-            search_metadata?: { status?: string };
-            error?: string;
+            organic_results?: Array<{ snippet?: string; link?: string }>;
+            answer_box?: { answer?: string; snippet?: string };
         };
 
-        if (data.error) {
-            return errorResponse(data.error, 400);
-        }
-
-        const localResults = data.local_results || [];
-        let best: { phone: string; source: string; confidence: number } | null = null;
-
-        for (const place of localResults) {
-            const phone = place.phone?.trim();
-            if (!phone || !isValidPhone(phone)) continue;
-
-            const companyScore = fuzzyCompanyScore(company_name || '', place.title || '');
-            const addrMatch = address ? addressOverlap(address, place.address || '') : false;
-            let confidence = companyScore;
-            if (addrMatch) confidence = Math.min(100, confidence + 15);
-            if (companyScore >= 60) {
-                if (!best || confidence > best.confidence) {
-                    best = {
-                        phone,
-                        source: 'serp_google_maps',
-                        confidence: Math.min(100, confidence),
-                    };
-                }
+        // Check answer box first (Google often shows phone directly)
+        const boxText = [data.answer_box?.answer, data.answer_box?.snippet].filter(Boolean).join(' ');
+        if (boxText) {
+            const phones = extractPhones(boxText);
+            if (phones.length > 0) {
+                return { phone: normalizePhone(phones[0]), source: 'web_search:answer_box', confidence: 80 };
             }
         }
 
-        // If no good match but we have results with phones, take best by position
-        if (!best && localResults.length > 0) {
-            const firstWithPhone = localResults.find((p) => p.phone && isValidPhone(p.phone));
-            if (firstWithPhone?.phone) {
-                const companyScore = fuzzyCompanyScore(company_name || '', firstWithPhone.title || '');
-                best = {
-                    phone: firstWithPhone.phone.trim(),
-                    source: 'serp_google_maps',
-                    confidence: Math.max(40, companyScore),
-                };
+        // Check snippets
+        for (const result of data.organic_results || []) {
+            const snippet = result.snippet || '';
+            const phones = extractPhones(snippet);
+            if (phones.length > 0) {
+                return { phone: normalizePhone(phones[0]), source: `web_search:${result.link || 'organic'}`, confidence: 60 };
             }
         }
 
-        return successResponse({
-            phone_number: best?.phone ?? null,
-            source: best?.source ?? null,
-            confidence: best?.confidence ?? 0,
-        });
-    } catch (err) {
-        console.error('SerpAPI lookup failed:', err);
-        return errorResponse('Erreur lors de la recherche SerpAPI', 500);
+        // Try fetching the first result's page
+        const firstUrl = data.organic_results?.[0]?.link;
+        if (firstUrl) {
+            const scraped = await scrapeWebsite(firstUrl);
+            if (scraped) return { ...scraped, confidence: Math.min(scraped.confidence, 55) };
+        }
+    } catch {
+        // silently fall through
     }
+    return null;
+}
+
+// ─── Handler ───────────────────────────────────────────────────────
+
+export const POST = withErrorHandler(async (request: NextRequest) => {
+    await requireAuth(request);
+
+    const { company_name, address, website } = await validateRequest(request, scrapeSchema);
+
+    if (!company_name && !website) {
+        return errorResponse('Au moins company_name ou website requis', 400);
+    }
+
+    let result: { phone: string; source: string; confidence: number } | null = null;
+
+    // 1. Try scraping the website directly
+    if (website) {
+        result = await scrapeWebsite(website);
+    }
+
+    // 2. Fall back to web search if no website or scrape failed
+    if (!result && company_name) {
+        result = await searchPhoneViaWeb(company_name, address);
+    }
+
+    return successResponse({
+        phone_number: result?.phone ?? null,
+        source: result?.source ?? null,
+        confidence: result?.confidence ?? 0,
+    });
 });

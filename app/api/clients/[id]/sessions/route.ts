@@ -42,6 +42,8 @@ export const GET = withErrorHandler(
         id: t.id,
         label: t.label,
         assignee: t.assignee,
+        assigneeRole: t.assigneeRole,
+        priority: t.priority,
         doneAt: t.doneAt?.toISOString() ?? null,
       })),
       createdAt: s.createdAt.toISOString(),
@@ -70,6 +72,8 @@ const createSessionSchema = z.object({
       z.object({
         label: z.string().min(1),
         assignee: z.string().optional(),
+        assigneeRole: z.enum(['SDR', 'MANAGER', 'DEV', 'ALWAYS']).optional().default('ALWAYS'),
+        priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional().default('MEDIUM'),
       }),
     )
     .optional()
@@ -106,6 +110,8 @@ export const POST = withErrorHandler(
           create: (body.tasks ?? []).map((t) => ({
             label: t.label,
             assignee: t.assignee,
+            assigneeRole: t.assigneeRole || 'ALWAYS',
+            priority: t.priority || 'MEDIUM',
           })),
         },
       },
@@ -158,6 +164,8 @@ export const POST = withErrorHandler(
         id: t.id,
         label: t.label,
         assignee: t.assignee,
+        assigneeRole: t.assigneeRole,
+        priority: t.priority,
         doneAt: t.doneAt?.toISOString() ?? null,
       })),
       createdAt: session.createdAt.toISOString(),

@@ -84,6 +84,7 @@ interface Mission {
         id: string;
         name: string;
         type: string;
+        isActive?: boolean;
         commercialInterlocuteurId?: string | null;
         commercialInterlocuteur?: {
             id: string;
@@ -193,6 +194,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [showDeleteListModal, setShowDeleteListModal] = useState(false);
     const [listToDelete, setListToDelete] = useState<Mission["lists"][0] | null>(null);
     const [isDeletingList, setIsDeletingList] = useState(false);
+    const [togglingListId, setTogglingListId] = useState<string | null>(null);
     const { position: listMenuPosition, contextData: listMenuData, handleContextMenu: handleListContextMenu, close: closeListMenu } = useContextMenu();
 
     // Email Templates
@@ -769,6 +771,33 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
         }
     };
 
+    const handleToggleListActive = async (list: Mission["lists"][0]) => {
+        const nextActive = !(list.isActive !== false);
+        setTogglingListId(list.id);
+        try {
+            const res = await fetch(`/api/lists/${list.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ isActive: nextActive }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible de modifier l’état de la liste");
+                return;
+            }
+            await fetchMission();
+            success(
+                nextActive ? "Liste activée" : "Liste désactivée",
+                nextActive ? `"${list.name}" est de nouveau active.` : `"${list.name}" est désactivée pour cette mission.`
+            );
+        } catch (err) {
+            console.error(err);
+            showError("Erreur", "Impossible de modifier l’état de la liste");
+        } finally {
+            setTogglingListId(null);
+        }
+    };
+
     const listContextMenuItems = listMenuData
         ? [
             {
@@ -890,7 +919,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                     tabs={[
                         { id: "general", label: "Général", icon: <Activity className="w-4 h-4" /> },
                         { id: "strategy", label: "Stratégie & Scripts", icon: <Target className="w-4 h-4" /> },
-                        { id: "audience", label: "Audiences", icon: <Users className="w-4 h-4" /> },
+                        { id: "audience", label: "BDD", icon: <Users className="w-4 h-4" /> },
                     ]}
                 />
             </div>
@@ -1466,7 +1495,9 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                             Assigner le premier commercial à toutes les listes
                                         </button>
                                     </div>
-                                    {mission.lists.map((list) => (
+                                    {mission.lists.map((list) => {
+                                        const isListActive = list.isActive !== false;
+                                        return (
                                         <div
                                             key={list.id}
                                             className="relative"
@@ -1475,23 +1506,49 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                                 handleListContextMenu(e, list);
                                             }}
                                         >
-                                            <div className="mgr-mission-card group flex items-center gap-4 p-4">
+                                            <div className={`mgr-mission-card group flex items-center gap-4 p-4 ${!isListActive ? "opacity-70 bg-slate-50" : ""}`}>
                                                 <Link
                                                     href={`/manager/lists/${list.id}`}
                                                     className="flex items-center gap-4 flex-1 min-w-0"
                                                 >
-                                                    <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                                        <ListIcon className="w-5 h-5 text-amber-600" />
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform ${isListActive ? "bg-amber-100" : "bg-slate-200"}`}>
+                                                        <ListIcon className={`w-5 h-5 ${isListActive ? "text-amber-600" : "text-slate-500"}`} />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="font-medium text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+                                                        <p className={`font-medium truncate transition-colors ${isListActive ? "text-slate-900 group-hover:text-indigo-600" : "text-slate-500"}`}>
                                                             {list.name}
                                                         </p>
                                                         <p className="text-sm text-slate-500">
-                                                            {list._count?.companies || 0} sociétés · {list._count?.contacts || 0} contacts
+                                                            {list._count?.companies || 0} sociétés · {Array.isArray((list as any).companies)
+                                                                ? (list as any).companies.reduce(
+                                                                    (acc: number, c: { _count?: { contacts?: number } }) =>
+                                                                        acc + (c._count?.contacts || 0),
+                                                                    0
+                                                                )
+                                                                : 0} contacts
                                                         </p>
                                                     </div>
                                                 </Link>
+                                                {!isListActive && (
+                                                    <span className="text-xs font-medium text-slate-500 px-2 py-1 bg-slate-200 rounded">
+                                                        Désactivée
+                                                    </span>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    disabled={togglingListId === list.id}
+                                                    onClick={() => handleToggleListActive(list)}
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isListActive ? "text-slate-600 border-slate-200 bg-white hover:bg-slate-50" : "text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100"}`}
+                                                    title={isListActive ? "Désactiver la liste pour cette mission" : "Activer la liste"}
+                                                >
+                                                    {togglingListId === list.id ? (
+                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    ) : isListActive ? (
+                                                        "Désactiver"
+                                                    ) : (
+                                                        "Activer"
+                                                    )}
+                                                </button>
                                                 <span className="text-xs font-medium text-slate-500 px-2 py-1 bg-slate-100 rounded">
                                                     {list.type}
                                                 </span>
@@ -1531,7 +1588,8 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                                 <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
                                             </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

@@ -115,10 +115,18 @@ export const PATCH = withErrorHandler(async (
         meetingAddress?: string | null;
         meetingJoinUrl?: string | null;
         meetingPhone?: string | null;
+        confirmationStatus?: string;
+        confirmationUpdatedAt?: Date;
     } = {};
     if (data.callbackDate !== undefined) updateData.callbackDate = data.callbackDate;
     if (data.note !== undefined) updateData.note = data.note;
-    if (isMeetingAction && data.result !== undefined) updateData.result = data.result as (typeof meetingResults)[number];
+    if (isMeetingAction && data.result !== undefined) {
+        updateData.result = data.result as (typeof meetingResults)[number];
+        if (updateData.result === 'MEETING_CANCELLED') {
+            updateData.confirmationStatus = 'CANCELLED';
+            updateData.confirmationUpdatedAt = new Date();
+        }
+    }
     if (isMeetingAction && data.cancellationReason !== undefined) updateData.cancellationReason = data.cancellationReason;
     if (isMeetingAction && data.meetingType !== undefined) updateData.meetingType = data.meetingType;
     if (isMeetingAction && data.meetingAddress !== undefined) updateData.meetingAddress = data.meetingAddress;

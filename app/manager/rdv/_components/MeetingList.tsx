@@ -12,7 +12,6 @@ import {
   statusColor,
   statusLabel,
   formatDateShort,
-  dateProximityColor,
   meetingTypeIcon,
   categoryBg,
   categoryColor,
@@ -50,7 +49,7 @@ const MeetingRow = memo(function MeetingRow({
   onOpen: (m: Meeting) => void;
 }) {
   const status = meetingStatus(meeting);
-  const date = formatDateShort(meeting.callbackDate);
+  const date = formatDateShort(meeting.createdAt);
 
   return (
     <div
@@ -70,7 +69,7 @@ const MeetingRow = memo(function MeetingRow({
       <div style={{ width: 90, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
         <div style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)", lineHeight: 1 }}>{date.day}</div>
         <div style={{ fontSize: 11, color: "var(--ink3)", textTransform: "uppercase", fontWeight: 500 }}>{date.month}</div>
-        <span style={{ fontSize: 10, fontWeight: 600, background: `${dateProximityColor(meeting.callbackDate)}15`, color: dateProximityColor(meeting.callbackDate), borderRadius: 5, padding: "2px 7px" }}>
+        <span style={{ fontSize: 10, fontWeight: 600, background: "var(--surface2)", color: "var(--ink3)", borderRadius: 5, padding: "2px 7px" }}>
           {date.time}
         </span>
       </div>
@@ -232,7 +231,7 @@ export function MeetingList({
             onChange={onToggleSelectAll}
           />
         </div>
-        <div style={{ width: 90 }}>Date</div>
+        <div style={{ width: 90 }}>Créé le</div>
         <div style={{ flex: 2, minWidth: 160 }}>Contact</div>
         <div style={{ flex: 2, minWidth: 140 }}>Entreprise</div>
         <div style={{ flex: 1, minWidth: 100 }}>Client</div>

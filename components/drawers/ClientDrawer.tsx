@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Drawer, DrawerSection, DrawerField, Button, Input, useToast, ConfirmModal, Badge } from "@/components/ui";
+import { CLIENTS_QUERY_KEY, clientDetailQueryKey } from "@/lib/query-keys";
 import {
     Building2,
     Mail,
@@ -55,6 +57,13 @@ interface ClientDrawerProps {
 // CLIENT DRAWER COMPONENT
 // ============================================
 
+async function fetchClientDetail(clientId: string) {
+    const res = await fetch(`/api/clients/${clientId}`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || "Impossible de charger le client");
+    return json.data;
+}
+
 export function ClientDrawer({
     isOpen,
     onClose,
@@ -62,6 +71,7 @@ export function ClientDrawer({
     onUpdate,
     onDelete,
 }: ClientDrawerProps) {
+    const queryClient = useQueryClient();
     const { success, error: showError } = useToast();
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -81,40 +91,31 @@ export function ClientDrawer({
     const [mailboxes, setMailboxes] = useState<Array<{ id: string; email: string; displayName: string | null }>>([]);
     const [isLoadingMailboxes, setIsLoadingMailboxes] = useState(false);
 
-    // Reset form when client changes
+    // React Query: full client details when drawer is open (for defaultMailboxId and form)
+    const { data: clientDetail } = useQuery({
+        queryKey: clientDetailQueryKey(client?.id ?? null),
+        queryFn: () => fetchClientDetail(client!.id),
+        enabled: isOpen && !!client?.id,
+    });
+
+    // Sync form from list client + detail when they change
     useEffect(() => {
         if (client) {
-            setFormData((prev) => ({
-                ...prev,
+            const onboardingData = (clientDetail?.onboarding?.onboardingData ?? {}) as { defaultMailboxId?: string };
+            setFormData({
                 name: client.name || "",
                 industry: client.industry || "",
                 email: client.email || "",
                 phone: client.phone || "",
-                bookingUrl: (client as any).bookingUrl || "",
-                portalShowCallHistory: (client as any).portalShowCallHistory ?? false,
-                portalShowDatabase: (client as any).portalShowDatabase ?? false,
-                rdvEmailNotificationsEnabled: (client as any).rdvEmailNotificationsEnabled ?? true,
-            }));
+                bookingUrl: (client as any).bookingUrl ?? (clientDetail as any)?.bookingUrl ?? "",
+                portalShowCallHistory: (client as any).portalShowCallHistory ?? (clientDetail as any)?.portalShowCallHistory ?? false,
+                portalShowDatabase: (client as any).portalShowDatabase ?? (clientDetail as any)?.portalShowDatabase ?? false,
+                rdvEmailNotificationsEnabled: (client as any).rdvEmailNotificationsEnabled ?? (clientDetail as any)?.rdvEmailNotificationsEnabled ?? true,
+                defaultMailboxId: onboardingData.defaultMailboxId ?? "",
+            });
             setIsEditing(false);
-
-            // Fetch client onboarding data (for default mailbox)
-            (async () => {
-                try {
-                    const res = await fetch(`/api/clients/${client.id}`);
-                    const json = await res.json();
-                    if (json.success) {
-                        const onboardingData = (json.data?.onboarding?.onboardingData ?? {}) as { defaultMailboxId?: string };
-                        setFormData((prev) => ({
-                            ...prev,
-                            defaultMailboxId: onboardingData.defaultMailboxId ?? "",
-                        }));
-                    }
-                } catch {
-                    // ignore, optional enhancement
-                }
-            })();
         }
-    }, [client]);
+    }, [client, clientDetail]);
 
     // Load available mailboxes for managers (owned + shared)
     useEffect(() => {
@@ -159,6 +160,8 @@ export function ClientDrawer({
             if (json.success) {
                 success("Client mis à jour", `${formData.name} a été mis à jour`);
                 setIsEditing(false);
+                queryClient.invalidateQueries({ queryKey: clientDetailQueryKey(client.id) });
+                queryClient.invalidateQueries({ queryKey: CLIENTS_QUERY_KEY });
                 if (onUpdate) {
                     onUpdate({ ...client, ...formData });
                 }
@@ -194,6 +197,8 @@ export function ClientDrawer({
             if (json.success) {
                 success("Client supprimé", `${client.name} et toutes les données associées ont été supprimés`);
                 setShowDeleteConfirm(false);
+                queryClient.invalidateQueries({ queryKey: clientDetailQueryKey(client.id) });
+                queryClient.invalidateQueries({ queryKey: CLIENTS_QUERY_KEY });
                 onClose();
                 onDelete?.();
             } else {

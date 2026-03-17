@@ -184,26 +184,30 @@ export default function EnricherPage() {
             const address = getMapped('address') || getField(['address', 'adresse', 'addr']);
             const website = getMapped('website') || getField(['website', 'url', 'site', 'domain', 'web']);
 
-            item.log.push(`[START] company="${company}" address="${address}" website="${website}"`);
+            const strategy = website ? 'website scrape' : 'web search fallback';
+            item.log.push(`[START] company="${company}" website="${website}" strategy="${strategy}"`);
 
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
                 try {
                     const resp = await fetch('/api/enricher/serp-lookup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ company_name: company || undefined, address: address || undefined, website: website || undefined }),
+                        body: JSON.stringify({
+                            company_name: company || undefined,
+                            address: address || undefined,
+                            website: website || undefined,
+                        }),
                     });
                     const json = await resp.json();
-                    if (!resp.ok) {
-                        throw new Error(json.error || `HTTP ${resp.status}`);
-                    }
+                    if (!resp.ok) throw new Error(json.error || `HTTP ${resp.status}`);
+
                     const data = json.data as { phone_number?: string; source?: string; confidence?: number };
                     if (data.phone_number && isValidPhone(data.phone_number)) {
                         item.phone_number = normalizePhone(data.phone_number);
-                        item.phone_source = data.source || 'serp_google_maps';
+                        item.phone_source = data.source || 'website_scrape';
                         item.confidence_score = Math.min(100, Math.max(0, data.confidence || 50));
                         item.status = 'found';
-                        item.log.push(`[SUCCESS] ${item.phone_number} (${item.confidence_score}%)`);
+                        item.log.push(`[SUCCESS] ${item.phone_number} via ${data.source} (${item.confidence_score}%)`);
                         return;
                     }
                     item.log.push('[NOT FOUND] Aucun téléphone trouvé');
@@ -228,7 +232,7 @@ export default function EnricherPage() {
         setIsPaused(false);
         shouldStopRef.current = false;
         startTimeRef.current = Date.now();
-        addLog('info', '▶ Enrichissement démarré — SerpAPI Google Maps');
+        addLog('info', '▶ Enrichissement démarré — Website Scraper + Web Search fallback');
 
         const pending = results.filter((r) => r.status === 'pending');
         let idx = 0;
@@ -329,11 +333,14 @@ export default function EnricherPage() {
                     <div className="flex items-center gap-3 mb-2">
                         <div className="w-9 h-9 rounded-md bg-[#00ff88] flex items-center justify-center text-black font-bold text-lg">☎</div>
                         <h1 className="text-xl font-semibold font-mono">
-                            Company Phone Enricher <span className="text-xs px-2 py-0.5 rounded border border-[#00ff88]/30 bg-[#00ff88]/10 text-[#00ff88] ml-2">SerpAPI</span>
+                            Company Phone Enricher{' '}
+                            <span className="text-xs px-2 py-0.5 rounded border border-[#00ff88]/30 bg-[#00ff88]/10 text-[#00ff88] ml-2">
+                                Website Scraper
+                            </span>
                         </h1>
                     </div>
                     <p className="text-sm text-[#666680] font-mono">
-                        // Enrichissement téléphone via SerpAPI Google Maps — recherche par adresse + nom société
+                        // Enrichissement téléphone via scraping du site web — fallback web search si pas de site
                     </p>
                 </div>
 

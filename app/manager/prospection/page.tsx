@@ -14,9 +14,14 @@ import {
     X, Minus, Radio, Zap, Users, Filter, ArrowUpDown,
     Eye, EyeOff, MoreHorizontal, ExternalLink, Maximize2,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { Card, Button, useToast } from "@/components/ui";
-import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
 import { ACTION_RESULT_LABELS } from "@/lib/types";
+
+const UnifiedActionDrawer = dynamic(
+    () => import("@/components/drawers/UnifiedActionDrawer").then((m) => ({ default: m.UnifiedActionDrawer })),
+    { ssr: false }
+);
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────

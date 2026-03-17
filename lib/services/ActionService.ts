@@ -80,7 +80,7 @@ export class ActionService {
  input: CreateActionInput,
  statusDef?: EffectiveStatusDefinition | null
  ): Promise<any> {
- const triggersCallback = statusDef?.triggersCallback ?? (input.result === 'CALLBACK_REQUESTED');
+        const triggersCallback = statusDef?.triggersCallback ?? (input.result === 'CALLBACK_REQUESTED');
  const triggersOpportunity = statusDef?.triggersOpportunity ??
  (input.result === 'MEETING_BOOKED' || input.result === 'INTERESTED');
 
@@ -104,38 +104,9 @@ export class ActionService {
                     callbackDate = parseDateFromNote(input.note);
                 }
             } else if (input.callbackDate) {
-                // For non-callback results (e.g. MEETING_BOOKED), store the provided date directly
+                // For non-callback results (e.g. MEETING_BOOKED), store the provided date directement
                 callbackDate = input.callbackDate;
             }
-
- // Duplicate prevention: one pending callback per contact/company per campaign.
- // "Pending" = callback not yet due: callbackDate null (open-ended) or > now (scheduled in future).
- // When callbackDate <= now (rappel already happened / time has passed), allow anyone to place a new rappel.
- if (triggersCallback) {
- const existingPending = await tx.action.findFirst({
- where: {
- campaignId: input.campaignId,
- result: input.result as any,
- ...(input.contactId ? { contactId: input.contactId } : { companyId: input.companyId! }),
- OR: [{ callbackDate: null }, { callbackDate: { gt: new Date() } }],
- },
- orderBy: { createdAt: 'desc' },
- select: { id: true, createdAt: true },
- });
- if (existingPending) {
- // Only block if no newer action supersedes it (same contact/company, later createdAt)
- const newerAction = await tx.action.findFirst({
- where: {
- ...(input.contactId ? { contactId: input.contactId } : { companyId: input.companyId! }),
- createdAt: { gt: existingPending.createdAt },
- },
- select: { id: true },
- });
- if (!newerAction) {
- throw new Error('DUPLICATE_CALLBACK');
- }
- }
- }
 
             // 1. Create the action — prefer explicit category, fallback to auto-detection from note
             const autoCategory = (input.result === 'MEETING_BOOKED')

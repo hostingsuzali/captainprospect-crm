@@ -8,6 +8,7 @@ import {
 } from "@/lib/api-utils";
 import { Prisma } from "@prisma/client";
 import { createClientPortalNotification, sendNewRdvEmailNotification } from "@/lib/notifications";
+import { filterRdvList } from "@/lib/utils/meetingFilters";
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
   await requireRole(["MANAGER"], request);
@@ -155,12 +156,17 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   if (andClauses.length > 0) where.AND = andClauses;
 
   const include = {
+    // Contact + its company (classic flow)
     contact: {
       include: {
         company: {
           include: { list: { include: { mission: true } } },
         },
       },
+    },
+    // Company directly linked to the meeting (company-only meetings)
+    company: {
+      include: { list: { include: { mission: true } } },
     },
     sdr: { select: { id: true, name: true, email: true } },
     campaign: {
@@ -173,16 +179,21 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     meetingFeedback: true,
   } satisfies Prisma.ActionInclude;
 
-  const [meetings, totalCount] = await Promise.all([
+  // Fetch enough rows so that after excluding RDV cancelled with <10 min notice we can fill this page
+  const fetchTake = Math.min(skip + limit + 200, 1000);
+  const [rawMeetings, totalCount] = await Promise.all([
     prisma.action.findMany({
       where,
       include,
       orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
+      skip: 0,
+      take: fetchTake,
     }),
     prisma.action.count({ where }),
   ]);
+
+  const meetingsFiltered = filterRdvList(rawMeetings);
+  const meetings = meetingsFiltered.slice(skip, skip + limit);
 
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - now.getDay() + 1);
@@ -269,7 +280,18 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
           customData: m.contact.customData,
         }
       : null,
-    company: m.contact?.company
+    // Prefer direct company link (companyId) but fall back to contact.company
+    company: m.company
+      ? {
+          id: m.company.id,
+          name: m.company.name,
+          industry: m.company.industry,
+          country: m.company.country,
+          size: m.company.size,
+          website: m.company.website,
+          phone: m.company.phone ?? null,
+        }
+      : m.contact?.company
       ? {
           id: m.contact.company.id,
           name: m.contact.company.name,

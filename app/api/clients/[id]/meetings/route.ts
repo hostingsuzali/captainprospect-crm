@@ -7,6 +7,7 @@ import {
     NotFoundError,
     AuthError,
 } from '@/lib/api-utils';
+import { filterRdvList } from '@/lib/utils/meetingFilters';
 
 // ============================================
 // GET /api/clients/[id]/meetings
@@ -90,8 +91,8 @@ export const GET = withErrorHandler(async (
         };
     }
 
-    // Get all meetings (actions with MEETING_BOOKED result) for this client's missions
-    const meetings = await prisma.action.findMany({
+    // Get all meetings (actions with MEETING_BOOKED / MEETING_CANCELLED) for this client's missions
+    const rawMeetings = await prisma.action.findMany({
         where: meetingWhere,
         include: {
             contact: {
@@ -133,6 +134,8 @@ export const GET = withErrorHandler(async (
         },
         orderBy: { createdAt: 'desc' },
     });
+
+    const meetings = filterRdvList(rawMeetings);
 
     // Group by mission
     const byMission = new Map<string, {

@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import dynamic from "next/dynamic";
 import { Card, Badge, Button, Modal, ModalFooter, Select, DataTable, useToast, TableSkeleton, CardSkeleton, EmptyState, DateTimePicker } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
-import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
+
+const UnifiedActionDrawer = dynamic(
+    () => import("@/components/drawers/UnifiedActionDrawer").then((m) => ({ default: m.UnifiedActionDrawer })),
+    { ssr: false }
+);
 import {
     Clock,
     Phone,
@@ -1150,8 +1155,8 @@ export default function SDRCallbacksPage() {
                 </div>
             )}
 
-            {/* Unified Action Drawer */}
-            {unifiedDrawerCompanyId && (
+            {/* Unified Action Drawer — mount only when open */}
+            {unifiedDrawerOpen && unifiedDrawerCompanyId && (
                 <UnifiedActionDrawer
                     isOpen={unifiedDrawerOpen}
                     onClose={closeUnifiedDrawer}

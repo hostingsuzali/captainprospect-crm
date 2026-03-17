@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Phone,
     Mail,
@@ -37,13 +38,24 @@ import {
 } from "lucide-react";
 import { Card, Badge, Button, LoadingState, EmptyState, Tabs, Drawer, DataTable, Select, useToast, TableSkeleton, CardSkeleton, Modal, DateTimePicker } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
+import dynamic from "next/dynamic";
 import { CompanyDrawer, ContactDrawer } from "@/components/drawers";
-import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
 import { BookingDrawer } from "@/components/sdr/BookingDrawer";
+
+const UnifiedActionDrawer = dynamic(
+    () => import("@/components/drawers/UnifiedActionDrawer").then((m) => ({ default: m.UnifiedActionDrawer })),
+    { ssr: false }
+);
 import { QuickEmailModal } from "@/components/email/QuickEmailModal";
 import type { ActionResult, Channel } from "@/lib/types";
 import { ACTION_RESULT_LABELS, CHANNEL_LABELS } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+    sdrActionQueueKey,
+    sdrDrawerContactKey,
+    sdrDrawerCompanyKey,
+    sdrClientBookingKey,
+} from "@/lib/query-keys";
 
 // ============================================
 // TYPES
@@ -389,9 +401,38 @@ export default function SDRActionPage() {
             return next;
         });
     }, []);
-    const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-    const [queueLoading, setQueueLoading] = useState(false);
-    const [queueFetchError, setQueueFetchError] = useState<string | null>(null);
+    const queryClient = useQueryClient();
+    const queueQueryKey = sdrActionQueueKey(selectedMissionId, selectedListId, tableSearchApi);
+    const mapQueueItems = useCallback((items: QueueItem[]) =>
+        items.map((i) => ({
+            ...i,
+            _displayName: i.contact
+                ? `${(i.contact.firstName || "").trim()} ${(i.contact.lastName || "").trim()}`.trim() || i.company.name
+                : i.company.name,
+            _companyName: i.company.name,
+            _phone: i.contact?.phone || i.company?.phone || null,
+            _email: i.contact?.email || null,
+            _searchNote: i.lastAction?.note ?? null,
+        })), []);
+    const {
+        data: queueItems = [],
+        isFetching: queueLoading,
+        error: queueFetchError,
+    } = useQuery({
+        queryKey: queueQueryKey,
+        queryFn: async () => {
+            const params = new URLSearchParams();
+            params.set("missionId", selectedMissionId!);
+            if (selectedListId) params.set("listId", selectedListId);
+            if (tableSearchApi) params.set("search", tableSearchApi);
+            const res = await fetch(`/api/sdr/action-queue?${params.toString()}`);
+            const json = await res.json();
+            if (!json.success || !json.data?.items) throw new Error(json.error || "Impossible de charger la file d'actions");
+            return mapQueueItems(json.data.items as QueueItem[]);
+        },
+        enabled: viewMode === "table" && selectedMissionId !== null,
+    });
+    const queueFetchErrorMsg = queueFetchError ? (queueFetchError as Error).message : null;
     const [submittingRowKey, setSubmittingRowKey] = useState<string | null>(null);
     // Table view multi-select for bulk delete (disqualify)
     const [tableSelectedIds, setTableSelectedIds] = useState<Set<string>>(new Set());
@@ -414,9 +455,64 @@ export default function SDRActionPage() {
     // Drawer for table view (contact/company fiche)
     const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
     const [drawerCompanyId, setDrawerCompanyId] = useState<string | null>(null);
-    const [drawerContact, setDrawerContact] = useState<DrawerContact | null>(null);
-    const [drawerCompany, setDrawerCompany] = useState<DrawerCompany | null>(null);
-    const [drawerLoading, setDrawerLoading] = useState(false);
+    const { data: drawerContact = null, isFetching: drawerContactLoading } = useQuery({
+        queryKey: sdrDrawerContactKey(drawerContactId),
+        queryFn: async () => {
+            const res = await fetch(`/api/contacts/${drawerContactId}`);
+            const json = await res.json();
+            if (!json.success || !json.data) throw new Error(json.error || "Impossible de charger le contact");
+            const c = json.data;
+            return {
+                id: c.id,
+                firstName: c.firstName,
+                lastName: c.lastName,
+                email: c.email,
+                phone: c.phone,
+                additionalPhones: c.additionalPhones ?? undefined,
+                additionalEmails: c.additionalEmails ?? undefined,
+                title: c.title,
+                linkedin: c.linkedin,
+                status: (c.status ?? "PARTIAL") as DrawerContact["status"],
+                companyId: c.company?.id ?? "",
+                companyName: c.company?.name ?? undefined,
+                companyPhone: c.company?.phone ?? undefined,
+            } as DrawerContact;
+        },
+        enabled: !!drawerContactId,
+    });
+    const { data: drawerCompany = null, isFetching: drawerCompanyLoading } = useQuery({
+        queryKey: sdrDrawerCompanyKey(drawerCompanyId),
+        queryFn: async () => {
+            const res = await fetch(`/api/companies/${drawerCompanyId}`);
+            const json = await res.json();
+            if (!json.success || !json.data) throw new Error(json.error || "Impossible de charger la société");
+            const co = json.data;
+            return {
+                id: co.id,
+                name: co.name,
+                industry: co.industry,
+                country: co.country,
+                website: co.website,
+                size: co.size,
+                phone: co.phone,
+                status: (co.status ?? "PARTIAL") as DrawerCompany["status"],
+                contacts: (co.contacts ?? []).map((ct: { id: string; firstName: string | null; lastName: string | null; email: string | null; phone: string | null; title: string | null; linkedin: string | null; status: string; companyId: string }) => ({
+                    id: ct.id,
+                    firstName: ct.firstName,
+                    lastName: ct.lastName,
+                    email: ct.email,
+                    phone: ct.phone,
+                    title: ct.title,
+                    linkedin: ct.linkedin,
+                    status: (ct.status ?? "PARTIAL") as any,
+                    companyId: ct.companyId,
+                })),
+                _count: { contacts: co._count?.contacts ?? co.contacts?.length ?? 0 },
+            } as DrawerCompany;
+        },
+        enabled: !!drawerCompanyId,
+    });
+    const drawerLoading = drawerContactLoading || drawerCompanyLoading;
 
     // Quick Email Modal state
     const [showQuickEmailModal, setShowQuickEmailModal] = useState(false);
@@ -681,11 +777,11 @@ export default function SDRActionPage() {
         return () => { if (timerRef.current) clearInterval(timerRef.current); };
     }, [selectedMissionId, selectedListId, loadNextAction]);
 
-    // Fetch queue for table view (loads all items — no limit)
+    // Queue is loaded via useQuery (queueQueryKey) above
+    const _queueEffectRemoved = true;
     useEffect(() => {
+        if (_queueEffectRemoved) return; // queue from useQuery above
         if (viewMode !== "table" || selectedMissionId === null) {
-            setQueueItems([]);
-            setQueueFetchError(null);
             return;
         }
         queueAbortRef.current?.abort();
@@ -733,15 +829,15 @@ export default function SDRActionPage() {
         return () => controller.abort();
     }, [viewMode, selectedMissionId, selectedListId, tableSearchApi, showError]);
 
-    // Fetch contact when opening contact drawer (table view)
+    // (Drawer contact/company loaded via useQuery above)
+    const _drawerFetchRemoved = true;
     useEffect(() => {
+        if (_drawerFetchRemoved) return;
         if (!drawerContactId) {
-            setDrawerContact(null);
             return;
         }
         const controller = new AbortController();
         const signal = controller.signal;
-        setDrawerLoading(true);
         fetch(`/api/contacts/${drawerContactId}`, { signal })
             .then((res) => res.json())
             .then((json) => {
@@ -778,15 +874,12 @@ export default function SDRActionPage() {
         return () => controller.abort();
     }, [drawerContactId, showError]);
 
-    // Fetch company when opening company drawer (table view)
+    // (Company drawer loaded via useQuery above)
     useEffect(() => {
-        if (!drawerCompanyId) {
-            setDrawerCompany(null);
-            return;
-        }
+        if (_drawerFetchRemoved) return;
+        if (!drawerCompanyId) return;
         const controller = new AbortController();
         const signal = controller.signal;
-        setDrawerLoading(true);
         fetch(`/api/companies/${drawerCompanyId}`, { signal })
             .then((res) => res.json())
             .then((json) => {
@@ -839,42 +932,10 @@ export default function SDRActionPage() {
         if (recentlyUpdatedTimeoutRef.current) clearTimeout(recentlyUpdatedTimeoutRef.current);
     }, []);
 
-    // Refetch queue (table view) — same API as initial load; call on drawer close and when action recorded
+    // Refetch queue (table view) — invalidate so React Query refetches
     const refreshQueue = useCallback(() => {
-        if (selectedMissionId === null) return;
-        refreshQueueAbortRef.current?.abort();
-        const controller = new AbortController();
-        refreshQueueAbortRef.current = controller;
-        const signal = controller.signal;
-        setQueueLoading(true);
-        const params = new URLSearchParams();
-        params.set("missionId", selectedMissionId);
-        if (selectedListId) params.set("listId", selectedListId);
-        if (tableSearchApi) params.set("search", tableSearchApi);
-        params.set("_t", String(Date.now())); // cache-bust so we get fresh data after drawer updates
-        fetch(`/api/sdr/action-queue?${params.toString()}`, { cache: "no-store", signal })
-            .then((res) => res.json())
-            .then((json) => {
-                if (signal.aborted) return;
-                if (json.success && json.data?.items) {
-                    const items = json.data.items as QueueItem[];
-                    setQueueItems(items.map((i) => ({
-                        ...i,
-                        _displayName: i.contact
-                            ? `${(i.contact.firstName || "").trim()} ${(i.contact.lastName || "").trim()}`.trim() || i.company.name
-                            : i.company.name,
-                        _companyName: i.company.name,
-                        _phone: i.contact?.phone || i.company?.phone || null,
-                        _email: i.contact?.email || null,
-                        _searchNote: i.lastAction?.note ?? null,
-                    })));
-                }
-            })
-            .finally(() => {
-                if (!signal.aborted) setQueueLoading(false);
-                if (refreshQueueAbortRef.current === controller) refreshQueueAbortRef.current = null;
-            });
-    }, [selectedMissionId, selectedListId, tableSearchApi]);
+        queryClient.invalidateQueries({ queryKey: queueQueryKey });
+    }, [queryClient, queueQueryKey]);
 
     // When opening Stats modal in card view, fetch queue for current mission/list
     useEffect(() => {
@@ -912,8 +973,21 @@ export default function SDRActionPage() {
     const [unifiedDrawerCompanyId, setUnifiedDrawerCompanyId] = useState<string | null>(null);
     const [unifiedDrawerMissionId, setUnifiedDrawerMissionId] = useState<string | undefined>();
     const [unifiedDrawerMissionName, setUnifiedDrawerMissionName] = useState<string | undefined>();
-    const [unifiedDrawerClientBookingUrl, setUnifiedDrawerClientBookingUrl] = useState<string>("");
-    const [unifiedDrawerInterlocuteurs, setUnifiedDrawerInterlocuteurs] = useState<any[]>([]);
+    const { data: clientBookingData } = useQuery({
+        queryKey: sdrClientBookingKey(unifiedDrawerOpen && unifiedDrawerMissionId ? unifiedDrawerMissionId : null),
+        queryFn: async () => {
+            const res = await fetch(`/api/missions/${unifiedDrawerMissionId}/client-booking`);
+            const json = await res.json();
+            if (!json.success) return { bookingUrl: "", interlocuteurs: [] as any[] };
+            return {
+                bookingUrl: json.data?.bookingUrl ?? "",
+                interlocuteurs: Array.isArray(json.data?.interlocuteurs) ? json.data.interlocuteurs : [],
+            };
+        },
+        enabled: !!unifiedDrawerMissionId && !!unifiedDrawerOpen,
+    });
+    const unifiedDrawerClientBookingUrl = clientBookingData?.bookingUrl ?? "";
+    const unifiedDrawerInterlocuteurs = clientBookingData?.interlocuteurs ?? [];
     /** Row used to open the drawer (for email modal context when "Envoie mail" is selected in drawer) */
     const [drawerRow, setDrawerRow] = useState<QueueItem | null>(null);
     const prevUnifiedDrawerOpenRef = useRef(false);
@@ -927,38 +1001,6 @@ export default function SDRActionPage() {
             return () => clearTimeout(id);
         }
     }, [unifiedDrawerOpen, viewMode, refreshQueue]);
-
-    // Fetch client booking URL and interlocuteurs when drawer opens (lightweight endpoint)
-    useEffect(() => {
-        if (!unifiedDrawerMissionId || !unifiedDrawerOpen) {
-            setUnifiedDrawerClientBookingUrl("");
-            setUnifiedDrawerInterlocuteurs([]);
-            return;
-        }
-        const controller = new AbortController();
-        const signal = controller.signal;
-        fetch(`/api/missions/${unifiedDrawerMissionId}/client-booking`, { signal })
-            .then((res) => res.json())
-            .then((json) => {
-                if (signal.aborted) return;
-                if (json.success && json.data) {
-                    setUnifiedDrawerClientBookingUrl(json.data.bookingUrl || "");
-                    setUnifiedDrawerInterlocuteurs(
-                        Array.isArray(json.data.interlocuteurs) ? json.data.interlocuteurs : []
-                    );
-                } else {
-                    setUnifiedDrawerClientBookingUrl("");
-                    setUnifiedDrawerInterlocuteurs([]);
-                }
-            })
-            .catch((err) => {
-                if ((err as Error).name === "AbortError") return;
-                setUnifiedDrawerClientBookingUrl("");
-                setUnifiedDrawerInterlocuteurs([]);
-                showError("Impossible de charger l'URL de réservation");
-            });
-        return () => controller.abort();
-    }, [unifiedDrawerMissionId, unifiedDrawerOpen, showError]);
 
     const openDrawerForRow = (row: QueueItem) => {
         setDrawerRow(row);
@@ -979,7 +1021,6 @@ export default function SDRActionPage() {
         setUnifiedDrawerCompanyId(null);
         setUnifiedDrawerMissionId(undefined);
         setUnifiedDrawerMissionName(undefined);
-        setUnifiedDrawerClientBookingUrl("");
     };
 
     const [emailModalPreferredMailboxId, setEmailModalPreferredMailboxId] = useState<string | null>(null);
@@ -1045,17 +1086,10 @@ export default function SDRActionPage() {
     };
 
     // Keep legacy close functions for backwards compatibility
-    const closeContactDrawer = () => {
-        setDrawerContactId(null);
-        setDrawerContact(null);
-    };
-    const closeCompanyDrawer = () => {
-        setDrawerCompanyId(null);
-        setDrawerCompany(null);
-    };
+    const closeContactDrawer = () => setDrawerContactId(null);
+    const closeCompanyDrawer = () => setDrawerCompanyId(null);
     const handleContactFromCompany = (contact: { id: string }) => {
         setDrawerCompanyId(null);
-        setDrawerCompany(null);
         setDrawerContactId(contact.id);
     };
 
@@ -1144,7 +1178,7 @@ export default function SDRActionPage() {
             });
             const json = await res.json();
             if (json.success) {
-                setQueueItems((prev) => prev.filter((r) => queueRowKey(r) !== key));
+                queryClient.invalidateQueries({ queryKey: queueQueryKey });
                 setActionsCompleted((c) => c + 1);
             } else {
                 showError(json.error || "Erreur lors de l'enregistrement");
@@ -1164,7 +1198,7 @@ export default function SDRActionPage() {
         const rowsToProcess = filteredQueueItems.filter((r) => keysToRemove.has(queueRowKey(r)));
 
         // Optimistic: remove from UI immediately
-        setQueueItems((prev) => prev.filter((r) => !keysToRemove.has(queueRowKey(r))));
+        queryClient.invalidateQueries({ queryKey: queueQueryKey });
         setTableSelectedIds(new Set());
         setActionsCompleted((c) => c + rowsToProcess.length);
         setIsBulkDisqualifying(false);
@@ -1249,7 +1283,7 @@ export default function SDRActionPage() {
                     showError(json.error || "Erreur lors de l'enregistrement de l'email");
                     return;
                 }
-                setQueueItems((prev) => prev.filter((r) => queueRowKey(r) !== key));
+                queryClient.invalidateQueries({ queryKey: queueQueryKey });
                 setActionsCompleted((c) => c + 1);
             }
         } catch {
@@ -1984,15 +2018,12 @@ export default function SDRActionPage() {
                     ) : queueFetchError ? (
                         <EmptyState
                             icon={RefreshCw}
-                            title={queueFetchError}
+                            title={queueFetchErrorMsg ?? "Erreur"}
                             description="Vérifiez votre connexion et réessayez."
                             action={
                                 <Button
                                     variant="secondary"
-                                    onClick={() => {
-                                        setQueueFetchError(null);
-                                        refreshQueue();
-                                    }}
+                                    onClick={() => refreshQueue()}
                                     className="gap-2"
                                 >
                                     <RefreshCw className="w-4 h-4" />
@@ -2046,9 +2077,8 @@ export default function SDRActionPage() {
                     )}
                 </div>
 
-                {/* Unified Action Drawer */}
-                {
-                    unifiedDrawerCompanyId && (
+                {/* Unified Action Drawer — mount only when open to avoid heavy effects when closed */}
+                {unifiedDrawerOpen && unifiedDrawerCompanyId && (
                         <UnifiedActionDrawer
                             isOpen={unifiedDrawerOpen}
                             onClose={closeUnifiedDrawer}
@@ -2061,7 +2091,7 @@ export default function SDRActionPage() {
                             onActionRecorded={() => {
                                 const rowKey = unifiedDrawerContactId ?? unifiedDrawerCompanyId ?? "";
                                 if (rowKey) {
-                                    setQueueItems((prev) => prev.filter((r) => queueRowKey(r) !== rowKey));
+                                    queryClient.invalidateQueries({ queryKey: queueQueryKey });
                                     setActionsCompleted((c) => c + 1);
                                 }
                                 refreshQueue();
@@ -2070,7 +2100,7 @@ export default function SDRActionPage() {
                                 if (!drawerRow) return;
                                 const key = queueRowKey(drawerRow);
                                 const idx = filteredQueueItems.findIndex((row) => queueRowKey(row) === key);
-                                setQueueItems((prev) => prev.filter((r) => queueRowKey(r) !== key));
+                                queryClient.invalidateQueries({ queryKey: queueQueryKey });
                                 setActionsCompleted((c) => c + 1);
                                 if (idx >= 0 && idx < filteredQueueItems.length - 1) {
                                     const nextRow = filteredQueueItems[idx + 1];
@@ -3009,7 +3039,7 @@ export default function SDRActionPage() {
             </Modal>
 
             {/* Unified Action Drawer (card view: when opened from Stats modal) */}
-            {unifiedDrawerCompanyId && (
+            {unifiedDrawerOpen && unifiedDrawerCompanyId && (
                 <UnifiedActionDrawer
                     isOpen={unifiedDrawerOpen}
                     onClose={closeUnifiedDrawer}

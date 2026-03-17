@@ -687,6 +687,7 @@ model List {
   source        String?   // Origin: Apollo, Clay, CSV, etc.
   importConfig  Json?     // Store import configuration (type, mappings, custom fields)
   companies     Company[]
+  isActive      Boolean   @default(true) // When false, list is disabled for this mission (e.g. excluded from assignment)
 
   // Optional commercial (client interlocuteur) owning this list
   commercialInterlocuteurId String?
@@ -3135,13 +3136,31 @@ model ClientSession {
 }
 
 model SessionTask {
-  id        String        @id @default(cuid())
-  sessionId String
-  session   ClientSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  label     String
-  assignee  String?
-  doneAt    DateTime?
-  createdAt DateTime      @default(now())
+  id           String             @id @default(cuid())
+  sessionId    String
+  session      ClientSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  label        String
+  assignee     String?
+  assigneeRole SessionTaskRole    @default(ALWAYS)
+  priority     SessionTaskPriority @default(MEDIUM)
+  doneAt       DateTime?
+  createdAt    DateTime           @default(now())
 
   @@index([sessionId])
+  @@index([assigneeRole])
+  @@index([doneAt])
+}
+
+enum SessionTaskRole {
+  SDR
+  MANAGER
+  DEV
+  ALWAYS
+}
+
+enum SessionTaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
 }

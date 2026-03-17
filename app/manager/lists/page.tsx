@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, Badge, Button, Select, ConfirmModal, ContextMenu, useContextMenu, useToast } from "@/components/ui";
 import {
     List,
@@ -67,11 +68,23 @@ const TYPE_STYLES = {
 // LISTS PAGE
 // ============================================
 
+const LISTS_QUERY_KEY = ["manager", "lists"] as const;
+
+async function fetchListsApi(): Promise<ListData[]> {
+    const res = await fetch("/api/lists");
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || "Impossible de charger les listes");
+    return json.data;
+}
+
 export default function ListsPage() {
     const router = useRouter();
+    const queryClient = useQueryClient();
     const { success, error: showError } = useToast();
-    const [lists, setLists] = useState<ListData[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { data: lists = [], isLoading, isFetching, refetch } = useQuery({
+        queryKey: LISTS_QUERY_KEY,
+        queryFn: fetchListsApi,
+    });
     const [searchQuery, setSearchQuery] = useState("");
     const [typeFilter, setTypeFilter] = useState<string>("all");
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -95,35 +108,8 @@ export default function ListsPage() {
         setImportModalOpen(false);
         setResultsToImport([]);
         setActiveTab("lists");
-        fetchLists(); // Refresh lists after import
+        queryClient.invalidateQueries({ queryKey: LISTS_QUERY_KEY });
     };
-
-    // ============================================
-    // FETCH LISTS
-    // ============================================
-
-    const fetchLists = async () => {
-        setIsLoading(true);
-        try {
-            const res = await fetch("/api/lists");
-            const json = await res.json();
-
-            if (json.success) {
-                setLists(json.data);
-            } else {
-                showError("Erreur", json.error || "Impossible de charger les listes");
-            }
-        } catch (err) {
-            console.error("Failed to fetch lists:", err);
-            showError("Erreur", "Impossible de charger les listes");
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchLists();
-    }, []);
 
 
     // ============================================
@@ -142,7 +128,7 @@ export default function ListsPage() {
 
             if (json.success) {
                 success("Liste supprimée", `${deletingList.name} a été supprimée`);
-                fetchLists();
+                queryClient.invalidateQueries({ queryKey: LISTS_QUERY_KEY });
             } else {
                 showError("Erreur", json.error || "Impossible de supprimer");
             }
@@ -248,11 +234,11 @@ export default function ListsPage() {
                     {activeTab === "lists" && (
                         <>
                             <button
-                                onClick={fetchLists}
+                                onClick={() => refetch()}
                                 className="p-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors tooltip-trigger"
                                 title="Rafraîchir les listes"
                             >
-                                <RefreshCw className={`w-4 h-4 text-slate-500 ${isLoading ? "animate-spin" : ""}`} />
+                                <RefreshCw className={`w-4 h-4 text-slate-500 ${isFetching ? "animate-spin" : ""}`} />
                             </button>
                             <Link
                                 href="/manager/lists/import"

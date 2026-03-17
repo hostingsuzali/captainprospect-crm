@@ -72,6 +72,8 @@ export const POST = withErrorHandler(async (
             result: "MEETING_CANCELLED",
             cancellationReason: cancellationReason,
             note: note && String(note).trim() ? (action.note ? `${action.note}\n${String(note).trim()}` : String(note).trim()) : action.note ?? undefined,
+            confirmationStatus: "CANCELLED",
+            confirmationUpdatedAt: new Date(),
         },
         include: {
             contact: {

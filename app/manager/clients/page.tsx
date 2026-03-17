@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast, Badge } from "@/components/ui";
 import {
     Search,
@@ -26,6 +27,7 @@ import Link from "next/link";
 import { ClientOnboardingModal } from "@/components/manager/ClientOnboardingModal";
 import { ClientDrawer } from "@/components/drawers";
 import { OnboardingReadinessGauge } from "@/components/common/OnboardingReadinessGauge";
+import { CLIENTS_QUERY_KEY, LEEXI_RECAPS_QUERY_KEY } from "@/lib/query-keys";
 
 // ============================================
 // TYPES
@@ -74,13 +76,31 @@ interface LeexiRecapsData {
 }
 
 // ============================================
+// FETCHERS
+// ============================================
+
+async function fetchClientsApi(): Promise<Client[]> {
+    const res = await fetch("/api/clients");
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || "Impossible de charger les clients");
+    return json.data;
+}
+
+async function fetchLeexiRecapsApi(): Promise<LeexiRecapsData | null> {
+    const res = await fetch("/api/leexi/recaps");
+    const json = await res.json();
+    if (json.success) return json.data;
+    if (res.status !== 503) throw new Error(json.error || "Erreur Leexi");
+    return null;
+}
+
+// ============================================
 // CLIENTS PAGE
 // ============================================
 
 export default function ClientsPage() {
-    const { success, error: showError } = useToast();
-    const [clients, setClients] = useState<Client[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const queryClient = useQueryClient();
+    const { error: showError } = useToast();
     const [searchQuery, setSearchQuery] = useState("");
 
     // Onboarding modal
@@ -91,60 +111,35 @@ export default function ClientsPage() {
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [showDrawer, setShowDrawer] = useState(false);
 
-    // Leexi recaps
-    const [leexiData, setLeexiData] = useState<LeexiRecapsData | null>(null);
-    const [isLoadingLeexi, setIsLoadingLeexi] = useState(false);
-    const [leexiError, setLeexiError] = useState<string | null>(null);
+    // Leexi UI state
     const [showLeexiSection, setShowLeexiSection] = useState(true);
     const [expandedRecapId, setExpandedRecapId] = useState<string | null>(null);
 
-    // ============================================
-    // FETCH CLIENTS
-    // ============================================
+    // React Query: clients list
+    const {
+        data: clients = [],
+        isLoading,
+        isFetching,
+        refetch: refetchClients,
+        error: clientsError,
+    } = useQuery({
+        queryKey: CLIENTS_QUERY_KEY,
+        queryFn: fetchClientsApi,
+    });
 
-    const fetchClients = async () => {
-        setIsLoading(true);
-        try {
-            const res = await fetch("/api/clients");
-            const json = await res.json();
-
-            if (json.success) {
-                setClients(json.data);
-            } else {
-                showError("Erreur", json.error);
-            }
-        } catch (err) {
-            console.error("Failed to fetch clients:", err);
-            showError("Erreur", "Impossible de charger les clients");
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const fetchLeexiRecaps = async () => {
-        setIsLoadingLeexi(true);
-        setLeexiError(null);
-        try {
-            const res = await fetch("/api/leexi/recaps");
-            const json = await res.json();
-            if (json.success) {
-                setLeexiData(json.data);
-            } else {
-                if (res.status !== 503) {
-                    setLeexiError(json.error || "Erreur Leexi");
-                }
-            }
-        } catch {
-            // Leexi unavailable -- non-blocking
-        } finally {
-            setIsLoadingLeexi(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchClients();
-        fetchLeexiRecaps();
-    }, []);
+    // React Query: Leexi recaps (non-blocking, don't throw to UI)
+    const {
+        data: leexiData,
+        isLoading: isLoadingLeexi,
+        refetch: refetchLeexi,
+        error: leexiErrorQuery,
+    } = useQuery({
+        queryKey: LEEXI_RECAPS_QUERY_KEY,
+        queryFn: fetchLeexiRecapsApi,
+        retry: false,
+        staleTime: 2 * 60 * 1000,
+    });
+    const leexiError = leexiErrorQuery ? (leexiErrorQuery as Error).message : null;
 
     // ============================================
     // FILTER CLIENTS
@@ -173,9 +168,9 @@ export default function ClientsPage() {
     // HANDLE ONBOARDING SUCCESS
     // ============================================
 
-    const handleOnboardingSuccess = (clientId: string) => {
-        fetchClients();
-        fetchLeexiRecaps();
+    const handleOnboardingSuccess = () => {
+        queryClient.invalidateQueries({ queryKey: CLIENTS_QUERY_KEY });
+        queryClient.invalidateQueries({ queryKey: LEEXI_RECAPS_QUERY_KEY });
     };
 
     const handleCreateFromRecap = (recapTextContent: string) => {
@@ -189,9 +184,26 @@ export default function ClientsPage() {
     };
 
     const handleClientUpdate = (updatedClient: Client) => {
-        setClients(prev => prev.map(c => c.id === updatedClient.id ? { ...c, ...updatedClient } : c));
-        setSelectedClient(prev => prev ? { ...prev, ...updatedClient } : null);
+        queryClient.setQueryData<Client[]>(CLIENTS_QUERY_KEY, (prev) =>
+            prev ? prev.map((c) => (c.id === updatedClient.id ? { ...c, ...updatedClient } : c)) : prev
+        );
+        setSelectedClient((prev) => (prev ? { ...prev, ...updatedClient } : null));
     };
+
+    if (clientsError) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <p className="text-sm text-red-600">{(clientsError as Error).message}</p>
+                <button
+                    onClick={() => refetchClients()}
+                    className="mgr-btn-primary flex items-center gap-2"
+                >
+                    <RefreshCw className="w-4 h-4" />
+                    Réessayer
+                </button>
+            </div>
+        );
+    }
 
     if (isLoading && clients.length === 0) {
         return (
@@ -216,10 +228,10 @@ export default function ClientsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={fetchClients}
+                        onClick={() => refetchClients()}
                         className="p-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
                     >
-                        <RefreshCw className={`w-4 h-4 text-slate-500 ${isLoading ? "animate-spin" : ""}`} />
+                        <RefreshCw className={`w-4 h-4 text-slate-500 ${isFetching ? "animate-spin" : ""}`} />
                     </button>
                     <Link
                         href="/manager/playbook/import"
@@ -584,7 +596,8 @@ export default function ClientsPage() {
                 onDelete={() => {
                     setSelectedClient(null);
                     setShowDrawer(false);
-                    fetchClients();
+                    queryClient.invalidateQueries({ queryKey: CLIENTS_QUERY_KEY });
+                    queryClient.invalidateQueries({ queryKey: LEEXI_RECAPS_QUERY_KEY });
                 }}
             />
 

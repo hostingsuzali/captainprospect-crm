@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
 import { Card, Badge, Button, DataTable, useToast, TableSkeleton, EmptyState } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
-import { UnifiedActionDrawer } from "@/components/drawers/UnifiedActionDrawer";
+
+const UnifiedActionDrawer = dynamic(
+    () => import("@/components/drawers/UnifiedActionDrawer").then((m) => ({ default: m.UnifiedActionDrawer })),
+    { ssr: false }
+);
 import {
     DateRangeFilter,
     getPresetRange,
@@ -645,7 +650,7 @@ export default function SDRHistoryPage() {
                 </div>
             )}
 
-            {unifiedDrawerCompanyId && (
+            {unifiedDrawerOpen && unifiedDrawerCompanyId && (
                 <UnifiedActionDrawer
                     isOpen={unifiedDrawerOpen}
                     onClose={closeUnifiedDrawer}

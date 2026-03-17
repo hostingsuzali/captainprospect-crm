@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Drawer, Button, Badge, Select, useToast, TextSkeleton, ListSkeleton, DateTimePicker } from "@/components/ui";
 import { useVoipCall } from "@/hooks/useVoipCall";
 import { useVoipListener } from "@/hooks/useVoipListener";
@@ -52,6 +53,13 @@ import {
 import { BookingDrawer } from "@/components/sdr/BookingDrawer";
 import { ContactDrawer } from "./ContactDrawer";
 import { cn } from "@/lib/utils";
+import {
+    sdrUnifiedDrawerCompanyKey,
+    sdrUnifiedDrawerContactKey,
+    sdrUnifiedDrawerActionsKey,
+    sdrUnifiedDrawerCampaignsKey,
+    sdrUnifiedDrawerStatusConfigKey,
+} from "@/lib/query-keys";
 
 // ============================================
 // TYPES
@@ -357,34 +365,103 @@ export function UnifiedActionDrawer({
 }: UnifiedActionDrawerProps) {
     const { success, error: showError } = useToast();
 
+    const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState<"contact" | "company">("contact");
-    const [contact, setContact] = useState<Contact | null>(null);
-    const [company, setCompany] = useState<Company | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [actions, setActions] = useState<
-        Array<{
-            id: string;
-            result: string;
-            note: string | null;
-            createdAt: string;
-            channel?: string;
-            campaign?: { name: string };
-            sdr?: { id: string; name: string };
-            voipProvider?: string | null;
-            voipSummary?: string | null;
-            voipRecordingUrl?: string | null;
-        }>
-    >([]);
-    const [actionsLoading, setActionsLoading] = useState(false);
     const syncedAlloActionIdsRef = useRef<Set<string>>(new Set());
 
-    const [campaigns, setCampaigns] = useState<
+    type ActionItem = {
+        id: string;
+        result: string;
+        note: string | null;
+        createdAt: string;
+        channel?: string;
+        campaign?: { name: string };
+        sdr?: { id: string; name: string };
+        voipProvider?: string | null;
+        voipSummary?: string | null;
+        voipRecordingUrl?: string | null;
+    };
+
+    // React Query: company
+    const { data: company = null, isFetching: companyFetching } = useQuery({
+        queryKey: sdrUnifiedDrawerCompanyKey(isOpen && companyId ? companyId : null),
+        queryFn: async () => {
+            const r = await fetch(`/api/companies/${companyId}?light=true`);
+            const j = await r.json();
+            if (!j.success || !j.data) throw new Error(j.error || "Impossible de charger la société");
+            return j.data as Company;
+        },
+        enabled: isOpen && !!companyId,
+    });
+
+    // React Query: contact
+    const { data: contact = null, isFetching: contactFetching } = useQuery({
+        queryKey: sdrUnifiedDrawerContactKey(isOpen && contactId ? contactId : null),
+        queryFn: async () => {
+            const r = await fetch(`/api/contacts/${contactId}`);
+            const j = await r.json();
+            if (!j.success || !j.data) throw new Error(j.error || "Impossible de charger le contact");
+            return j.data as Contact;
+        },
+        enabled: isOpen && !!contactId,
+    });
+
+    const loading = companyFetching || contactFetching;
+
+    // Set active tab when contactId changes
+    useEffect(() => {
+        if (contactId) setActiveTab("contact");
+        else setActiveTab("company");
+    }, [contactId]);
+
+    // React Query: actions history
+    const actionsQueryKey = sdrUnifiedDrawerActionsKey(contactId, companyId);
+    const q = contactId ? `contactId=${contactId}` : `companyId=${companyId}`;
+    const {
+        data: actions = [],
+        isFetching: actionsLoading,
+    } = useQuery<ActionItem[]>({
+        queryKey: actionsQueryKey,
+        queryFn: async () => {
+            const r = await fetch(`/api/actions?${q}&limit=10`);
+            const j = await r.json();
+            if (!j.success || !Array.isArray(j.data)) throw new Error("Impossible de charger l'historique des actions");
+            return j.data;
+        },
+        enabled: isOpen && !!(contactId || companyId),
+    });
+
+    const refetchActions = useCallback(() => {
+        queryClient.invalidateQueries({ queryKey: actionsQueryKey });
+    }, [queryClient, actionsQueryKey]);
+
+    // React Query: campaigns
+    const { data: campaigns = [], isFetching: campaignsLoading } = useQuery<
         Array<{ id: string; name: string; mission?: { channel: string } }>
-    >([]);
-    const [campaignsLoading, setCampaignsLoading] = useState(false);
-    const [statusConfig, setStatusConfig] = useState<{
+    >({
+        queryKey: sdrUnifiedDrawerCampaignsKey(isOpen && missionId ? missionId : null),
+        queryFn: async () => {
+            const r = await fetch(`/api/campaigns?missionId=${missionId}&isActive=true&limit=50`);
+            const j = await r.json();
+            if (!j.success || !Array.isArray(j.data)) return [];
+            return j.data;
+        },
+        enabled: isOpen && !!missionId,
+    });
+
+    // React Query: action status config
+    const { data: statusConfig = null } = useQuery<{
         statuses: Array<{ code: string; label: string; requiresNote: boolean }>;
-    } | null>(null);
+    } | null>({
+        queryKey: sdrUnifiedDrawerStatusConfigKey(isOpen && missionId ? missionId : null),
+        queryFn: async () => {
+            const r = await fetch(`/api/config/action-statuses?missionId=${missionId}`);
+            const j = await r.json();
+            if (!j.success || !j.data?.statuses) return null;
+            return { statuses: j.data.statuses };
+        },
+        enabled: isOpen && !!missionId,
+    });
 
     // Action form
     const [newActionResult, setNewActionResult] = useState<string>("");
@@ -412,7 +489,6 @@ export function UnifiedActionDrawer({
     const [editCompanyData, setEditCompanyData] = useState<Partial<Company>>({});
     const [savingContact, setSavingContact] = useState(false);
     const [savingCompany, setSavingCompany] = useState(false);
-    const [retryKey, setRetryKey] = useState(0);
 
     const [voipModalOpen, setVoipModalOpen] = useState(false);
     const [voipModalData, setVoipModalData] = useState<VoipCallCompletedEvent | null>(null);
@@ -447,14 +523,7 @@ export function UnifiedActionDrawer({
         onCallCompleted: (data) => {
             if (data.autoValidated) {
                 success("Appel Allo", `Résumé IA enregistré pour ${data.contactName || "le contact"}`);
-                setActionsLoading(true);
-                const q = contactId ? `contactId=${contactId}` : `companyId=${companyId}`;
-                fetch(`/api/actions?${q}&limit=10`)
-                    .then((res) => res.json())
-                    .then((json) => {
-                        if (json.success && Array.isArray(json.data)) setActions(json.data);
-                    })
-                    .finally(() => setActionsLoading(false));
+                queryClient.invalidateQueries({ queryKey: actionsQueryKey });
                 onActionRecorded?.();
                 return;
             }
@@ -487,87 +556,15 @@ export function UnifiedActionDrawer({
         });
     };
 
-    // ── Data fetching ──────────────────────────────────────────────────────────
-
+    // Reset editing when drawer closes
     useEffect(() => {
         if (!isOpen || !companyId) {
-            setContact(null);
-            setCompany(null);
-            setActions([]);
             setIsEditingContact(false);
             setIsEditingCompany(false);
-            return;
         }
-        const controller = new AbortController();
-        const { signal } = controller;
-        setLoading(true);
+    }, [isOpen, companyId]);
 
-        fetch(`/api/companies/${companyId}`, { signal })
-            .then((r) => r.json())
-            .then((j) => {
-                if (!signal.aborted && j.success && j.data) setCompany(j.data);
-            })
-            .catch((e) => {
-                if ((e as Error).name !== "AbortError") {
-                    setCompany(null);
-                    showError("Impossible de charger la société");
-                }
-            })
-            .finally(() => { if (!signal.aborted) setLoading(false); });
-
-        if (contactId) {
-            fetch(`/api/contacts/${contactId}`, { signal })
-                .then((r) => r.json())
-                .then((j) => {
-                    if (!signal.aborted && j.success && j.data) setContact(j.data);
-                })
-                .catch((e) => {
-                    if ((e as Error).name !== "AbortError") {
-                        setContact(null);
-                        showError("Impossible de charger le contact");
-                    }
-                });
-            setActiveTab("contact");
-        } else {
-            setContact(null);
-            setActiveTab("company");
-        }
-
-        return () => controller.abort();
-    }, [isOpen, contactId, companyId, showError, retryKey]);
-
-    useEffect(() => {
-        if (!isOpen) { setActions([]); return; }
-        const controller = new AbortController();
-        const { signal } = controller;
-        setActionsLoading(true);
-        const q = contactId ? `contactId=${contactId}` : `companyId=${companyId}`;
-        fetch(`/api/actions?${q}&limit=10`, { signal })
-            .then((r) => r.json())
-            .then((j) => {
-                if (!signal.aborted) setActions(j.success && Array.isArray(j.data) ? j.data : []);
-            })
-            .catch((e) => {
-                if ((e as Error).name !== "AbortError") {
-                    setActions([]);
-                    showError("Impossible de charger l'historique des actions");
-                }
-            })
-            .finally(() => { if (!signal.aborted) setActionsLoading(false); });
-        return () => controller.abort();
-    }, [isOpen, contactId, companyId, showError]);
-
-    const refetchActions = useCallback(() => {
-        if (!contactId && !companyId) return;
-        setActionsLoading(true);
-        const q = contactId ? `contactId=${contactId}` : `companyId=${companyId}`;
-        fetch(`/api/actions?${q}&limit=10`)
-            .then((r) => r.json())
-            .then((j) => { if (j.success && Array.isArray(j.data)) setActions(j.data); })
-            .catch(() => showError("Impossible de rafraîchir l'historique"))
-            .finally(() => setActionsLoading(false));
-    }, [contactId, companyId, showError]);
-
+    // Allo sync: sync call summaries then invalidate actions
     useEffect(() => {
         if (!isOpen || !actions.length) return;
         const toSync = actions
@@ -584,47 +581,8 @@ export function UnifiedActionDrawer({
                     body: JSON.stringify({ actionId }),
                 })
             )
-        ).then(() => refetchActions());
-    }, [isOpen, actions, refetchActions]);
-
-    useEffect(() => {
-        if (!isOpen || !missionId) { setCampaigns([]); return; }
-        const controller = new AbortController();
-        const { signal } = controller;
-        setCampaignsLoading(true);
-        fetch(`/api/campaigns?missionId=${missionId}&isActive=true&limit=50`, { signal })
-            .then((r) => r.json())
-            .then((j) => {
-                if (!signal.aborted) setCampaigns(j.success && Array.isArray(j.data) ? j.data : []);
-            })
-            .catch((e) => {
-                if ((e as Error).name !== "AbortError") {
-                    setCampaigns([]);
-                    showError("Impossible de charger les campagnes");
-                }
-            })
-            .finally(() => { if (!signal.aborted) setCampaignsLoading(false); });
-        return () => controller.abort();
-    }, [isOpen, missionId, showError]);
-
-    useEffect(() => {
-        if (!isOpen || !missionId) { setStatusConfig(null); return; }
-        const controller = new AbortController();
-        const { signal } = controller;
-        fetch(`/api/config/action-statuses?missionId=${missionId}`, { signal })
-            .then((r) => r.json())
-            .then((j) => {
-                if (!signal.aborted)
-                    setStatusConfig(j.success && j.data?.statuses ? { statuses: j.data.statuses } : null);
-            })
-            .catch((e) => {
-                if ((e as Error).name !== "AbortError") {
-                    setStatusConfig(null);
-                    showError("Impossible de charger la configuration des statuts");
-                }
-            });
-        return () => controller.abort();
-    }, [isOpen, missionId, showError]);
+        ).then(() => queryClient.invalidateQueries({ queryKey: actionsQueryKey }));
+    }, [isOpen, actions, queryClient, actionsQueryKey]);
 
     // ── Fetch mailboxes + templates when ENVOIE_MAIL is selected ────────────
     useEffect(() => {
@@ -939,16 +897,7 @@ export function UnifiedActionDrawer({
                 setNewActionNote("");
                 setNewActionResult("");
                 setNewCallbackDateValue("");
-                setActions((prev) => [
-                    {
-                        id: json.data.id,
-                        result: json.data.result,
-                        note: json.data.note ?? null,
-                        createdAt: json.data.createdAt,
-                        campaign: json.data.campaign,
-                    },
-                    ...prev,
-                ]);
+                queryClient.invalidateQueries({ queryKey: actionsQueryKey });
                 onActionRecorded?.();
                 if (andNext && onValidateAndNext) onValidateAndNext();
             } else {
@@ -977,7 +926,7 @@ export function UnifiedActionDrawer({
             });
             const json = await res.json();
             if (json.success) {
-                setContact({ ...contact!, ...editContactData });
+                queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerContactKey(contactId) });
                 setIsEditingContact(false);
                 success("Succès", "Contact mis à jour");
             } else {
@@ -1001,7 +950,7 @@ export function UnifiedActionDrawer({
             });
             const json = await res.json();
             if (json.success) {
-                setCompany({ ...company!, ...editCompanyData });
+                queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerCompanyKey(companyId) });
                 setIsEditingCompany(false);
                 success("Succès", "Société mise à jour");
             } else {
@@ -1056,7 +1005,10 @@ export function UnifiedActionDrawer({
                     </p>
                     <Button
                         variant="secondary"
-                        onClick={() => setRetryKey((k) => k + 1)}
+                        onClick={() => {
+                            queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerCompanyKey(companyId) });
+                            queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerContactKey(contactId) });
+                        }}
                         className="gap-2"
                     >
                         <RefreshCw className="w-4 h-4" />
@@ -2697,16 +2649,11 @@ export function UnifiedActionDrawer({
                     isManager={true}
                     onCreate={async (newContact) => {
                         setShowAddContact(false);
-                        setContact(newContact as Contact);
                         setActiveTab("contact");
                         onActionRecorded?.();
-                        try {
-                            const res = await fetch(`/api/companies/${companyId}`);
-                            const json = await res.json();
-                            if (json.success && json.data) setCompany(json.data);
-                        } catch {
-                            // keep current state
-                        }
+                        queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerCompanyKey(companyId) });
+                        queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerContactKey((newContact as Contact).id) });
+                        queryClient.invalidateQueries({ queryKey: actionsQueryKey });
                     }}
                 />
             )}
@@ -2746,14 +2693,7 @@ export function UnifiedActionDrawer({
                         setMeetingAddress("");
                         setMeetingPhone("");
                         onActionRecorded?.();
-                        setActionsLoading(true);
-                        fetch(`/api/actions?contactId=${contactId}&limit=10`)
-                            .then((r) => r.json())
-                            .then((j) => {
-                                if (j.success && Array.isArray(j.data)) setActions(j.data);
-                            })
-                            .catch(() => showError("Impossible de rafraîchir l'historique"))
-                            .finally(() => setActionsLoading(false));
+                        queryClient.invalidateQueries({ queryKey: actionsQueryKey });
                     }}
                 />
             )}
@@ -2776,14 +2716,8 @@ export function UnifiedActionDrawer({
                         label: s.label,
                     }))}
                     onValidated={() => {
-                        setActionsLoading(true);
-                        const q = contactId ? `contactId=${contactId}` : `companyId=${companyId}`;
-                        fetch(`/api/actions?${q}&limit=10`)
-                            .then((r) => r.json())
-                            .then((j) => {
-                                if (j.success && Array.isArray(j.data)) setActions(j.data);
-                            })
-                            .finally(() => setActionsLoading(false));
+                        queryClient.invalidateQueries({ queryKey: actionsQueryKey });
+                        onActionRecorded?.();
                     }}
                 />
             )}

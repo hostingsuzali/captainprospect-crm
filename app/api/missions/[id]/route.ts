@@ -69,7 +69,13 @@ export const GET = withErrorHandler(async (
             campaigns: true,
             lists: {
                 include: {
-                    _count: { select: { companies: true, contacts: true } },
+                    _count: { select: { companies: true } },
+                    companies: {
+                        select: {
+                            status: true,
+                            _count: { select: { contacts: true } },
+                        },
+                    },
                     commercialInterlocuteur: {
                         select: {
                             id: true,
