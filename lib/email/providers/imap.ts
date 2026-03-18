@@ -208,11 +208,11 @@ export class ImapProvider implements IEmailProvider {
                 const messagesByThread = new Map<string, EmailMessageData[]>();
 
                 for await (const message of client.fetch(uidsToFetch, {
-                    uid: true,
                     envelope: true,
                     source: true,
                     flags: true,
-                })) {
+               }, { uid: true })) {
+
                     try {
                         // Parse the email - ensure source exists
                         if (!message.source) {
