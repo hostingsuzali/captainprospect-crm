@@ -63,8 +63,8 @@ const SECTIONS: { id: string; title: string; content: React.ReactNode }[] = [
             <div className="text-sm text-[#12122A] space-y-2">
                 <p>
                     L&apos;onglet « Messages » ou « Contacter » vous permet d&apos;échanger en direct avec
-                    les SDR et l&apos;équipe dédiée à vos missions. Les conversations sont organisées par
-                    fil (sujet). Vous recevez des notifications pour les nouveaux messages.
+                    un manager. Les conversations sont organisées par fil (sujet). Vous recevez des
+                    notifications pour les nouveaux messages.
                 </p>
                 <p>
                     Utilisez cette voie pour toute question ou demande concernant vos campagnes.
@@ -124,9 +124,7 @@ const SECTIONS: { id: string; title: string; content: React.ReactNode }[] = [
             <div className="text-sm text-[#12122A] space-y-2">
                 <p>
                     Pour toute question sur l&apos;utilisation du portail ou sur vos missions, utilisez
-                    la section « Messages » / « Contacter » dans le portail : votre équipe dédiée y
-                    répond. Vous pouvez aussi vous rapprocher de votre interlocuteur commercial ou du
-                    Business Developer en charge de votre compte.
+                    la section « Messages » / « Contacter » dans le portail pour joindre un manager.
                 </p>
             </div>
         ),

@@ -344,8 +344,10 @@ export default function ClientPortal() {
                 ) : (
                     <div className="divide-y divide-[#F0F1F5]">
                         {upcomingMeetings.map((m, idx) => {
-                            const contactName = [m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ") || "Contact";
-                            const companyName = m.contact.company.name;
+                            const contactName = m.contact
+                                ? [m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ") || "Contact"
+                                : "Contact inconnu";
+                            const companyName = m.contact?.company?.name ?? "Entreprise inconnue";
                             const d = m.callbackDate ? new Date(m.callbackDate) : null;
                             return (
                                 <Link
@@ -390,7 +392,7 @@ export default function ClientPortal() {
 
                                     {/* Mission badge */}
                                     <span className="hidden sm:inline-flex text-[10.5px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-[2px] rounded-full shrink-0 group-hover:bg-indigo-100/80 transition-colors duration-200">
-                                        {m.campaign.mission.name}
+                                        {m.campaign?.mission?.name ?? "—"}
                                     </span>
 
                                     {/* Arrow */}

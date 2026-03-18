@@ -38,6 +38,11 @@ export async function GET(request: NextRequest) {
             search: searchParams.get("search") || undefined,
         };
 
+        // Clients can only see DIRECT threads (managers only, no mission chat)
+        if (session.user.role === "CLIENT") {
+            filters.type = "DIRECT";
+        }
+
         const result = await getInboxThreads(session.user.id, filters, page, pageSize);
 
         return NextResponse.json(result);

@@ -21,7 +21,7 @@ export default function ClientContactPage() {
             <div className="mb-6 flex-shrink-0">
                 <PageHeader
                     title="Contact"
-                    subtitle="Echangez dans le cadre de vos missions ou avec un manager"
+                    subtitle="Contactez un manager"
                     icon={
                         <span className="flex items-center gap-2 text-indigo-600">
                             <MessageSquare className="w-5 h-5" />
@@ -66,7 +66,7 @@ export default function ClientContactPage() {
                 )}
                 <CommsInbox
                     className="h-full"
-                    restrictToChannelTypes={["MISSION", "DIRECT"]}
+                    restrictToChannelTypes={["DIRECT"]}
                 />
             </div>
         </div>

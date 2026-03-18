@@ -42,7 +42,7 @@ const CHANNEL_OPTIONS: {
             label: "Discussion mission",
             icon: Target,
             description: "Tous les assignés à la mission verront ce message",
-            roles: ["MANAGER", "SDR", "BUSINESS_DEVELOPER", "CLIENT"],
+            roles: ["MANAGER", "SDR", "BUSINESS_DEVELOPER"],
         },
         {
             type: "CLIENT",
