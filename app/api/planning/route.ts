@@ -248,3 +248,4 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
 
     return successResponse(block, 201);
+});
