@@ -27,7 +27,8 @@ interface ClientMeeting {
         lastName?: string | null;
         title?: string | null;
         company: { name: string };
-    };
+    } | null;
+    company?: { name: string } | null;
     campaign: {
         name: string;
         mission: { name: string };
@@ -346,8 +347,9 @@ export default function ClientPortal() {
                         {upcomingMeetings.map((m, idx) => {
                             const contactName = m.contact
                                 ? [m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ") || "Contact"
-                                : "Contact inconnu";
-                            const companyName = m.contact?.company?.name ?? "Entreprise inconnue";
+                                : "Contact entreprise";
+                            const companyName =
+                                m.contact?.company?.name ?? m.company?.name ?? "Entreprise inconnue";
                             const d = m.callbackDate ? new Date(m.callbackDate) : null;
                             return (
                                 <Link

@@ -110,6 +110,17 @@ export const GET = withErrorHandler(async (
                     },
                 },
             },
+            company: {
+                select: {
+                    id: true,
+                    name: true,
+                    industry: true,
+                    country: true,
+                    website: true,
+                    size: true,
+                    customData: true,
+                },
+            },
             campaign: {
                 select: {
                     id: true,

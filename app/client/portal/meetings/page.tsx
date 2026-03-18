@@ -480,7 +480,16 @@ interface Meeting {
       size?: string | null;
       customData?: Record<string, unknown> | null;
     };
-  };
+  } | null;
+  company?: {
+    id: string;
+    name: string;
+    industry?: string | null;
+    country?: string | null;
+    website?: string | null;
+    size?: string | null;
+    customData?: Record<string, unknown> | null;
+  } | null;
   campaign: { id: string; name: string; mission: { id: string; name: string } };
   sdr?: { id: string; name: string | null } | null;
   meetingFeedback?: {
@@ -510,10 +519,19 @@ const getRdvStatus = (m: Meeting): RdvStatus => {
 };
 
 const getInitials = (m: Meeting) => {
-  const first = m.contact?.firstName?.[0] ?? "";
-  const last  = m.contact?.lastName?.[0] ?? "";
-  const ini   = (first + last).toUpperCase();
-  return ini || "?";
+  if (m.contact) {
+    const first = m.contact.firstName?.[0] ?? "";
+    const last = m.contact.lastName?.[0] ?? "";
+    const ini = (first + last).toUpperCase();
+    if (ini) return ini;
+  }
+  const companyName = m.company?.name ?? m.contact?.company?.name ?? "";
+  if (companyName) {
+    const words = companyName.trim().split(/\s+/);
+    if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+    return companyName.slice(0, 2).toUpperCase();
+  }
+  return "?";
 };
 
 const AVT = [
@@ -580,13 +598,13 @@ const MTY = {
    EXPORT UTILS
 ═══════════════════════════════════════════════════════════════ */
 function genICS(m: Meeting) {
-  const nameParts = [m.contact?.firstName, m.contact?.lastName].filter(Boolean) as string[];
-  const name = nameParts.join(" ") || "Contact inconnu";
+  const nameParts = m.contact ? [m.contact.firstName, m.contact.lastName].filter(Boolean) as string[] : [];
+  const name = nameParts.join(" ") || m.company?.name || "Contact entreprise";
   const dt = m.callbackDate ? new Date(m.callbackDate) : new Date();
   const p  = (n: number) => n.toString().padStart(2,"0");
   const f  = (d: Date)   => `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`;
   const end = new Date(dt.getTime()+30*60000);
-  const companyName = m.contact?.company?.name || "Client";
+  const companyName = m.contact?.company?.name ?? m.company?.name ?? "Client";
   const txt = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CaptainProspect//RDV//FR",
     "BEGIN:VEVENT",`DTSTART:${f(dt)}`,`DTEND:${f(end)}`,
     `SUMMARY:RDV - ${name} (${companyName})`,
@@ -604,7 +622,7 @@ function genCSV(meetings: Meeting[]) {
   const rows = meetings.map(m=>{
     const d=m.callbackDate ? new Date(m.callbackDate) : null, fb=m.meetingFeedback;
     const c = m.contact;
-    const co = c?.company;
+    const co = c?.company ?? m.company;
     return [d ? d.toLocaleDateString("fr-FR") : "",d ? d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : "",
       S[getRdvStatus(m)].label,m.campaign.mission.name,m.campaign.name,
       c?.firstName??"",c?.lastName??"",c?.title??"",c?.email??"",
@@ -640,7 +658,7 @@ function Pill({ label, color, bg, border, dot }: {
 }
 
 function Avt({ m, size=38 }: { m:Meeting; size?:number }) {
-  const s = avt(m.contact?.id || m.id);
+  const s = avt(m.contact?.id ?? m.company?.id ?? m.id);
   return (
     <div className="cp-avatar" style={{width:size,height:size,background:s.bg,color:s.fg,fontSize:size*0.34}}
       aria-hidden="true">
@@ -790,7 +808,7 @@ export default function ClientPortalMeetingsPage() {
     const lq = q.toLowerCase();
     return (m: Meeting) => {
       const c = m.contact;
-      const co = c?.company;
+      const co = c?.company ?? m.company;
       const haystack = [
         c?.firstName,
         c?.lastName,
@@ -1170,13 +1188,13 @@ function Card({
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",flexWrap:"wrap",alignItems:"baseline",gap:"2px 7px"}}>
                 <span style={{fontSize:14.5,fontWeight:700,color:tk.ink}}>
-                  {[m.contact?.firstName, m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu"}
+                  {m.contact ? [m.contact.firstName, m.contact.lastName].filter(Boolean).join(" ") || "Contact" : m.company?.name ?? "Contact entreprise"}
                 </span>
                 {m.contact?.title && <span style={{fontSize:12,color:tk.ink3}}>{m.contact.title}</span>}
               </div>
               <div style={{fontSize:12.5,fontWeight:600,color:tk.ink2,marginTop:2,display:"flex",alignItems:"center",gap:5}}>
                 <Building2 style={{width:12,height:12,color:tk.ink4,flexShrink:0}} aria-hidden="true" />
-                {m.contact?.company?.name || "Entreprise inconnue"}
+                {m.contact?.company?.name ?? m.company?.name ?? "Entreprise inconnue"}
                 {m.contact?.company?.industry && <span style={{fontWeight:400,color:tk.ink3}}>· {m.contact.company.industry}</span>}
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:"3px 12px",marginTop:6}}>
@@ -1340,8 +1358,9 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
   const sm = S[st];
   const fb = m.meetingFeedback;
   const up = st==="upcoming";
-  const cn_name = [m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
-  const companyName = m.contact?.company?.name || "Entreprise inconnue";
+  const cn_name = m.contact ? [m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ") || "Contact" : m.company?.name ?? "Contact entreprise";
+  const companyName = m.contact?.company?.name ?? m.company?.name ?? "Entreprise inconnue";
+  const company = m.contact?.company ?? m.company;
 
   return (
     <Modal wide title="Fiche du rendez-vous" subtitle={`${cn_name} · ${companyName}`} onClose={onClose}
@@ -1418,10 +1437,10 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
               <Building2 style={{width:16,height:16,color:tk.ink4,flexShrink:0}} />{companyName}
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:11}}>
-              <Fld label="Secteur">{m.contact?.company?.industry}</Fld>
-              <Fld label="Pays">{m.contact?.company?.country}</Fld>
-              <Fld label="Effectif">{m.contact?.company?.size}</Fld>
-              <Fld label="Site web">{m.contact?.company?.website&&<a href={m.contact.company.website} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.company.website.replace(/^https?:\/\//,"")}</a>}</Fld>
+              <Fld label="Secteur">{company?.industry}</Fld>
+              <Fld label="Pays">{company?.country}</Fld>
+              <Fld label="Effectif">{company?.size}</Fld>
+              <Fld label="Site web">{company?.website&&<a href={company.website} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>{company.website.replace(/^https?:\/\//,"")}</a>}</Fld>
             </div>
           </div>
         </div>
@@ -1512,8 +1531,8 @@ function FbModal({ m, onClose, out, rec, note, done, sub, onOut, onRec, onNote, 
   out:string; rec:string; note:string; done:boolean; sub:boolean;
   onOut:(v:string)=>void; onRec:(v:string)=>void; onNote:(v:string)=>void; onSubmit:()=>void;
 }) {
-  const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
-  const companyName = m.contact?.company?.name || "Entreprise inconnue";
+  const name = m.contact ? [m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ") || "Contact" : m.company?.name ?? "Contact entreprise";
+  const companyName = m.contact?.company?.name ?? m.company?.name ?? "Entreprise inconnue";
   const outcomeOpts = OUTCOME_OPTS.filter(o => o.value !== "NO_SHOW");
 
   if (done) return (
@@ -1588,8 +1607,8 @@ function CancelModal({ m, onClose, reason, note, sub, onReason, onNote, onSubmit
   reason:string; note:string; sub:boolean;
   onReason:(v:string)=>void; onNote:(v:string)=>void; onSubmit:()=>void;
 }) {
-  const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
-  const companyName = m.contact?.company?.name || "Entreprise inconnue";
+  const name = m.contact ? [m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ") || "Contact" : m.company?.name ?? "Contact entreprise";
+  const companyName = m.contact?.company?.name ?? m.company?.name ?? "Entreprise inconnue";
   return (
     <Modal title="Annuler le rendez-vous" subtitle={`${name} · ${companyName}`} onClose={onClose}
       footer={<>
@@ -1622,8 +1641,8 @@ function RsModal({ m, onClose, date, time, sub, onDate, onTime, onSubmit }: {
   date:string; time:string; sub:boolean;
   onDate:(v:string)=>void; onTime:(v:string)=>void; onSubmit:()=>void;
 }) {
-  const name=[m.contact?.firstName,m.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
-  const companyName = m.contact?.company?.name || "Entreprise inconnue";
+  const name = m.contact ? [m.contact.firstName,m.contact.lastName].filter(Boolean).join(" ") || "Contact" : m.company?.name ?? "Contact entreprise";
+  const companyName = m.contact?.company?.name ?? m.company?.name ?? "Entreprise inconnue";
   const tmrw=new Date(); tmrw.setDate(tmrw.getDate()+1); tmrw.setHours(10,0,0,0);
   const minDateTime=tmrw.toISOString().slice(0,16);
   const dateTimeValue = date && time ? `${date}T${time}` : "";
