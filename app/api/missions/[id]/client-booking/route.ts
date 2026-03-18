@@ -26,6 +26,16 @@ export const GET = withErrorHandler(async (
                     interlocuteurs: {
                         where: { isActive: true },
                         orderBy: { createdAt: 'asc' },
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            title: true,
+                            isActive: true,
+                            emails: true,
+                            phones: true,
+                            bookingLinks: true,
+                        },
                     },
                 },
             },
@@ -36,8 +46,27 @@ export const GET = withErrorHandler(async (
         throw new NotFoundError('Mission introuvable');
     }
 
+    const rawInterlocuteurs = mission.client?.interlocuteurs || [];
+    const interlocuteurs = rawInterlocuteurs.map((i) => {
+        const links = Array.isArray(i.bookingLinks) ? i.bookingLinks : [];
+        return {
+            id: i.id,
+            firstName: i.firstName,
+            lastName: i.lastName,
+            title: i.title ?? undefined,
+            isActive: i.isActive,
+            emails: Array.isArray(i.emails) ? i.emails : [],
+            phones: Array.isArray(i.phones) ? i.phones : [],
+            bookingLinks: links.map((bl: { label?: string; url?: string; durationMinutes?: number }) => ({
+                label: typeof bl?.label === 'string' ? bl.label : '',
+                url: typeof bl?.url === 'string' ? bl.url : '',
+                durationMinutes: typeof bl?.durationMinutes === 'number' ? bl.durationMinutes : 30,
+            })),
+        };
+    });
+
     return successResponse({
         bookingUrl: mission.client?.bookingUrl || null,
-        interlocuteurs: mission.client?.interlocuteurs || [],
+        interlocuteurs,
     });
 });

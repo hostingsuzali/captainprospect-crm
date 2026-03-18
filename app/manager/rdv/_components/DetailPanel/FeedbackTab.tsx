@@ -2,7 +2,8 @@
 
 import type { Meeting } from "../../_types";
 import type { UseFeedbackReturn } from "../../_hooks/useFeedback";
-import { ThumbsUp, ThumbsDown, Minus, UserX, Check } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Minus, UserX, Check, FileText } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface FeedbackTabProps {
   meeting: Meeting;
@@ -24,6 +25,7 @@ const RECONTACT = [
 ] as const;
 
 export function FeedbackTab({ meeting, feedbackState, updateMeeting }: FeedbackTabProps) {
+  const router = useRouter();
   const {
     feedbackOutcome,
     setFeedbackOutcome,
@@ -104,6 +106,16 @@ export function FeedbackTab({ meeting, feedbackState, updateMeeting }: FeedbackT
       >
         <Check size={15} /> Enregistrer le feedback
       </button>
+
+      {meeting.feedback?.outcome === "POSITIVE" && meeting.client?.id && (
+        <button
+          className="rdv-btn rdv-btn-ghost"
+          style={{ width: "100%", justifyContent: "center", padding: "10px 0", fontSize: 13, marginTop: 4 }}
+          onClick={() => router.push(`/manager/clients/${meeting.client!.id}?tab=sessions`)}
+        >
+          <FileText size={14} /> Créer une session depuis ce RDV
+        </button>
+      )}
     </div>
   );
 }

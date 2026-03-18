@@ -56,9 +56,10 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Fetch lists
+        // Fetch lists (only active lists so SDR sees the same scope as the action queue)
         const lists = await prisma.list.findMany({
             where: {
+                isActive: true,
                 missionId: missionId
                     ? missionId
                     : { in: assignedMissionIds },

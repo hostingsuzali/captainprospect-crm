@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Meeting, LinkContactResult } from "../../_types";
 import { Avatar } from "../shared/Avatar";
 import { Search } from "lucide-react";
+import { Modal } from "@/components/ui/Modal";
 
 interface LinkContactModalProps {
   meeting: Meeting;
@@ -61,15 +62,8 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
   }, []);
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
-      onClick={() => !saving && onClose()}
-    >
-      <div
-        style={{ background: "var(--surface)", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", gap: 16 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>Lier un contact au RDV</div>
+    <Modal isOpen onClose={() => !saving && onClose()} title="Lier un contact au RDV" size="md">
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ position: "relative" }}>
           <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--ink3)" }} />
           <input
@@ -131,6 +125,6 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
           <button className="rdv-btn rdv-btn-ghost" onClick={onClose} disabled={saving}>Annuler</button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

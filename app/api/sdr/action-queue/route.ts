@@ -104,6 +104,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             INNER JOIN "Campaign" camp ON camp."missionId" = m.id
             ${sdrAssignmentJoin}
             WHERE m."isActive" = true
+              AND (l."isActive" IS NULL OR l."isActive" = true)
               AND camp."isActive" = true
               ${sdrAssignmentWhere}
               AND (
@@ -143,6 +144,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             INNER JOIN "Campaign" camp ON camp."missionId" = m.id
             ${sdrAssignmentJoin}
             WHERE m."isActive" = true
+              AND (l."isActive" IS NULL OR l."isActive" = true)
               AND camp."isActive" = true
               ${sdrAssignmentWhere}
               AND 'CALL' = ANY(m.channels)

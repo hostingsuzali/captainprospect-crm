@@ -64,9 +64,14 @@ export function useMeetings(filters: MeetingFiltersState): UseMeetingsReturn {
             const missionMap = new Map<string, FilterOption>();
             const sdrMap = new Map<string, FilterOption>();
             for (const m of json.data.meetings as Meeting[]) {
-              if (m.client) clientMap.set(m.client.id, { id: m.client.id, name: m.client.name });
-              missionMap.set(m.mission.id, { id: m.mission.id, name: m.mission.name });
-              sdrMap.set(m.sdr.id, { id: m.sdr.id, name: m.sdr.name });
+              if (m.client) {
+                const existing = clientMap.get(m.client.id);
+                clientMap.set(m.client.id, { id: m.client.id, name: m.client.name, count: (existing?.count ?? 0) + 1 });
+              }
+              const existingMission = missionMap.get(m.mission.id);
+              missionMap.set(m.mission.id, { id: m.mission.id, name: m.mission.name, count: (existingMission?.count ?? 0) + 1 });
+              const existingSdr = sdrMap.get(m.sdr.id);
+              sdrMap.set(m.sdr.id, { id: m.sdr.id, name: m.sdr.name, count: (existingSdr?.count ?? 0) + 1 });
             }
             filters.setClientOptions(Array.from(clientMap.values()));
             filters.setMissionOptions(Array.from(missionMap.values()));

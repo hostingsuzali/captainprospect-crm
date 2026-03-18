@@ -9,6 +9,29 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
     isLoading?: boolean;
 }
 
+const BUTTON_BASE_STYLES =
+    "inline-flex items-center justify-center gap-2 font-medium rounded-xl transition-all duration-200 cursor-pointer border-none disabled:opacity-50 disabled:cursor-not-allowed";
+
+const BUTTON_VARIANTS: Record<string, string> = {
+    primary:
+        "bg-gradient-to-br from-indigo-500 to-indigo-600 text-white hover:from-indigo-400 hover:to-indigo-500 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/30",
+    secondary:
+        "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:border-slate-400",
+    outline:
+        "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:border-slate-400",
+    success:
+        "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white hover:-translate-y-0.5 hover:shadow-lg hover:shadow-emerald-500/30",
+    danger:
+        "bg-gradient-to-br from-red-500 to-red-600 text-white hover:-translate-y-0.5 hover:shadow-lg hover:shadow-red-500/30",
+    ghost: "bg-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100",
+};
+
+const BUTTON_SIZES: Record<string, string> = {
+    sm: "px-3 py-2 text-sm",
+    md: "px-4 py-2.5 text-sm",
+    lg: "px-6 py-3 text-base",
+};
+
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     (
         {
@@ -22,33 +45,10 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         },
         ref
     ) => {
-        const baseStyles =
-            "inline-flex items-center justify-center gap-2 font-medium rounded-xl transition-all duration-200 cursor-pointer border-none disabled:opacity-50 disabled:cursor-not-allowed";
-
-        const variants = {
-            primary:
-                "bg-gradient-to-br from-indigo-500 to-indigo-600 text-white hover:from-indigo-400 hover:to-indigo-500 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/30",
-            secondary:
-                "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:border-slate-400",
-            outline:
-                "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:border-slate-400",
-            success:
-                "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white hover:-translate-y-0.5 hover:shadow-lg hover:shadow-emerald-500/30",
-            danger:
-                "bg-gradient-to-br from-red-500 to-red-600 text-white hover:-translate-y-0.5 hover:shadow-lg hover:shadow-red-500/30",
-            ghost: "bg-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100",
-        };
-
-        const sizes = {
-            sm: "px-3 py-2 text-sm",
-            md: "px-4 py-2.5 text-sm",
-            lg: "px-6 py-3 text-base",
-        };
-
         return (
             <button
                 ref={ref}
-                className={cn(baseStyles, variants[variant], sizes[size], className)}
+                className={cn(BUTTON_BASE_STYLES, BUTTON_VARIANTS[variant], BUTTON_SIZES[size], className)}
                 disabled={disabled || isLoading}
                 {...props}
             >

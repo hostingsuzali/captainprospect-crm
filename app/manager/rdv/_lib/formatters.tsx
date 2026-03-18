@@ -136,6 +136,30 @@ export function dateProximityColor(d: string | null): string {
   return "var(--green)";
 }
 
+export function proximityLabel(d: string | null): { text: string; color: string } {
+  if (!d) return { text: "—", color: "var(--ink3)" };
+  const diff = new Date(d).getTime() - Date.now();
+  if (diff < 0) {
+    const absDiff = Math.abs(diff);
+    if (absDiff < 60 * 60 * 1000) return { text: `Il y a ${Math.round(absDiff / 60000)}min`, color: "var(--red)" };
+    if (absDiff < 24 * 60 * 60 * 1000) return { text: `Il y a ${Math.round(absDiff / 3600000)}h`, color: "var(--red)" };
+    return { text: "Passé", color: "var(--red)" };
+  }
+  if (diff < 60 * 60 * 1000) return { text: `Dans ${Math.round(diff / 60000)}min`, color: "var(--amber)" };
+  if (diff < 24 * 60 * 60 * 1000) return { text: `Dans ${Math.round(diff / 3600000)}h`, color: "var(--amber)" };
+  if (diff < 48 * 60 * 60 * 1000) return { text: "Demain", color: "var(--amber)" };
+  if (diff < 7 * 24 * 60 * 60 * 1000) return { text: `Dans ${Math.round(diff / 86400000)}j`, color: "var(--green)" };
+  return { text: `Dans ${Math.round(diff / 86400000)}j`, color: "var(--ink3)" };
+}
+
+export function formatDuration(minutes: number | null): string {
+  if (!minutes) return "";
+  if (minutes < 60) return `${minutes}min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h${m.toString().padStart(2, "0")}` : `${h}h`;
+}
+
 export function transcriptToText(voipTranscript: unknown): string {
   const segments = Array.isArray(voipTranscript)
     ? voipTranscript
@@ -152,6 +176,54 @@ export function transcriptToText(voipTranscript: unknown): string {
     })
     .filter(Boolean)
     .join("\n");
+}
+
+export function generateICS(meeting: {
+  callbackDate: string | null;
+  duration: number | null;
+  contact?: { firstName: string | null; lastName: string | null } | null;
+  company?: { name: string } | null;
+  meetingAddress?: string | null;
+  meetingJoinUrl?: string | null;
+  meetingType?: string | null;
+}): string {
+  const start = meeting.callbackDate ? new Date(meeting.callbackDate) : new Date();
+  const dur = meeting.duration || 30;
+  const end = new Date(start.getTime() + dur * 60000);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const fmtDate = (d: Date) =>
+    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+
+  const contactLabel = meeting.contact
+    ? `${meeting.contact.firstName || ""} ${meeting.contact.lastName || ""}`.trim()
+    : "";
+  const summary = `RDV${contactLabel ? ` - ${contactLabel}` : ""}${meeting.company?.name ? ` (${meeting.company.name})` : ""}`;
+  const location = meeting.meetingJoinUrl || meeting.meetingAddress || "";
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//CaptainProspect//RDV//FR",
+    "BEGIN:VEVENT",
+    `DTSTART:${fmtDate(start)}`,
+    `DTEND:${fmtDate(end)}`,
+    `SUMMARY:${summary}`,
+    location ? `LOCATION:${location}` : "",
+    `DESCRIPTION:Type: ${meeting.meetingType || "Non spécifié"}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].filter(Boolean).join("\r\n");
+}
+
+export function downloadICS(meeting: Parameters<typeof generateICS>[0]) {
+  const icsContent = generateICS(meeting);
+  const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "rdv.ics";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function buildDateRange(

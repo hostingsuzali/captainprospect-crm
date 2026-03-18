@@ -17,7 +17,8 @@ import {
 } from "../../_lib/formatters";
 import type { ConfirmationFilter } from "../../_types";
 import { Avatar } from "../shared/Avatar";
-import { X, Check, Mail, Phone, Linkedin, FileText, ThumbsUp, MessageSquare, History } from "lucide-react";
+import { X, Check, Mail, Phone, Linkedin, FileText, ThumbsUp, MessageSquare, History, CalendarPlus } from "lucide-react";
+import { downloadICS, proximityLabel } from "../../_lib/formatters";
 import { DetailTab } from "./DetailTab";
 import { FicheTab } from "./FicheTab";
 import { FeedbackTab } from "./FeedbackTab";
@@ -138,6 +139,18 @@ export function DetailPanel({
           )}
         </div>
 
+        {/* Proximity indicator */}
+        {selectedMeeting.callbackDate && (() => {
+          const prox = proximityLabel(selectedMeeting.callbackDate);
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: prox.color, background: `${prox.color}12`, borderRadius: 6, padding: "3px 10px" }}>
+                {prox.text}
+              </span>
+            </div>
+          );
+        })()}
+
         {/* Quick actions */}
         <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
           {selectedMeeting.confirmationStatus !== "CONFIRMED" && (
@@ -172,6 +185,15 @@ export function DetailPanel({
             <a href={selectedMeeting.contact.linkedin} target="_blank" rel="noreferrer" className="rdv-btn rdv-btn-ghost" style={{ fontSize: 12, padding: "6px 12px", textDecoration: "none" }}>
               <Linkedin size={13} /> LinkedIn
             </a>
+          )}
+          {selectedMeeting.callbackDate && (
+            <button
+              className="rdv-btn rdv-btn-ghost"
+              style={{ fontSize: 12, padding: "6px 12px" }}
+              onClick={() => downloadICS(selectedMeeting)}
+            >
+              <CalendarPlus size={13} /> Exporter .ics
+            </button>
           )}
         </div>
 

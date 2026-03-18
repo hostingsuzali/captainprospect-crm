@@ -1,179 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Zap, Shield, Loader2 } from "lucide-react";
-import Image from "next/image";
-import logoCaptain from "../../logocaptainroseblanc.png";
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Shield, Loader2, Zap } from "lucide-react";
 
-/* ─── tiny util ─── */
-const cn = (...classes: (string | undefined | false)[]) => classes.filter(Boolean).join(" ");
-
-/* ─────────────────────────────────────────────────────────────
-   Animated canvas background: floating orbs + grid lines
-───────────────────────────────────────────────────────────── */
-function AnimatedBackground() {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        let animId: number;
-        let W = 0, H = 0;
-
-        // Particles
-        const PARTICLES = 55;
-        type P = { x: number; y: number; vx: number; vy: number; r: number; alpha: number; pulse: number };
-        const pts: P[] = [];
-
-        const init = () => {
-            W = canvas.width = canvas.offsetWidth;
-            H = canvas.height = canvas.offsetHeight;
-            pts.length = 0;
-            for (let i = 0; i < PARTICLES; i++) {
-                pts.push({
-                    x: Math.random() * W, y: Math.random() * H,
-                    vx: (Math.random() - 0.5) * 0.35,
-                    vy: (Math.random() - 0.5) * 0.35,
-                    r: Math.random() * 2.2 + 0.8,
-                    alpha: Math.random() * 0.5 + 0.15,
-                    pulse: Math.random() * Math.PI * 2,
-                });
-            }
-        };
-
-        const draw = () => {
-            ctx.clearRect(0, 0, W, H);
-
-            // Subtle grid
-            ctx.strokeStyle = "rgba(99,102,241,0.04)";
-            ctx.lineWidth = 1;
-            const gap = 52;
-            for (let x = 0; x < W; x += gap) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-            for (let y = 0; y < H; y += gap) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-
-            // Connection lines
-            for (let i = 0; i < pts.length; i++) {
-                for (let j = i + 1; j < pts.length; j++) {
-                    const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < 110) {
-                        ctx.strokeStyle = `rgba(99,102,241,${0.12 * (1 - dist / 110)})`;
-                        ctx.lineWidth = 0.7;
-                        ctx.beginPath(); ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[j].x, pts[j].y); ctx.stroke();
-                    }
-                }
-            }
-
-            // Dots
-            pts.forEach(p => {
-                p.pulse += 0.018;
-                const dynamic = p.alpha + Math.sin(p.pulse) * 0.12;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(139,92,246,${Math.max(0, dynamic)})`;
-                ctx.fill();
-
-                p.x += p.vx; p.y += p.vy;
-                if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
-                if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
-            });
-
-            animId = requestAnimationFrame(draw);
-        };
-
-        init();
-        draw();
-        const ro = new ResizeObserver(init);
-        ro.observe(canvas);
-        return () => { cancelAnimationFrame(animId); ro.disconnect(); };
-    }, []);
-
-    return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />;
-}
-
-
-
-/* ─────────────────────────────────────────────────────────────
-   Custom Input
-───────────────────────────────────────────────────────────── */
-interface InputProps {
-    id: string;
-    type: string;
-    label: string;
-    placeholder: string;
-    value: string;
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    leadingIcon: React.ReactNode;
-    trailingNode?: React.ReactNode;
-    required?: boolean;
-    autoComplete?: string;
-    hasError?: boolean;
-}
-
-function StyledInput({ id, type, label, placeholder, value, onChange, leadingIcon, trailingNode, required, autoComplete, hasError }: InputProps) {
-    const [focused, setFocused] = useState(false);
-    const filled = value.length > 0;
-
-    return (
-        <div className="relative">
-            {/* Label */}
-            <label
-                htmlFor={id}
-                className={cn(
-                    "absolute left-10 font-medium pointer-events-none transition-all duration-200 z-10",
-                    (focused || filled)
-                        ? "top-2 text-[10px] text-indigo-500 tracking-wide uppercase"
-                        : "top-1/2 -translate-y-1/2 text-[13px] text-slate-400"
-                )}
-            >
-                {label}
-            </label>
-
-            {/* Leading icon */}
-            <div className={cn(
-                "absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-200",
-                focused ? "text-indigo-500" : "text-slate-400"
-            )}>
-                {leadingIcon}
-            </div>
-
-            <input
-                id={id}
-                type={type}
-                value={value}
-                onChange={onChange}
-                onFocus={() => setFocused(true)}
-                onBlur={() => setFocused(false)}
-                placeholder={focused ? placeholder : ""}
-                required={required}
-                autoComplete={autoComplete}
-                className={cn(
-                    "w-full pt-6 pb-2.5 pl-10 pr-11 rounded-xl border bg-white/70 backdrop-blur-sm",
-                    "text-slate-800 text-sm placeholder:text-slate-300 outline-none",
-                    "transition-all duration-200",
-                    focused
-                        ? "border-indigo-400 shadow-[0_0_0_3px_rgba(99,102,241,0.12)] bg-white/90"
-                        : hasError
-                            ? "border-red-300 shadow-[0_0_0_3px_rgba(239,68,68,0.08)]"
-                            : "border-slate-200/80 hover:border-slate-300"
-                )}
-            />
-
-            {trailingNode && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">{trailingNode}</div>
-            )}
-        </div>
-    );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Main LoginForm
-───────────────────────────────────────────────────────────── */
 export default function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -184,9 +15,11 @@ export default function LoginForm() {
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [emailFocused, setEmailFocused] = useState(false);
+    const [passFocused, setPassFocused] = useState(false);
     const [mounted, setMounted] = useState(false);
 
-    useEffect(() => { setTimeout(() => setMounted(true), 80); }, []);
+    useEffect(() => { requestAnimationFrame(() => setMounted(true)); }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -225,276 +58,365 @@ export default function LoginForm() {
 
     return (
         <>
-            {/* ── Global keyframes injected once ── */}
             <style>{`
-                @keyframes featureFadeIn {
-                    from { opacity: 0; transform: translateX(-18px); }
-                    to   { opacity: 1; transform: translateX(0); }
+                .lp {
+                    --cp950: #1e1b4b; --cp700: #4338ca; --cp600: #4f46e5;
+                    --cp500: #6366f1; --cp400: #818cf8; --cp200: #c7d2fe;
+                    --ink: #1e1b4b; --ink2: rgba(30,27,75,.52); --ink3: rgba(30,27,75,.32);
+                    --ink4: rgba(30,27,75,.18); --ink5: rgba(30,27,75,.08);
+                    --t: 0.18s cubic-bezier(.4,0,.2,1);
+                    --spring: 0.5s cubic-bezier(.22,1,.36,1);
+
+                    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+                    -webkit-font-smoothing: antialiased;
+                    min-height: 100vh;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 24px 16px;
+                    position: relative;
+                    overflow: hidden;
+
+                    background:
+                        radial-gradient(55.87% 55.87% at 35.49% -18.37%, #d1aad7 0%, rgba(255,255,255,0) 100%),
+                        radial-gradient(70.81% 48.44% at -24.53% -16.02%, #c88bc4 0%, rgba(255,255,255,0) 100%),
+                        radial-gradient(91.61% 92.58% at 104.86% -43.36%, #7b8fdd 0%, rgba(255,255,255,0) 100%),
+                        radial-gradient(50.59% 55.55% at -2.99% -8.69%, #86bff2 9.06%, rgba(255,255,255,0) 100%),
+                        #f7fafc;
                 }
-                @keyframes cardRise {
-                    from { opacity: 0; transform: translateY(28px) scale(0.97); }
-                    to   { opacity: 1; transform: translateY(0) scale(1); }
+
+                /* Dot pattern — very subtle */
+                .lp::before {
+                    content: '';
+                    position: fixed; inset: 0;
+                    background: transparent;
+                    pointer-events: none;
                 }
-                @keyframes logoReveal {
-                    from { opacity: 0; transform: translateY(-14px); }
+
+                .lp-card {
+                    position: relative; z-index: 1;
+                    width: 100%; max-width: 360px;
+                    padding: 32px 28px 28px;
+                    border-radius: 22px;
+                    background: rgba(255,255,255,.82);
+                    backdrop-filter: blur(20px) saturate(150%);
+                    -webkit-backdrop-filter: blur(20px) saturate(150%);
+                    border: 1px solid rgba(255,255,255,.9);
+                    box-shadow:
+                        rgba(50, 50, 93, 0.25) 0px 50px 100px -20px,
+                        rgba(0, 0, 0, 0.3) 0px 30px 60px -30px,
+                        inset 0 1px 0 rgba(255,255,255,.95);
+                    opacity: 0;
+                    transform: translateY(16px) scale(.98);
+                    transition: opacity .45s var(--spring, ease), transform .45s var(--spring, ease);
+                }
+                .lp-card.show {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                }
+
+                .lp-inner {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 0;
+                }
+
+                /* Stagger children */
+                .lp-card.show .lp-inner > * {
+                    animation: lpUp .45s var(--spring, ease) both;
+                }
+                .lp-card.show .lp-inner > *:nth-child(1) { animation-delay:.04s }
+                .lp-card.show .lp-inner > *:nth-child(2) { animation-delay:.09s }
+                .lp-card.show .lp-inner > *:nth-child(3) { animation-delay:.14s }
+                .lp-card.show .lp-inner > *:nth-child(4) { animation-delay:.19s }
+                .lp-card.show .lp-inner > *:nth-child(5) { animation-delay:.24s }
+                .lp-card.show .lp-inner > *:nth-child(6) { animation-delay:.29s }
+                .lp-card.show .lp-inner > *:nth-child(7) { animation-delay:.34s }
+                .lp-card.show .lp-inner > *:nth-child(8) { animation-delay:.39s }
+                .lp-card.show .lp-inner > *:nth-child(9) { animation-delay:.44s }
+
+                /* Logo */
+                .lp-logo {
+                    margin-bottom: 20px;
+                    height: 36px;
+                    width: auto;
+                    object-fit: contain;
+                }
+
+                /* Heading */
+                .lp-head { text-align: center; margin-bottom: 24px; width: 100%; }
+                .lp-head h1 {
+                    font-weight: 700; font-size: 20px; line-height: 1.25;
+                    letter-spacing: -.3px; color: var(--ink); margin: 0;
+                }
+                .lp-head p {
+                    margin: 4px 0 0; font-size: 13px; font-weight: 400;
+                    color: var(--ink3);
+                }
+
+                /* Fields */
+                .lp-field { width: 100%; margin-bottom: 14px; }
+                .lp-label {
+                    display: block; font-size: 11px; font-weight: 600;
+                    letter-spacing: .05em; text-transform: uppercase;
+                    color: var(--ink2); margin-bottom: 6px;
+                }
+
+                .lp-wrap {
+                    display: flex; align-items: center;
+                    height: 46px; border-radius: 12px;
+                    border: 1.5px solid var(--ink5);
+                    background: rgba(255,255,255,.55);
+                    transition: border-color var(--t), box-shadow var(--t), background var(--t);
+                }
+                .lp-wrap:hover { border-color: var(--ink4); }
+                .lp-wrap.f {
+                    border-color: var(--cp500);
+                    box-shadow: 0 0 0 3px rgba(99,102,241,.10);
+                    background: rgba(255,255,255,.8);
+                }
+                .lp-wrap.err {
+                    border-color: #f87171;
+                    box-shadow: 0 0 0 3px rgba(248,113,113,.08);
+                }
+
+                .lp-ico {
+                    display: flex; align-items: center; justify-content: center;
+                    width: 42px; height: 100%; flex-shrink: 0;
+                    color: var(--ink3); transition: color var(--t);
+                }
+                .lp-wrap.f .lp-ico { color: var(--cp500); }
+
+                .lp-in {
+                    flex: 1; height: 100%; padding: 0 12px 0 0;
+                    font-family: inherit; font-size: 13.5px; font-weight: 400;
+                    color: var(--ink); background: transparent; border: none; outline: none;
+                }
+                .lp-in::placeholder { color: var(--ink4); }
+
+                .lp-trail { display: flex; align-items: center; padding-right: 8px; }
+                .lp-eye {
+                    display: flex; align-items: center; justify-content: center;
+                    width: 30px; height: 30px; border-radius: 8px;
+                    border: none; background: transparent; color: var(--ink3);
+                    cursor: pointer; transition: all var(--t);
+                }
+                .lp-eye:hover { background: var(--ink5); color: var(--ink2); }
+
+                /* Forgot */
+                .lp-forgot-row { width: 100%; display: flex; justify-content: flex-end; margin-bottom: 18px; }
+                .lp-forgot {
+                    font-family: inherit; font-size: 12px; font-weight: 500;
+                    color: var(--cp500); background: none; border: none;
+                    cursor: pointer; padding: 0; transition: color var(--t);
+                }
+                .lp-forgot:hover { color: var(--cp700); }
+
+                /* Error */
+                .lp-err {
+                    width: 100%; display: flex; align-items: center; gap: 8px;
+                    padding: 10px 12px; border-radius: 10px; margin-bottom: 14px;
+                    background: #fef2f2; border: 1px solid #fecaca;
+                    color: #dc2626; font-size: 12.5px; font-weight: 500;
+                    animation: lpShake .4s ease;
+                }
+
+                /* Button */
+                .lp-btn {
+                    width: 100%; height: 46px; border-radius: 12px; border: none;
+                    background: linear-gradient(160deg, var(--cp500) 0%, var(--cp950) 100%);
+                    box-shadow: 0 2px 12px rgba(99,102,241,.25);
+                    color: #fff; font-family: inherit; font-weight: 600;
+                    font-size: 14px; letter-spacing: .01em;
+                    cursor: pointer; display: flex; align-items: center;
+                    justify-content: center; gap: 7px;
+                    transition: filter var(--t), transform var(--t), box-shadow var(--t);
+                    margin-bottom: 20px;
+                }
+                .lp-btn:hover:not(:disabled) {
+                    filter: brightness(1.08); transform: translateY(-1px);
+                    box-shadow: 0 4px 20px rgba(99,102,241,.30);
+                }
+                .lp-btn:active:not(:disabled) { filter: brightness(.96); transform: translateY(0); }
+                .lp-btn:disabled { opacity: .55; cursor: not-allowed; }
+                .lp-btn svg { transition: transform var(--t); }
+                .lp-btn:hover:not(:disabled) svg { transform: translateX(2px); }
+
+                /* Divider */
+                .lp-div {
+                    width: 100%; display: flex; align-items: center; gap: 10px;
+                    margin-bottom: 16px;
+                }
+                .lp-div::before, .lp-div::after {
+                    content: ''; flex: 1; height: 1px; background: var(--ink5);
+                }
+                .lp-div span {
+                    font-size: 10px; font-weight: 600; letter-spacing: .06em;
+                    text-transform: uppercase; color: var(--ink4);
+                }
+
+                /* Badges */
+                .lp-badges { display: flex; align-items: center; justify-content: center; gap: 20px; }
+                .lp-badge { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+                .lp-badge-ico {
+                    width: 28px; height: 28px; border-radius: 8px;
+                    background: var(--ink5); display: flex; align-items: center;
+                    justify-content: center; color: var(--ink3);
+                }
+                .lp-badge-lbl {
+                    font-size: 8.5px; font-weight: 600; color: var(--ink4);
+                    text-transform: uppercase; letter-spacing: .07em;
+                }
+
+                /* Footer */
+                .lp-footer {
+                    position: relative; z-index: 1;
+                    font-size: 11px; color: var(--ink4); text-align: center;
+                    margin-top: 20px; font-family: inherit;
+                }
+
+                @keyframes lpUp {
+                    from { opacity: 0; transform: translateY(14px); }
                     to   { opacity: 1; transform: translateY(0); }
                 }
-                @keyframes shake {
-                    0%, 100% { transform: translateX(0); }
-                    20%       { transform: translateX(-6px); }
-                    40%       { transform: translateX(6px); }
-                    60%       { transform: translateX(-4px); }
-                    80%       { transform: translateX(4px); }
+                @keyframes lpShake {
+                    0%,100% { transform: translateX(0); }
+                    20% { transform: translateX(-5px); }
+                    40% { transform: translateX(5px); }
+                    60% { transform: translateX(-3px); }
+                    80% { transform: translateX(3px); }
                 }
-                @keyframes gradientShift {
-                    0%   { background-position: 0% 50%; }
-                    50%  { background-position: 100% 50%; }
-                    100% { background-position: 0% 50%; }
+
+                @media (max-width: 400px) {
+                    .lp-card { padding: 24px 20px 22px; max-width: 100%; }
+                    .lp-head h1 { font-size: 18px; }
                 }
-                @keyframes orbFloat {
-                    0%, 100% { transform: translateY(0px) scale(1); }
-                    50%      { transform: translateY(-22px) scale(1.04); }
-                }
-                @keyframes errorSlide {
-                    from { opacity:0; transform: translateY(-8px); }
-                    to   { opacity:1; transform: translateY(0); }
-                }
-                .btn-glow:hover {
-                    box-shadow: 0 0 28px rgba(99,102,241,0.55), 0 4px 16px rgba(99,102,241,0.3);
-                }
-                .btn-glow:active { transform: scale(0.98); }
             `}</style>
 
-            <div className="min-h-screen flex overflow-hidden">
+            <div className="lp">
+                <div className={`lp-card${mounted ? " show" : ""}`}>
+                    <form onSubmit={handleSubmit} className="lp-inner" noValidate>
 
-                {/* ════════════════════════════════════════
-                    LEFT PANEL — brand / elegant minimal content
-                ════════════════════════════════════════ */}
-                <div className="hidden lg:flex lg:w-[52%] xl:w-[56%] relative flex-col p-12 overflow-hidden"
-                    style={{
-                        background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 30%, #4c1d95 60%, #1e1b4b 100%)",
-                        backgroundSize: "300% 300%",
-                        animation: "gradientShift 12s ease infinite",
-                    }}
-                >
-                    {/* Canvas particles */}
-                    <AnimatedBackground />
-
-                    {/* Glowing orbs */}
-                    <div className="absolute -top-32 -left-32 w-[500px] h-[500px] rounded-full opacity-20"
-                        style={{ background: "radial-gradient(circle, #818cf8, transparent 70%)", animation: "orbFloat 7s ease-in-out infinite" }} />
-                    <div className="absolute -bottom-32 -right-12 w-[420px] h-[420px] rounded-full opacity-15"
-                        style={{ background: "radial-gradient(circle, #a78bfa, transparent 70%)", animation: "orbFloat 9s ease-in-out infinite reverse" }} />
-                    <div className="absolute top-1/2 right-0 w-[260px] h-[260px] rounded-full opacity-10"
-                        style={{ background: "radial-gradient(circle, #06b6d4, transparent 70%)" }} />
-
-                    {/* Content Top */}
-                    <div className="relative z-10 flex-none">
                         {/* Logo */}
-                        <div className="opacity-0 animate-[logoReveal_0.7s_ease_0.1s_forwards]">
-                            <Image
-                                src={logoCaptain}
-                                alt="Captain Prospect"
-                                width={160}
-                                height={48}
-                                className="h-10 w-auto object-contain brightness-0 invert"
-                                priority
-                            />
-                        </div>
-                    </div>
-
-                    {/* Content Center */}
-                    <div className="relative z-10 flex-1 flex flex-col justify-center">
-                        <div className="opacity-0 animate-[featureFadeIn_0.6s_ease_0.3s_forwards]">
-                            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/15 mb-6">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                <span className="text-xs font-medium text-white/70 tracking-wide">Espace Sécurisé</span>
-                            </div>
-                            <h1 className="text-4xl xl:text-5xl font-light text-white leading-tight tracking-tight">
-                                La connexion <br />
-                                <span className="text-transparent bg-clip-text font-bold"
-                                    style={{ backgroundImage: "linear-gradient(90deg, #a5b4fc, #67e8f9)" }}>
-                                    intelligente
-                                </span>{" "}
-                                B2B.
-                            </h1>
-                            <p className="mt-5 text-base text-white/50 max-w-sm font-light leading-relaxed">
-                                Connectez-vous pour accéder à votre espace Captain Prospect.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* ════════════════════════════════════════
-                    RIGHT PANEL — login form
-                ════════════════════════════════════════ */}
-                <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-10 relative overflow-hidden"
-                    style={{ background: "linear-gradient(160deg, #f8faff 0%, #eef2ff 40%, #f0f9ff 100%)" }}
-                >
-                    {/* Soft background shapes */}
-                    <div className="absolute top-0 right-0 w-[480px] h-[480px] rounded-full opacity-25 pointer-events-none"
-                        style={{ background: "radial-gradient(circle, #c7d2fe, transparent 70%)", transform: "translate(30%, -30%)" }} />
-                    <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full opacity-20 pointer-events-none"
-                        style={{ background: "radial-gradient(circle, #bfdbfe, transparent 70%)", transform: "translate(-30%, 30%)" }} />
-                    <div className="absolute inset-0 pointer-events-none"
-                        style={{
-                            backgroundImage: "radial-gradient(circle at 1px 1px, rgba(99,102,241,0.06) 1px, transparent 0)",
-                            backgroundSize: "28px 28px",
-                        }} />
-
-                    {/* Mobile logo */}
-                    <div className="lg:hidden mb-8 opacity-0 animate-[logoReveal_0.6s_ease_0.1s_forwards]">
-                        <Image
-                            src={logoCaptain}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src="/logocaptainblue-rose.png"
                             alt="Captain Prospect"
-                            width={160}
-                            height={48}
-                            className="h-10 w-auto object-contain"
-                            priority
+                            className="lp-logo"
+                            draggable={false}
                         />
-                    </div>
 
-                    {/* Card */}
-                    <div
-                        className={cn(
-                            "relative z-10 w-full max-w-[420px]",
-                            "opacity-0",
-                            mounted && "animate-[cardRise_0.65s_cubic-bezier(0.22,1,0.36,1)_0.15s_forwards]"
-                        )}
-                    >
-                        {/* Card shell */}
-                        <div className="rounded-3xl bg-white/80 backdrop-blur-xl border border-white/70 shadow-[0_8px_60px_rgba(99,102,241,0.12),0_2px_16px_rgba(0,0,0,0.06)] p-8 sm:p-10">
+                        {/* Heading */}
+                        <div className="lp-head">
+                            <h1>Bienvenue</h1>
+                            <p>Connectez-vous à votre espace de travail</p>
+                        </div>
 
-                            {/* Header */}
-                            <div className="mb-8">
-                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-100 mb-4">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-                                    <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-widest">Connexion sécurisée</span>
-                                </div>
-                                <h2 className="text-2xl font-bold text-slate-800 leading-tight">
-                                    Bon retour ! 👋
-                                </h2>
-                                <p className="text-[13px] text-slate-400 mt-1.5 leading-relaxed">
-                                    Connectez-vous pour accéder à votre espace de travail
-                                </p>
-                            </div>
-
-                            {/* Form */}
-                            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-                                <StyledInput
-                                    id="email"
+                        {/* Email */}
+                        <div className="lp-field">
+                            <label className="lp-label" htmlFor="lp-email">Email</label>
+                            <div className={`lp-wrap${emailFocused ? " f" : ""}${error ? " err" : ""}`}>
+                                <div className="lp-ico"><Mail size={15} /></div>
+                                <input
+                                    id="lp-email"
+                                    className="lp-in"
                                     type="email"
-                                    label="Adresse email"
                                     placeholder="votre@email.com"
                                     value={email}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-                                    leadingIcon={<Mail className="w-4 h-4" />}
+                                    onChange={e => setEmail(e.target.value)}
+                                    onFocus={() => setEmailFocused(true)}
+                                    onBlur={() => setEmailFocused(false)}
                                     required
                                     autoComplete="email"
-                                    hasError={!!error}
                                 />
-
-                                <StyledInput
-                                    id="password"
-                                    type={showPassword ? "text" : "password"}
-                                    label="Mot de passe"
-                                    placeholder="••••••••"
-                                    value={password}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
-                                    leadingIcon={<Lock className="w-4 h-4" />}
-                                    trailingNode={
-                                        <button
-                                            type={"button" as const}
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            tabIndex={-1}
-                                            aria-label={showPassword ? "Masquer" : "Afficher"}
-                                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-150 focus:outline-none"
-                                        >
-                                            {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                        </button>
-                                    }
-                                    required
-                                    autoComplete="current-password"
-                                    hasError={!!error}
-                                />
-
-                                {/* Forgot password */}
-                                <div className="flex justify-end -mt-1">
-                                    <button type={"button" as const} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium transition-colors duration-150">
-                                        Mot de passe oublié ?
-                                    </button>
-                                </div>
-
-                                {/* Error */}
-                                {error && (
-                                    <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-100 text-red-500 text-sm"
-                                        style={{ animation: "errorSlide 0.3s ease, shake 0.4s ease 0.05s" }}>
-                                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                        <span>{error}</span>
-                                    </div>
-                                )}
-
-                                {/* Submit */}
-                                <div className="pt-2">
-                                    <button
-                                        id="login-submit"
-                                        type={"submit" as const}
-                                        disabled={isLoading}
-                                        className={cn(
-                                            "w-full flex items-center justify-center gap-2.5 py-3.5 px-6 rounded-xl",
-                                            "text-white font-semibold text-[15px] tracking-wide",
-                                            "transition-all duration-200 btn-glow",
-                                            "disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
-                                        )}
-                                        style={{
-                                            background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #7c3aed 100%)",
-                                        }}
-                                    >
-                                        {isLoading ? (
-                                            <>
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                <span>Connexion en cours…</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <span>Se connecter</span>
-                                                <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-                                            </>
-                                        )}
-                                    </button>
-                                </div>
-                            </form>
-
-                            {/* Divider */}
-                            <div className="flex items-center gap-3 my-6">
-                                <div className="flex-1 h-px bg-slate-100" />
-                                <span className="text-[11px] text-slate-300 font-medium">Accès réservé</span>
-                                <div className="flex-1 h-px bg-slate-100" />
-                            </div>
-
-                            {/* Security badges */}
-                            <div className="flex items-center justify-center gap-4">
-                                {[
-                                    { icon: Shield, label: "SSL / TLS" },
-                                    { icon: Lock, label: "Chiffré" },
-                                    { icon: Zap, label: "2FA prêt" },
-                                ].map(({ icon: Icon, label }) => (
-                                    <div key={label} className="flex flex-col items-center gap-1">
-                                        <div className="w-7 h-7 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center">
-                                            <Icon className="w-3.5 h-3.5 text-slate-400" />
-                                        </div>
-                                        <span className="text-[9px] font-medium text-slate-300 uppercase tracking-widest">{label}</span>
-                                    </div>
-                                ))}
                             </div>
                         </div>
 
-                        {/* Footer copyright */}
-                        <p className="text-center text-[11px] text-slate-400 mt-5 tracking-wide">
-                            Captain Prospect &copy; {new Date().getFullYear()} · Tous droits réservés
-                        </p>
-                    </div>
+                        {/* Password */}
+                        <div className="lp-field">
+                            <label className="lp-label" htmlFor="lp-pass">Mot de passe</label>
+                            <div className={`lp-wrap${passFocused ? " f" : ""}${error ? " err" : ""}`}>
+                                <div className="lp-ico"><Lock size={15} /></div>
+                                <input
+                                    id="lp-pass"
+                                    className="lp-in"
+                                    type={showPassword ? "text" : "password"}
+                                    placeholder="••••••••"
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    onFocus={() => setPassFocused(true)}
+                                    onBlur={() => setPassFocused(false)}
+                                    required
+                                    autoComplete="current-password"
+                                />
+                                <div className="lp-trail">
+                                    <button
+                                        type="button"
+                                        className="lp-eye"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        tabIndex={-1}
+                                        aria-label={showPassword ? "Masquer" : "Afficher"}
+                                    >
+                                        {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Forgot */}
+                        <div className="lp-forgot-row">
+                            <button type="button" className="lp-forgot">Mot de passe oublié ?</button>
+                        </div>
+
+                        {/* Error */}
+                        {error && (
+                            <div className="lp-err">
+                                <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                                <span>{error}</span>
+                            </div>
+                        )}
+
+                        {/* Submit */}
+                        <button type="submit" className="lp-btn" disabled={isLoading}>
+                            {isLoading ? (
+                                <>
+                                    <Loader2 size={15} className="animate-spin" />
+                                    <span>Connexion…</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span>Se connecter</span>
+                                    <ArrowRight size={15} />
+                                </>
+                            )}
+                        </button>
+
+                        {/* Divider */}
+                        <div className="lp-div"><span>Accès réservé</span></div>
+
+                        {/* Security badges */}
+                        <div className="lp-badges">
+                            <div className="lp-badge">
+                                <div className="lp-badge-ico"><Shield size={13} /></div>
+                                <span className="lp-badge-lbl">SSL</span>
+                            </div>
+                            <div className="lp-badge">
+                                <div className="lp-badge-ico"><Lock size={13} /></div>
+                                <span className="lp-badge-lbl">Chiffré</span>
+                            </div>
+                            <div className="lp-badge">
+                                <div className="lp-badge-ico"><Zap size={13} /></div>
+                                <span className="lp-badge-lbl">2FA</span>
+                            </div>
+                        </div>
+                    </form>
                 </div>
+
+                <p className="lp-footer">
+                    Captain Prospect &copy; {new Date().getFullYear()}
+                </p>
             </div>
         </>
     );

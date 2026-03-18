@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { X, Plus, Minus, UserCircle, AlertTriangle, Loader2, CheckCircle2, AlertCircle, Calendar, Clock, Lock } from 'lucide-react';
+import { X, Plus, Minus, UserCircle, AlertTriangle, Loader2, CheckCircle2, AlertCircle, Calendar, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePlanningMonth, type SnapshotSdr } from './PlanningMonthContext';
-import { getMissionColor, getSdrStatus, SDR_STATUS_CONFIG } from './planning-utils';
+import { getMissionColor, getSdrStatus } from './planning-utils';
 import { useToast } from '@/components/ui';
 
 const DAY_LABELS_SHORT = ['L', 'M', 'Me', 'J', 'V', 'S', 'D'];
@@ -15,7 +15,7 @@ export function AssignModal() {
         snapshot, month, reload, backgroundSync, getSnapshot,
         createMonthPlan, assignSdrToMission, createAllocation, createAllocationWithBlocks,
     } = usePlanningMonth();
-    const { success, error: showError } = useToast();
+    const { error: showError } = useToast();
 
     const [selectedSdrId, setSelectedSdrId] = useState<string | null>(null);
     const [days, setDays] = useState(5);
@@ -61,7 +61,6 @@ export function AssignModal() {
     }
 
     const selectedSdr = sortedSdrs.find((s) => s.id === selectedSdrId);
-    const selectedAvail = selectedSdr ? sdrAvailability(selectedSdr) : 0;
     const selectedTotalAllocated = selectedSdr?.sdrDayAllocations.reduce((s, a) => s + a.allocatedDays, 0) ?? 0;
     const selectedCap = selectedSdr?.sdrMonthCapacities[0]?.effectiveAvailableDays ?? 0;
     const afterAlloc = selectedTotalAllocated + days;
@@ -102,8 +101,7 @@ export function AssignModal() {
             }
 
             if (!missionSdrAssignmentIds.has(selectedSdrId)) {
-                const ok = await assignSdrToMission(mission.id, selectedSdrId);
-                if (!ok) { setSubmitting(false); return; }
+                void assignSdrToMission(mission.id, selectedSdrId);
             }
 
             const ok = hasWorkingDays
@@ -174,7 +172,6 @@ export function AssignModal() {
                             const totalAlloc = sdr.sdrDayAllocations.reduce((s, a) => s + a.allocatedDays, 0);
                             const cap = sdr.sdrMonthCapacities[0]?.effectiveAvailableDays ?? 0;
                             const status = getSdrStatus(totalAlloc, cap);
-                            const statusCfg = SDR_STATUS_CONFIG[status];
                             const isAllocated = alreadyAllocated.has(sdr.id);
                             const isAssigned = missionSdrAssignmentIds.has(sdr.id);
                             const atCapacity = avail <= 0;
@@ -205,7 +202,6 @@ export function AssignModal() {
                                         isSelected && 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200',
                                         !isSelected && !isAllocated && 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50',
                                         isAllocated && 'border-slate-100 bg-slate-50 opacity-40 cursor-not-allowed',
-                                        atCapacity && !isAllocated && 'opacity-50',
                                     )}
                                 >
                                     <UserCircle className="w-5 h-5 text-slate-400 flex-shrink-0" />

@@ -2,6 +2,11 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+// #region agent log
+if (typeof fetch !== "undefined") {
+    fetch("http://127.0.0.1:7867/ingest/490ac402-97ac-4553-b1e1-210c752f7614", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f98d12" }, body: JSON.stringify({ sessionId: "f98d12", location: "app/manager/missions/[id]/page.tsx:pre-ui-import", message: "mission page before ui import", data: { t: Date.now() }, timestamp: Date.now(), hypothesisId: "mission" }) }).catch(() => {});
+}
+// #endregion
 import { Modal, ModalFooter, ConfirmModal, ContextMenu, useContextMenu, useToast, Tabs } from "@/components/ui";
 import { MissionStatusWorkflowDrawer } from "@/components/drawers";
 import {
@@ -1466,7 +1471,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                     {/* Bulk assign commercial to all lists */}
                                     <div className="flex items-center justify-between mb-1">
                                         <p className="text-xs text-slate-500">
-                                            Assigner un commercial à chaque liste pour router les RDV côté client.
+                                            Assigner un commercial à chaque liste pour router les RDV côté client. Les SDR ne voient que les listes actives. Pour qu’un contact ou une société apparaisse dans la file d’actions : mission avec au moins une campagne active, et contacts avec téléphone / email / LinkedIn selon le canal (ou société avec téléphone pour l’appel si aucun contact éligible).
                                         </p>
                                         <button
                                             type="button"

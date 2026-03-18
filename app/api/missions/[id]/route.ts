@@ -19,7 +19,10 @@ const updateMissionSchema = z
     .object({
         clientId: z.string().min(1).optional(),
         name: z.string().min(1).optional(),
-        objective: z.string().min(1).optional(),
+        objective: z
+            .union([z.string().min(1), z.literal(null)])
+            .optional()
+            .transform((v) => (v === null ? '' : v)),
         channel: channelEnum.optional(),
         channels: z.array(channelEnum).min(1).optional(),
         startDate: z.string().transform((s) => new Date(s)).optional(),

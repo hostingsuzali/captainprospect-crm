@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import type { Meeting } from "../_types";
 import { transcriptToText } from "../_lib/formatters";
+
+export type FicheAutoSaveStatus = "idle" | "saving" | "saved" | "error";
 
 export interface FicheForm {
   contexte: string;
@@ -22,9 +24,11 @@ export interface UseFicheRdvReturn {
   ficheSaved: boolean;
   ficheManualTranscript: string;
   setFicheManualTranscript: (v: string) => void;
+  ficheAutoSaveStatus: FicheAutoSaveStatus;
   initFiche: (m: Meeting) => void;
   generateWithAI: (meeting: Meeting, onUpdate: (m: Meeting) => void) => Promise<void>;
   saveFiche: (meeting: Meeting, onUpdate: (m: Meeting) => void) => Promise<void>;
+  triggerAutoSave: (meetingId: string, form: FicheForm) => void;
 }
 
 export function useFicheRdv(
@@ -42,6 +46,8 @@ export function useFicheRdv(
   const [ficheSaving, setFicheSaving] = useState(false);
   const [ficheSaved, setFicheSaved] = useState(false);
   const [ficheManualTranscript, setFicheManualTranscript] = useState("");
+  const [ficheAutoSaveStatus, setFicheAutoSaveStatus] = useState<FicheAutoSaveStatus>("idle");
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const initFiche = useCallback((m: Meeting) => {
     setFicheForm({
@@ -122,6 +128,23 @@ export function useFicheRdv(
     [ficheForm, updateMeeting]
   );
 
+  const triggerAutoSave = useCallback(
+    (meetingId: string, form: FicheForm) => {
+      if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+      setFicheAutoSaveStatus("saving");
+      autoSaveTimeoutRef.current = setTimeout(async () => {
+        try {
+          await updateMeeting(meetingId, { rdvFiche: form });
+          setFicheAutoSaveStatus("saved");
+          setTimeout(() => setFicheAutoSaveStatus("idle"), 2000);
+        } catch {
+          setFicheAutoSaveStatus("error");
+        }
+      }, 1500);
+    },
+    [updateMeeting]
+  );
+
   return {
     ficheForm,
     setFicheForm,
@@ -132,8 +155,10 @@ export function useFicheRdv(
     ficheSaved,
     ficheManualTranscript,
     setFicheManualTranscript,
+    ficheAutoSaveStatus,
     initFiche,
     generateWithAI,
     saveFiche,
+    triggerAutoSave,
   };
 }

@@ -133,6 +133,7 @@ export function FilterSidebar({ filters, sidebarOpen, onClose, onOpen }: FilterS
                   setSelectedClients((prev) => { const next = new Set(prev); if (next.has(c.id)) next.delete(c.id); else next.add(c.id); return next; });
                 }} />
                 <span style={{ flex: 1 }}>{c.name}</span>
+                {c.count != null && <span style={{ fontSize: 10, color: "var(--ink3)", background: "var(--surface2)", borderRadius: 6, padding: "1px 6px", fontWeight: 600 }}>{c.count}</span>}
               </label>
             ))}
           </>
@@ -146,6 +147,7 @@ export function FilterSidebar({ filters, sidebarOpen, onClose, onOpen }: FilterS
               setSelectedMissions((prev) => { const next = new Set(prev); if (next.has(m.id)) next.delete(m.id); else next.add(m.id); return next; });
             }} />
             <span style={{ flex: 1 }}>{m.name}</span>
+            {m.count != null && <span style={{ fontSize: 10, color: "var(--ink3)", background: "var(--surface2)", borderRadius: 6, padding: "1px 6px", fontWeight: 600 }}>{m.count}</span>}
           </label>
         ))}
       </FilterSection>
@@ -160,6 +162,7 @@ export function FilterSidebar({ filters, sidebarOpen, onClose, onOpen }: FilterS
               {s.name.charAt(0)}
             </div>
             <span style={{ flex: 1 }}>{s.name}</span>
+            {s.count != null && <span style={{ fontSize: 10, color: "var(--ink3)", background: "var(--surface2)", borderRadius: 6, padding: "1px 6px", fontWeight: 600 }}>{s.count}</span>}
           </label>
         ))}
       </FilterSection>

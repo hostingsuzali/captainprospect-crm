@@ -19,7 +19,7 @@ import { EditContactModal } from "./modals/EditContactModal";
 import { EditCompanyModal } from "./modals/EditCompanyModal";
 import { LinkContactModal } from "./modals/LinkContactModal";
 import { downloadCSV } from "../_lib/csv-export";
-import { Download, Trash2, X } from "lucide-react";
+import { Download, Trash2, X, Check, XCircle, AlertTriangle } from "lucide-react";
 import type { LinkContactResult } from "../_types";
 
 const DESIGN_TOKENS = `
@@ -33,10 +33,12 @@ const DESIGN_TOKENS = `
   --ink: #111827;
   --ink2: #4B5563;
   --ink3: #9CA3AF;
-  --accent: #6C63FF;
-  --accentLight: rgba(108,99,255,0.08);
+  --accent: #4F46E5;
+  --accentLight: rgba(79,70,229,0.08);
   --green: #059669;
   --greenLight: rgba(5,150,105,0.08);
+  --emerald: #059669;
+  --emeraldLight: rgba(5,150,105,0.08);
   --amber: #D97706;
   --amberLight: rgba(217,119,6,0.08);
   --red: #DC2626;
@@ -78,15 +80,17 @@ const GLOBAL_CSS = `
 .rdv-input::placeholder { color: var(--ink3); }
 .rdv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; border: none; font-family: 'DM Sans', sans-serif; }
 .rdv-btn-primary { background: var(--accent); color: white; }
-.rdv-btn-primary:hover { filter: brightness(1.08); box-shadow: 0 2px 8px rgba(108,99,255,0.25); }
+.rdv-btn-primary:hover { filter: brightness(1.08); box-shadow: 0 2px 8px rgba(79,70,229,0.25); }
 .rdv-btn-ghost { background: var(--surface); color: var(--ink2); border: 1px solid var(--border2); }
 .rdv-btn-ghost:hover { background: var(--surface2); color: var(--ink); border-color: var(--ink3); }
 .rdv-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
 .rdv-metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 .rdv-metric-card:hover { border-color: var(--border2); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-.rdv-metric-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accentLight), 0 4px 16px rgba(108,99,255,0.1); }
+.rdv-metric-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accentLight), 0 4px 16px rgba(79,70,229,0.1); }
 .rdv-panel { position: fixed; top: 0; right: 0; width: 480px; height: 100vh; background: var(--surface); border-left: 1px solid var(--border); z-index: 50; transform: translateX(100%); transition: transform 0.35s cubic-bezier(0.16,1,0.3,1); overflow-y: auto; box-shadow: -8px 0 32px rgba(0,0,0,0.06); }
 .rdv-panel.open { transform: translateX(0); }
+@media (max-width: 1200px) { .rdv-panel { width: 100%; max-width: 480px; } }
+@media (max-width: 768px) { .rdv-panel { width: 100%; max-width: 100%; } }
 .rdv-tab { padding: 10px 18px; font-size: 13px; font-weight: 500; color: var(--ink3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none; font-family: 'DM Sans', sans-serif; }
 .rdv-tab:hover { color: var(--ink2); }
 .rdv-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
@@ -113,6 +117,9 @@ export function RdvShell() {
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [editCompanyOpen, setEditCompanyOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [bulkCancelling, setBulkCancelling] = useState(false);
 
   // Fetch on filter change
   useEffect(() => { fetchMeetings(); }, [fetchMeetings]);
@@ -128,10 +135,11 @@ export function RdvShell() {
 
   const handleOpenPanel = useCallback(
     (m: Meeting) => {
-      panelState.openPanel(m, meetings2);
-      ficheState.initFiche(m);
-      feedbackState.initFeedback(m);
-      noteState.initNote("");
+      const resolved = meetings2.find((x) => x.id === m.id) ?? m;
+      panelState.openPanel(resolved, meetings2);
+      ficheState.initFiche(resolved);
+      feedbackState.initFeedback(resolved);
+      noteState.initNote((resolved as any).managerNote ?? resolved.note ?? "");
     },
     [panelState, ficheState, feedbackState, noteState, meetings2]
   );
@@ -196,13 +204,44 @@ export function RdvShell() {
   const handleDelete = useCallback(async () => {
     await deleteMeetings(Array.from(panelState.selectedIds));
     panelState.clearSelection();
+    setDeleteConfirmOpen(false);
   }, [deleteMeetings, panelState]);
+
+  const handleBulkConfirm = useCallback(async () => {
+    setBulkConfirming(true);
+    const ids = Array.from(panelState.selectedIds);
+    await Promise.all(ids.map((id) => updateMeeting(id, { confirmationStatus: "CONFIRMED" })));
+    setMeetings2((prev) =>
+      prev.map((m) =>
+        panelState.selectedIds.has(m.id)
+          ? { ...m, confirmationStatus: "CONFIRMED" as const, confirmedAt: new Date().toISOString() }
+          : m
+      )
+    );
+    panelState.clearSelection();
+    setBulkConfirming(false);
+  }, [panelState, updateMeeting]);
+
+  const handleBulkCancel = useCallback(async () => {
+    setBulkCancelling(true);
+    const ids = Array.from(panelState.selectedIds);
+    await Promise.all(ids.map((id) => updateMeeting(id, { confirmationStatus: "CANCELLED" })));
+    setMeetings2((prev) =>
+      prev.map((m) =>
+        panelState.selectedIds.has(m.id)
+          ? { ...m, confirmationStatus: "CANCELLED" as const, confirmedAt: null, confirmedById: null }
+          : m
+      )
+    );
+    panelState.clearSelection();
+    setBulkCancelling(false);
+  }, [panelState, updateMeeting]);
 
   return (
     <>
       <style>{DESIGN_TOKENS}{GLOBAL_CSS}</style>
       <div className="rdv-page">
-        <CommandBar view={view} setView={setView} filters={filters} meetings={meetings2} />
+        <CommandBar view={view} setView={setView} filters={filters} meetings={meetings2} onRefresh={() => fetchMeetings()} />
 
         <IntelligenceStrip
           aggregates={aggregates}
@@ -239,6 +278,8 @@ export function RdvShell() {
                 onToggleSelectAll={() => panelState.toggleSelectAll(meetings2)}
                 onOpen={handleOpenPanel}
                 onLoadMore={loadMore}
+                updateMeeting={updateMeeting}
+                onSetMeetings={setMeetings2}
               />
             )}
             {view === "calendar" && (
@@ -280,6 +321,22 @@ export function RdvShell() {
             </span>
             <div style={{ width: 1, height: 24, background: "var(--border2)" }} />
             <button
+              className="rdv-btn"
+              style={{ fontSize: 12, background: "var(--greenLight)", color: "var(--green)", border: "1px solid rgba(5,150,105,0.2)" }}
+              onClick={handleBulkConfirm}
+              disabled={bulkConfirming}
+            >
+              <Check size={13} /> {bulkConfirming ? "Confirmation…" : "Confirmer"}
+            </button>
+            <button
+              className="rdv-btn"
+              style={{ fontSize: 12, background: "var(--amberLight)", color: "var(--amber)", border: "1px solid rgba(217,119,6,0.2)" }}
+              onClick={handleBulkCancel}
+              disabled={bulkCancelling}
+            >
+              <XCircle size={13} /> {bulkCancelling ? "Annulation…" : "Annuler"}
+            </button>
+            <button
               className="rdv-btn rdv-btn-ghost"
               style={{ fontSize: 12 }}
               onClick={() => downloadCSV(meetings2.filter((m) => panelState.selectedIds.has(m.id)), "selection")}
@@ -289,7 +346,7 @@ export function RdvShell() {
             <button
               className="rdv-btn"
               style={{ fontSize: 12, background: "var(--redLight)", color: "var(--red)", border: "1px solid rgba(220,38,38,0.2)" }}
-              onClick={handleDelete}
+              onClick={() => setDeleteConfirmOpen(true)}
             >
               <Trash2 size={13} /> Supprimer
             </button>
@@ -299,6 +356,51 @@ export function RdvShell() {
             >
               <X size={14} />
             </button>
+          </div>
+        )}
+
+        {/* Delete confirmation dialog */}
+        {deleteConfirmOpen && (
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.4)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+            }}
+            onClick={() => setDeleteConfirmOpen(false)}
+          >
+            <div
+              style={{
+                background: "var(--surface)", borderRadius: 16, padding: 28,
+                maxWidth: 440, width: "100%", boxShadow: "0 24px 48px rgba(0,0,0,0.15)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--redLight)", display: "grid", placeContent: "center" }}>
+                  <AlertTriangle size={20} style={{ color: "var(--red)" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>Confirmer la suppression</div>
+                  <div style={{ fontSize: 13, color: "var(--ink3)", marginTop: 2 }}>Cette action est irréversible.</div>
+                </div>
+              </div>
+              <p style={{ fontSize: 14, color: "var(--ink2)", marginBottom: 24, lineHeight: 1.5 }}>
+                Vous allez supprimer <strong>{panelState.selectedIds.size}</strong> rendez-vous sélectionné{panelState.selectedIds.size > 1 ? "s" : ""}.
+                Cette action ne peut pas être annulée.
+              </p>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button className="rdv-btn rdv-btn-ghost" onClick={() => setDeleteConfirmOpen(false)}>
+                  Annuler
+                </button>
+                <button
+                  className="rdv-btn"
+                  style={{ background: "var(--red)", color: "white" }}
+                  onClick={handleDelete}
+                >
+                  <Trash2 size={13} /> Supprimer définitivement
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

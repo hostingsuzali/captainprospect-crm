@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     Sparkles,
     Loader2,
@@ -18,6 +18,8 @@ import {
     ArrowDown,
     Wand2,
     AlertCircle,
+    Calendar,
+    ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,11 +31,19 @@ export interface ExtractedTask {
     label: string;
     assigneeRole: "SDR" | "MANAGER" | "DEV" | "ALWAYS";
     assignee: string | null;
+    assigneeId?: string | null;
     priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+    dueDate?: string | null;
+}
+
+interface TeamMember {
+    id: string;
+    name: string;
+    role: string;
 }
 
 interface AITaskExtractorProps {
-    content: string; // CR markdown or session text
+    content: string;
     clientName?: string;
     sessionType?: string;
     tasks: ExtractedTask[];
@@ -74,6 +84,18 @@ export default function AITaskExtractor({
     const [isExtracting, setIsExtracting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [summary, setSummary] = useState<string | null>(null);
+    const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+    useEffect(() => {
+        fetch("/api/users?status=active&excludeSelf=false&limit=100")
+            .then(r => r.json())
+            .then(json => {
+                if (json.success && json.data) {
+                    setTeamMembers(json.data.map((u: any) => ({ id: u.id, name: u.name, role: u.role })));
+                }
+            })
+            .catch(() => {});
+    }, []);
 
     // ── Extract Tasks via Mistral ──
     const handleExtract = async () => {
@@ -114,11 +136,10 @@ export default function AITaskExtractor({
         }
     };
 
-    // ── Add Manual Task ──
     const addEmptyTask = () => {
         onTasksChange([
             ...tasks,
-            { label: "", assigneeRole: "ALWAYS", assignee: null, priority: "MEDIUM" },
+            { label: "", assigneeRole: "ALWAYS", assignee: null, assigneeId: null, priority: "MEDIUM", dueDate: null },
         ]);
     };
 
@@ -291,15 +312,45 @@ export default function AITaskExtractor({
                                     })}
                                 </div>
 
-                                {/* Assignee Input */}
-                                <input
-                                    value={task.assignee || ""}
-                                    onChange={(e) =>
-                                        updateTask(index, "assignee", e.target.value || null)
-                                    }
-                                    placeholder="Assigné..."
-                                    className="text-[11px] font-medium text-[#5A5A7A] placeholder:text-[#B0B0C7] bg-[#F4F6F9] border-none outline-none rounded-md px-2.5 py-1.5 w-28 focus:ring-1 focus:ring-[#7C5CFC]/20"
-                                />
+                                {/* Assignee Dropdown */}
+                                <div className="relative">
+                                    <select
+                                        value={task.assigneeId || ""}
+                                        onChange={(e) => {
+                                            const userId = e.target.value || null;
+                                            const user = teamMembers.find(u => u.id === userId);
+                                            const updated = [...tasks];
+                                            updated[index] = {
+                                                ...updated[index],
+                                                assigneeId: userId,
+                                                assignee: user?.name || null,
+                                            };
+                                            onTasksChange(updated);
+                                        }}
+                                        className="text-[11px] font-medium text-[#5A5A7A] bg-[#F4F6F9] border-none outline-none rounded-md pl-2.5 pr-6 py-1.5 w-32 appearance-none focus:ring-1 focus:ring-[#7C5CFC]/20"
+                                    >
+                                        <option value="">Non assigné</option>
+                                        {teamMembers.map(m => (
+                                            <option key={m.id} value={m.id}>{m.name}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#B0B0C7] pointer-events-none" />
+                                </div>
+
+                                {/* Due Date */}
+                                <div className="relative flex items-center">
+                                    <Calendar className="absolute left-2 w-3 h-3 text-[#B0B0C7] pointer-events-none" />
+                                    <input
+                                        type="date"
+                                        value={task.dueDate ? task.dueDate.slice(0, 10) : ""}
+                                        onChange={(e) => {
+                                            const updated = [...tasks];
+                                            updated[index] = { ...updated[index], dueDate: e.target.value || null };
+                                            onTasksChange(updated);
+                                        }}
+                                        className="text-[11px] font-medium text-[#5A5A7A] placeholder:text-[#B0B0C7] bg-[#F4F6F9] border-none outline-none rounded-md pl-6 pr-2 py-1.5 w-32 focus:ring-1 focus:ring-[#7C5CFC]/20"
+                                    />
+                                </div>
                             </div>
                         </div>
                     ))}

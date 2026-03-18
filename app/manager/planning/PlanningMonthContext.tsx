@@ -140,7 +140,7 @@ interface PlanningMonthContextValue {
     setAssignModalMissionId: (id: string | null) => void;
 
     updateAllocation: (allocationId: string, newDays: number) => Promise<void>;
-    createMonthPlan: (missionId: string, targetDays: number) => Promise<boolean>;
+    createMonthPlan: (missionId: string, targetDays: number, monthOverride?: string) => Promise<boolean>;
     updateMonthPlan: (planId: string, targetDays: number) => Promise<boolean>;
     updateMonthPlanWorkingDays: (planId: string, workingDays: string | null, startTime?: string, endTime?: string) => Promise<boolean>;
     assignSdrToMission: (missionId: string, sdrId: string) => Promise<boolean>;

@@ -1167,6 +1167,7 @@ model Task {
   files       File[]
   activities  ProjectActivity[]
   timeEntries TaskTimeEntry[]
+  sessionTask SessionTask?    @relation("SessionTaskMirror")
   
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -3145,12 +3146,19 @@ model SessionTask {
   assignee     String?
   assigneeRole SessionTaskRole    @default(ALWAYS)
   priority     SessionTaskPriority @default(MEDIUM)
+  dueDate      DateTime?
   doneAt       DateTime?
+
+  // Bidirectional link to mirrored project Task
+  taskId       String?            @unique
+  mirroredTask Task?              @relation("SessionTaskMirror", fields: [taskId], references: [id], onDelete: SetNull)
+
   createdAt    DateTime           @default(now())
 
   @@index([sessionId])
   @@index([assigneeRole])
   @@index([doneAt])
+  @@index([taskId])
 }
 
 enum SessionTaskRole {

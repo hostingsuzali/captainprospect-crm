@@ -22,12 +22,13 @@ export function IntelligenceStrip({
   onSetStatusFilter,
   onSetDatePreset,
 }: IntelligenceStripProps) {
-  const cards = [
+  const cards: { label: string; value: number; color: string; suffix?: string; active: boolean; interactive?: boolean; onClick: () => void }[] = [
     {
       label: "Total RDV",
       value: aggregates?.totalCount ?? 0,
       color: "var(--accent)",
       active: statusFilter === "all",
+      interactive: true,
       onClick: () => onSetStatusFilter("all"),
     },
     {
@@ -35,6 +36,7 @@ export function IntelligenceStrip({
       value: aggregates?.upcomingCount ?? 0,
       color: "var(--green)",
       active: statusFilter === "upcoming",
+      interactive: true,
       onClick: () => onSetStatusFilter(statusFilter === "upcoming" ? "all" : "upcoming"),
     },
     {
@@ -43,6 +45,7 @@ export function IntelligenceStrip({
       color: "var(--blue)",
       suffix: "%",
       active: false,
+      interactive: false,
       onClick: () => {},
     },
     {
@@ -50,6 +53,7 @@ export function IntelligenceStrip({
       value: aggregates?.avgPerSdr ?? 0,
       color: "var(--amber)",
       active: false,
+      interactive: false,
       onClick: () => {},
     },
     {
@@ -57,6 +61,7 @@ export function IntelligenceStrip({
       value: aggregates?.meetingsThisWeek ?? 0,
       color: "var(--accent)",
       active: datePreset === "7days",
+      interactive: true,
       onClick: () => onSetDatePreset("7days"),
     },
   ];
@@ -73,8 +78,12 @@ export function IntelligenceStrip({
             <div
               key={card.label}
               className={`rdv-metric-card ${card.active ? "active" : ""}`}
-              style={{ flex: 1, minWidth: 200 }}
-              onClick={card.onClick}
+              style={{
+                flex: 1, minWidth: 200,
+                cursor: card.interactive !== false ? "pointer" : "default",
+                ...(card.interactive === false ? { pointerEvents: "none" as const } : {}),
+              }}
+              onClick={card.interactive !== false ? card.onClick : undefined}
             >
               <div style={{ position: "absolute", left: 0, top: 16, bottom: 16, width: 4, borderRadius: "0 3px 3px 0", background: card.color }} />
               <div style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.1, color: "var(--ink)", letterSpacing: "-0.02em" }}>

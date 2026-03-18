@@ -25,9 +25,26 @@ export const GET = withErrorHandler(
 
     const sessions = await prisma.clientSession.findMany({
       where: { clientId },
-      include: { tasks: { orderBy: { createdAt: 'asc' } } },
+      include: {
+        tasks: {
+          orderBy: { createdAt: 'asc' },
+          include: { mirroredTask: { select: { projectId: true } } },
+        },
+      },
       orderBy: { date: 'desc' },
     });
+
+    // Find the active project for this client (for "View Project" links)
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: { name: true },
+    });
+    const activeProject = client
+      ? await prisma.project.findFirst({
+          where: { clientId, name: client.name, status: 'ACTIVE' },
+          select: { id: true },
+        })
+      : null;
 
     const formatted = sessions.map((s) => ({
       id: s.id,
@@ -38,13 +55,16 @@ export const GET = withErrorHandler(
       crMarkdown: s.crMarkdown,
       summaryEmail: s.summaryEmail,
       emailSentAt: s.emailSentAt?.toISOString() ?? null,
+      projectId: s.tasks[0]?.mirroredTask?.projectId ?? activeProject?.id ?? null,
       tasks: s.tasks.map((t) => ({
         id: t.id,
         label: t.label,
         assignee: t.assignee,
         assigneeRole: t.assigneeRole,
         priority: t.priority,
+        dueDate: t.dueDate?.toISOString() ?? null,
         doneAt: t.doneAt?.toISOString() ?? null,
+        taskId: t.taskId ?? null,
       })),
       createdAt: s.createdAt.toISOString(),
     }));
@@ -72,8 +92,10 @@ const createSessionSchema = z.object({
       z.object({
         label: z.string().min(1),
         assignee: z.string().optional(),
+        assigneeId: z.string().optional(),
         assigneeRole: z.enum(['SDR', 'MANAGER', 'DEV', 'ALWAYS']).optional().default('ALWAYS'),
         priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional().default('MEDIUM'),
+        dueDate: z.string().optional(),
       }),
     )
     .optional()
@@ -85,7 +107,7 @@ export const POST = withErrorHandler(
     request: NextRequest,
     context: { params: Promise<{ id: string }> },
   ) => {
-    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
+    const sessionUser = await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
 
     const { id: clientId } = await context.params;
 
@@ -112,11 +134,72 @@ export const POST = withErrorHandler(
             assignee: t.assignee,
             assigneeRole: t.assigneeRole || 'ALWAYS',
             priority: t.priority || 'MEDIUM',
+            dueDate: t.dueDate ? new Date(t.dueDate) : null,
           })),
         },
       },
       include: { tasks: true },
     });
+
+    let projectId: string | null = null;
+
+    // Automatically create or reuse a client project and mirror session tasks into it
+    if ((body.tasks ?? []).length > 0) {
+      const userId = sessionUser.user.id;
+
+      let project = await prisma.project.findFirst({
+        where: {
+          clientId,
+          name: client.name,
+          status: 'ACTIVE',
+        },
+      });
+
+      if (!project) {
+        project = await prisma.project.create({
+          data: {
+            name: client.name,
+            description: body.type
+              ? `Projet créé automatiquement à partir des sessions client (${body.type}).`
+              : 'Projet créé automatiquement à partir des sessions client.',
+            clientId,
+            ownerId: userId,
+            members: {
+              create: { userId, role: 'owner' },
+            },
+          },
+        });
+      }
+
+      projectId = project.id;
+
+      // Create project tasks individually so we can link them back to session tasks
+      for (let i = 0; i < session.tasks.length; i++) {
+        const sessionTask = session.tasks[i];
+        const bodyTask = (body.tasks ?? [])[i];
+
+        const createdTask = await prisma.task.create({
+          data: {
+            projectId: project.id,
+            title: sessionTask.label,
+            description: body.type
+              ? `Tâche issue de la session "${body.type}" pour le client ${client.name}.`
+              : `Tâche issue d'une session pour le client ${client.name}.`,
+            status: 'TODO',
+            priority: (sessionTask.priority || 'MEDIUM') as any,
+            dueDate: sessionTask.dueDate,
+            assigneeId: bodyTask?.assigneeId || null,
+            createdById: userId,
+          },
+        });
+
+        // Link SessionTask → Task for bidirectional sync
+        await prisma.sessionTask.update({
+          where: { id: sessionTask.id },
+          data: { taskId: createdTask.id },
+        });
+      }
+    }
 
     let emailSent = false;
 
@@ -160,17 +243,19 @@ export const POST = withErrorHandler(
       recordingUrl: session.recordingUrl,
       crMarkdown: session.crMarkdown,
       summaryEmail: session.summaryEmail,
+      emailSentAt: emailSent ? new Date().toISOString() : null,
       tasks: session.tasks.map((t) => ({
         id: t.id,
         label: t.label,
         assignee: t.assignee,
         assigneeRole: t.assigneeRole,
         priority: t.priority,
+        dueDate: t.dueDate?.toISOString() ?? null,
         doneAt: t.doneAt?.toISOString() ?? null,
       })),
       createdAt: session.createdAt.toISOString(),
     };
 
-    return NextResponse.json({ success: true, data: result, emailSent }, { status: 201 });
+    return NextResponse.json({ success: true, data: result, emailSent, projectId }, { status: 201 });
   },
 );

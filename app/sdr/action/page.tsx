@@ -404,6 +404,9 @@ export default function SDRActionPage() {
             return next;
         });
     }, []);
+    // Mission search: server-side search so contacts can be filtered by name
+    const [tableSearchInput, setTableSearchInput] = useState("");
+    const [tableSearchApi, setTableSearchApi] = useState("");
     const queryClient = useQueryClient();
     const queueQueryKey = sdrActionQueueKey(selectedMissionId, selectedListId, tableSearchApi);
     const mapQueueItems = useCallback((items: QueueItem[]) =>
@@ -446,9 +449,6 @@ export default function SDRActionPage() {
     const [tableFilterPriority, setTableFilterPriority] = useState<string>("");
     const [tableFilterChannel, setTableFilterChannel] = useState<string>("");
     const [tableFilterType, setTableFilterType] = useState<string>("contact"); // "" | "contact" | "company" — default to contacts in table view
-    // Mission search: server-side search so contacts can be filtered by name
-    const [tableSearchInput, setTableSearchInput] = useState("");
-    const [tableSearchApi, setTableSearchApi] = useState("");
 
     // Stats modal (table + card view): view stats and list of contacts with status
     const [showStatsModal, setShowStatsModal] = useState(false);
@@ -581,9 +581,12 @@ export default function SDRActionPage() {
                             : null;
                     if (missionId) setSelectedMissionId(missionId);
                     if (listsJson.success && missionId) {
+                        const listsForMission = (listsJson.data as ListItem[]).filter((l) => l.mission.id === missionId);
                         const savedList = typeof window !== "undefined" ? localStorage.getItem("sdr_selected_list") : null;
-                        if (savedList && listsJson.data.some((l: ListItem) => l.id === savedList && l.mission.id === missionId)) {
+                        if (savedList && listsForMission.some((l) => l.id === savedList)) {
                             setSelectedListId(savedList);
+                        } else if (listsForMission.length > 0) {
+                            setSelectedListId(listsForMission[0].id);
                         }
                     }
                 }
@@ -714,8 +717,8 @@ export default function SDRActionPage() {
         if (queueItems.length === 0) {
             return {
                 icon: AlertCircle,
-                title: "File vide pour cette mission",
-                description: "Aucun contact éligible dans cette mission (et cette liste). Causes possibles : les listes sont vides ; les contacts n'ont pas les infos requises (téléphone pour Appel, email pour Email, LinkedIn pour LinkedIn) ; ou tous les contacts sont en cooldown (24h après dernière action). Vérifiez les listes côté manager ou actualisez plus tard.",
+                title: "File vide pour cette mission / liste",
+                description: "Aucun contact ou société éligible. Vérifiez : (1) La mission a au moins une campagne active. (2) La liste est active (onglet BDD du manager). (3) Les sociétés ont des contacts liés avec les infos requises selon le canal — téléphone pour Appel, email pour Email, LinkedIn pour LinkedIn ; les sociétés sans contact n'apparaissent qu'en Appel si la société a un téléphone. (4) Vous êtes bien assigné à la mission. Si la liste affiche « 322 sociétés, 1 contact », la plupart des sociétés n'ont pas de contact : seuls les contacts (ou sociétés avec téléphone en Appel) éligibles apparaissent ici.",
             };
         }
         return {
@@ -1466,7 +1469,8 @@ export default function SDRActionPage() {
         const id = e.target.value;
         setSelectedMissionId(id);
         localStorage.setItem("sdr_selected_mission", id);
-        setSelectedListId(null);
+        const firstList = lists.find((l) => l.mission.id === id);
+        setSelectedListId(firstList?.id ?? null);
     };
 
     const handleListChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -2324,7 +2328,8 @@ export default function SDRActionPage() {
                                     onChange={(id) => {
                                         setSelectedMissionId(id);
                                         localStorage.setItem("sdr_selected_mission", id);
-                                        setSelectedListId(null);
+                                        const firstList = lists.find((l) => l.mission.id === id);
+                                        setSelectedListId(firstList?.id ?? null);
                                     }}
                                     options={missions.map((m) => ({ value: m.id, label: m.name }))}
                                     placeholder="Mission"
@@ -2443,7 +2448,8 @@ export default function SDRActionPage() {
                                 onChange={(id) => {
                                     setSelectedMissionId(id);
                                     localStorage.setItem("sdr_selected_mission", id);
-                                    setSelectedListId(null);
+                                    const firstList = lists.find((l) => l.mission.id === id);
+                                    setSelectedListId(firstList?.id ?? null);
                                 }}
                                 options={missions.map((m) => ({ value: m.id, label: m.name }))}
                                 placeholder="Mission"

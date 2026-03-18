@@ -1,12 +1,54 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Button, useToast } from "@/components/ui";
-import { FileDown, Share2, Check, Loader2, Calendar, TrendingUp, BarChart3 } from "lucide-react";
+import { Button, useToast, Card, Badge } from "@/components/ui";
+import { FileDown, Share2, Check, Loader2, Calendar, TrendingUp, BarChart3, FileText, Mic, Copy, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { ReportingSkeleton } from "@/components/client/skeletons";
+
+// Session & CR types (same shape as manager view)
+type SessionType = "Kick-Off" | "Onboarding" | "Validation" | "Reporting" | "Suivi" | "Autre";
+interface SessionTask {
+    id: string;
+    label: string;
+    assignee?: string;
+    assigneeRole?: "SDR" | "MANAGER" | "DEV" | "ALWAYS";
+    priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+    doneAt?: string | null;
+}
+interface ClientSession {
+    id: string;
+    type: SessionType;
+    date: string;
+    leexiId?: string;
+    recordingUrl?: string;
+    crMarkdown?: string;
+    summaryEmail?: string;
+    tasks: SessionTask[];
+    createdAt: string;
+}
+const SESSION_TYPE_COLORS: Record<SessionType, string> = {
+    "Kick-Off": "bg-indigo-100 text-indigo-700 border-indigo-200",
+    "Onboarding": "bg-emerald-100 text-emerald-700 border-emerald-200",
+    "Validation": "bg-pink-100 text-pink-700 border-pink-200",
+    "Reporting": "bg-amber-100 text-amber-700 border-amber-200",
+    "Suivi": "bg-slate-100 text-slate-600 border-slate-200",
+    "Autre": "bg-purple-100 text-purple-700 border-purple-200",
+};
+const ROLE_BADGE: Record<string, { color: string; bg: string; label: string }> = {
+    SDR: { color: "#10B981", bg: "rgba(16,185,129,0.1)", label: "SDR" },
+    MANAGER: { color: "#F59E0B", bg: "rgba(245,158,11,0.1)", label: "Manager" },
+    DEV: { color: "#3B82F6", bg: "rgba(59,130,246,0.1)", label: "Dev" },
+    ALWAYS: { color: "#8B5CF6", bg: "rgba(139,92,246,0.1)", label: "Tous" },
+};
+const PRIORITY_INDICATOR: Record<string, { color: string; label: string }> = {
+    URGENT: { color: "#EF4444", label: "⚡" },
+    HIGH: { color: "#F59E0B", label: "↑" },
+    MEDIUM: { color: "#3B82F6", label: "→" },
+    LOW: { color: "#6B7280", label: "↓" },
+};
 
 interface MonthlySummary {
     month: number;
@@ -29,6 +71,12 @@ export default function ClientPortalReportingPage() {
     const [sharingMonth, setSharingMonth] = useState<string | null>(null);
     const [generatingPdf, setGeneratingPdf] = useState<string | null>(null);
 
+    // Sessions & CRs (same data as manager view)
+    const [sessions, setSessions] = useState<ClientSession[]>([]);
+    const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+    const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+    const [showCRTab, setShowCRTab] = useState<"cr" | "email">("cr");
+
     useEffect(() => {
         (async () => {
             try {
@@ -39,6 +87,20 @@ export default function ClientPortalReportingPage() {
                 console.error("Failed to load reporting data:", e);
             } finally {
                 setIsLoading(false);
+            }
+        })();
+    }, []);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await fetch("/api/client/sessions");
+                const json = await res.json();
+                if (json.success) setSessions(json.data ?? []);
+            } catch (e) {
+                console.error("Failed to load sessions:", e);
+            } finally {
+                setIsLoadingSessions(false);
             }
         })();
     }, []);
@@ -110,6 +172,180 @@ export default function ClientPortalReportingPage() {
             <div className="animate-fade-up">
                 <h1 className="text-2xl font-bold text-[#12122A] tracking-tight">Rapports</h1>
                 <p className="text-sm text-[#6B7194] mt-1">Suivez l&apos;evolution de vos missions</p>
+            </div>
+
+            {/* Sessions & Comptes Rendus — same view as manager (read-only) */}
+            <div className="animate-fade-up space-y-4" style={{ animationDelay: "40ms" }}>
+                <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center shadow-sm shadow-indigo-500/20">
+                        <FileText className="w-4 h-4 text-white" />
+                    </div>
+                    <h2 className="text-sm font-bold text-[#12122A] uppercase tracking-wider">
+                        Sessions & Comptes Rendus
+                    </h2>
+                </div>
+                {isLoadingSessions ? (
+                    <div className="flex items-center justify-center py-12 rounded-2xl border border-[#E8EBF0] bg-white">
+                        <Loader2 className="w-8 h-8 animate-spin text-[#6C3AFF]" />
+                    </div>
+                ) : sessions.length === 0 ? (
+                    <div className="text-center py-12 rounded-2xl border border-[#E8EBF0] bg-white">
+                        <Mic className="w-12 h-12 text-[#A0A3BD] mx-auto mb-3" />
+                        <p className="text-sm text-[#6B7194]">Aucune session pour le moment. Elles apparaîtront ici lorsque votre équipe en ajoutera.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {sessions.map((session) => {
+                            const isExpanded = expandedSessionId === session.id;
+                            const openTasks = session.tasks.filter((t) => !t.doneAt);
+                            const typeKey = session.type as SessionType;
+                            const typeColor = SESSION_TYPE_COLORS[typeKey] ?? SESSION_TYPE_COLORS["Autre"];
+                            return (
+                                <div
+                                    key={session.id}
+                                    className="premium-card overflow-hidden border border-[#E8EBF0] hover:border-indigo-200/60 transition-all duration-200"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => setExpandedSessionId(isExpanded ? null : session.id)}
+                                        className="w-full px-5 py-4 flex items-center justify-between hover:bg-[#F8F7FF]/50 transition-colors text-left"
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <Badge className={cn("text-xs border shrink-0", typeColor)}>
+                                                {session.type}
+                                            </Badge>
+                                            <div>
+                                                <p className="font-semibold text-[#12122A] text-sm">
+                                                    Session du {new Date(session.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                                                </p>
+                                                {session.crMarkdown && (
+                                                    <p className="text-xs text-[#6B7194] mt-0.5 line-clamp-1">
+                                                        {session.crMarkdown.split("\n").find((l) => l && !l.startsWith("#"))?.slice(0, 100)}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 shrink-0 ml-4">
+                                            {session.recordingUrl && (
+                                                <a
+                                                    href={session.recordingUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="flex items-center gap-1 text-xs text-[#6C3AFF] hover:underline font-medium"
+                                                >
+                                                    <Mic className="w-3.5 h-3.5" /> Enregistrement
+                                                </a>
+                                            )}
+                                            {openTasks.length > 0 && (
+                                                <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-200">
+                                                    {openTasks.length} tâche{openTasks.length > 1 ? "s" : ""}
+                                                </Badge>
+                                            )}
+                                            {isExpanded ? <ChevronUp className="w-4 h-4 text-[#6B7194]" /> : <ChevronDown className="w-4 h-4 text-[#6B7194]" />}
+                                        </div>
+                                    </button>
+                                    {isExpanded && (
+                                        <div className="border-t border-[#E8EBF0]">
+                                            <div className="flex gap-0 border-b border-[#E8EBF0]">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowCRTab("cr")}
+                                                    className={cn(
+                                                        "px-5 py-3 text-sm font-semibold border-b-2 transition-colors",
+                                                        showCRTab === "cr" ? "border-[#6C3AFF] text-[#6C3AFF]" : "border-transparent text-[#6B7194] hover:text-[#12122A]"
+                                                    )}
+                                                >
+                                                    Compte rendu
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowCRTab("email")}
+                                                    className={cn(
+                                                        "px-5 py-3 text-sm font-semibold border-b-2 transition-colors",
+                                                        showCRTab === "email" ? "border-[#6C3AFF] text-[#6C3AFF]" : "border-transparent text-[#6B7194] hover:text-[#12122A]"
+                                                    )}
+                                                >
+                                                    Mail de synthèse
+                                                </button>
+                                            </div>
+                                            <div className="p-5">
+                                                {showCRTab === "cr" &&
+                                                    (session.crMarkdown ? (
+                                                        <div className="prose prose-sm prose-slate max-w-none">
+                                                            <pre className="whitespace-pre-wrap text-sm text-[#12122A] font-sans leading-relaxed">
+                                                                {session.crMarkdown}
+                                                            </pre>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-[#6B7194] italic">Pas de CR disponible.</p>
+                                                    ))}
+                                                {showCRTab === "email" &&
+                                                    (session.summaryEmail ? (
+                                                        <div className="space-y-3">
+                                                            <div className="bg-[#F8F9FC] border border-[#E8EBF0] rounded-xl p-4">
+                                                                <pre className="whitespace-pre-wrap text-sm text-[#12122A] font-sans leading-relaxed">
+                                                                    {session.summaryEmail}
+                                                                </pre>
+                                                            </div>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="gap-2 rounded-xl border-[#E8EBF0] hover:border-[#7C5CFC]/30 hover:text-[#7C5CFC]"
+                                                                onClick={() => {
+                                                                    navigator.clipboard.writeText(session.summaryEmail!);
+                                                                    toast.success("Copié", "Mail copié dans le presse-papier");
+                                                                }}
+                                                            >
+                                                                <Copy className="w-3.5 h-3.5" />
+                                                                Copier le mail
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-[#6B7194] italic">Pas de mail de synthèse disponible.</p>
+                                                    ))}
+                                                {session.tasks.length > 0 && (
+                                                    <div className="mt-5 pt-5 border-t border-[#E8EBF0]">
+                                                        <h4 className="text-xs font-bold text-[#6B7194] uppercase tracking-wider mb-3">Tâches d&apos;équipe</h4>
+                                                        <div className="space-y-2">
+                                                            {session.tasks.map((task) => {
+                                                                const roleBadge = ROLE_BADGE[task.assigneeRole || "ALWAYS"] ?? ROLE_BADGE.ALWAYS;
+                                                                const priorityInfo = PRIORITY_INDICATOR[task.priority || "MEDIUM"] ?? PRIORITY_INDICATOR.MEDIUM;
+                                                                return (
+                                                                    <div key={task.id} className="flex items-center gap-3">
+                                                                        <div
+                                                                            className={cn(
+                                                                                "w-4 h-4 rounded-full border-2 shrink-0",
+                                                                                task.doneAt ? "bg-emerald-500 border-emerald-500" : "border-[#A0A3BD]"
+                                                                            )}
+                                                                        />
+                                                                        <span className={cn("text-sm flex-1", task.doneAt ? "line-through text-[#6B7194]" : "text-[#12122A]")}>
+                                                                            {task.label}
+                                                                        </span>
+                                                                        <span
+                                                                            className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                                                                            style={{ color: roleBadge.color, background: roleBadge.bg }}
+                                                                        >
+                                                                            {roleBadge.label}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-medium" style={{ color: priorityInfo.color }}>
+                                                                            {priorityInfo.label}
+                                                                        </span>
+                                                                        {task.assignee && <span className="text-xs text-[#6B7194]">— {task.assignee}</span>}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* Cumulative Timeline */}

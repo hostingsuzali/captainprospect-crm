@@ -15,7 +15,8 @@ import { z } from 'zod';
 // ============================================
 
 const bookingSuccessSchema = z.object({
-    contactId: z.string().min(1, 'Contact ID required'),
+    contactId: z.string().min(1).optional(),
+    companyId: z.string().min(1).optional(),
     eventData: z.record(z.string(), z.any()).optional(),
     rdvDate: z.string().optional(),
     meetingType: z.enum(['VISIO', 'PHYSIQUE', 'TELEPHONIQUE']).optional(),
@@ -23,14 +24,19 @@ const bookingSuccessSchema = z.object({
     meetingAddress: z.string().max(500).optional(),
     meetingJoinUrl: z.string().url('Lien de rejoindre invalide').max(2000).optional(),
     meetingPhone: z.string().max(50).optional(),
-}).refine(
-    (data) => {
-        if (!data.meetingType) return true;
-        if (data.meetingType === 'PHYSIQUE') return !!data.meetingAddress?.trim();
-        return true;
-    },
-    { message: 'PHYSIQUE requiert une adresse.', path: ['meetingType'] }
-);
+})
+    .refine((data) => !!data.contactId || !!data.companyId, {
+        message: 'Contact ou société requis',
+        path: ['contactId'],
+    })
+    .refine(
+        (data) => {
+            if (!data.meetingType) return true;
+            if (data.meetingType === 'PHYSIQUE') return !!data.meetingAddress?.trim();
+            return true;
+        },
+        { message: 'PHYSIQUE requiert une adresse.', path: ['meetingType'] }
+    );
 
 function normalizeUrlCandidate(value: string | null | undefined): string | null {
     const raw = value?.trim();
@@ -143,55 +149,12 @@ function extractMeetingJoinUrl(eventData: Record<string, unknown> | undefined): 
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await requireRole(['SDR', 'BUSINESS_DEVELOPER'], request);
-    const { contactId, eventData, rdvDate, meetingType, meetingCategory, meetingAddress, meetingJoinUrl, meetingPhone } = await validateRequest(request, bookingSuccessSchema);
+    const { contactId, companyId, eventData, rdvDate, meetingType, meetingCategory, meetingAddress, meetingJoinUrl, meetingPhone } = await validateRequest(request, bookingSuccessSchema);
 
-    // Get contact with campaign info
-    const contact = await prisma.contact.findUnique({
-        where: { id: contactId },
-        include: {
-            company: {
-                include: {
-                    list: {
-                        include: {
-                            mission: {
-                                include: {
-                                    campaigns: {
-                                        where: { isActive: true },
-                                        take: 1,
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    });
-
-    if (!contact) {
-        return NextResponse.json(
-            { success: false, error: 'Contact not found' },
-            { status: 404 }
-        );
-    }
-
-    const list = contact.company.list;
-    const mission = list.mission;
-    const campaign = mission.campaigns[0];
-    if (!campaign) {
-        return NextResponse.json(
-            { success: false, error: 'No active campaign found for this contact' },
-            { status: 400 }
-        );
-    }
-
-    // Extract booking details from event data
     const bookingNote = eventData
         ? `RDV planifié via calendrier: ${JSON.stringify(eventData)}`
         : 'RDV planifié via calendrier';
 
-    // Parse rdvDate into a Date object (used as callbackDate = scheduled meeting date)
-    // Prefer SDR-selected rdvDate; fallback to calendar payload start time so RDV shows scheduled date, not call date
     const scheduledAt = rdvDate
         ? new Date(rdvDate)
         : extractScheduledStartTime(eventData);
@@ -201,20 +164,129 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             ? normalizeUrlCandidate(meetingJoinUrl) ?? extractMeetingJoinUrl(eventData)
             : null;
 
-    // Determine commercial interlocuteur for this booking:
-    // prefer list-level mapping, else fall back to mission-level default, else null.
-    const interlocuteurId =
-        (list as any).commercialInterlocuteurId ?? (mission as any).defaultInterlocuteurId ?? null;
+    if (contactId) {
+        // Classic: book with contact (and company via contact)
+        const contact = await prisma.contact.findUnique({
+            where: { id: contactId },
+            include: {
+                company: {
+                    include: {
+                        list: {
+                            include: {
+                                mission: {
+                                    include: {
+                                        campaigns: { where: { isActive: true }, take: 1 },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
 
-    // Create action with MEETING_BOOKED result and optional meeting format metadata
+        if (!contact) {
+            return NextResponse.json(
+                { success: false, error: 'Contact not found' },
+                { status: 404 }
+            );
+        }
+
+        const list = contact.company.list;
+        const mission = list.mission;
+        const campaign = mission.campaigns[0];
+        if (!campaign) {
+            return NextResponse.json(
+                { success: false, error: 'No active campaign found for this contact' },
+                { status: 400 }
+            );
+        }
+
+        const interlocuteurId =
+            (list as any).commercialInterlocuteurId ?? (mission as any).defaultInterlocuteurId ?? null;
+
+        const action = await prisma.action.create({
+            data: {
+                contactId: contact.id,
+                companyId: contact.company.id,
+                sdrId: session.user.id,
+                campaignId: campaign.id,
+                channel: (mission as any).channel ?? 'CALL',
+                result: 'MEETING_BOOKED',
+                confirmationStatus: 'PENDING',
+                note: bookingNote,
+                callbackDate: scheduledAt ?? undefined,
+                meetingType: meetingType ?? null,
+                meetingCategory: meetingCategory ?? null,
+                meetingAddress: meetingAddress ?? null,
+                meetingJoinUrl: resolvedMeetingJoinUrl,
+                meetingPhone: meetingPhone ?? null,
+                interlocuteurId: interlocuteurId ?? undefined,
+            },
+            include: {
+                contact: { select: { id: true, firstName: true, lastName: true } },
+            },
+        });
+
+        return NextResponse.json({
+            success: true,
+            data: {
+                actionId: action.id,
+                message: `Rendez-vous enregistré pour ${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
+            },
+        });
+    }
+
+    // Company-only: book with company only (no contact)
+    if (!companyId) {
+        return NextResponse.json(
+            { success: false, error: 'Contact ou société requis' },
+            { status: 400 }
+        );
+    }
+
+    const company = await prisma.company.findUnique({
+        where: { id: companyId },
+        include: {
+            list: {
+                include: {
+                    mission: {
+                        include: {
+                            campaigns: { where: { isActive: true }, take: 1 },
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    if (!company) {
+        return NextResponse.json(
+            { success: false, error: 'Société non trouvée' },
+            { status: 404 }
+        );
+    }
+
+    const mission = company.list.mission;
+    const campaign = mission.campaigns[0];
+    if (!campaign) {
+        return NextResponse.json(
+            { success: false, error: 'Aucune campagne active pour cette liste' },
+            { status: 400 }
+        );
+    }
+
+    const interlocuteurId =
+        (company.list as any).commercialInterlocuteurId ?? (mission as any).defaultInterlocuteurId ?? null;
+
     const action = await prisma.action.create({
         data: {
-            contactId: contact.id,
+            contactId: null,
+            companyId: company.id,
             sdrId: session.user.id,
             campaignId: campaign.id,
-            channel: contact.company.list.mission.channel,
+            channel: (mission as any).channel ?? 'CALL',
             result: 'MEETING_BOOKED',
-            // SAS RDV: client notification is sent only once confirmed (manual or auto after 24h)
             confirmationStatus: 'PENDING',
             note: bookingNote,
             callbackDate: scheduledAt ?? undefined,
@@ -225,22 +297,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             meetingPhone: meetingPhone ?? null,
             interlocuteurId: interlocuteurId ?? undefined,
         },
-        include: {
-            contact: {
-                select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                },
-            },
-        },
     });
 
     return NextResponse.json({
         success: true,
         data: {
             actionId: action.id,
-            message: `Rendez-vous enregistré pour ${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
+            message: `Rendez-vous enregistré pour la société ${company.name}`,
         },
     });
 });

@@ -7,25 +7,24 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
     status?: CompletenessStatus;
 }
 
+const BADGE_STATUS_VARIANTS: Record<CompletenessStatus, string> = {
+    INCOMPLETE: "bg-red-50 text-red-700 border-red-200",
+    PARTIAL: "bg-amber-50 text-amber-700 border-amber-200",
+    ACTIONABLE: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+const BADGE_VARIANTS: Record<string, string> = {
+    default: "bg-slate-100 text-slate-700 border-slate-200",
+    primary: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    success: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    warning: "bg-amber-50 text-amber-700 border-amber-200",
+    danger: "bg-red-50 text-red-700 border-red-200",
+    outline: "bg-transparent text-slate-600 border-slate-300",
+};
+
 const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
     ({ className, variant = "default", status, children, ...props }, ref) => {
-        // If status is provided, use status-based styling
-        const statusVariants: Record<CompletenessStatus, string> = {
-            INCOMPLETE: "bg-red-50 text-red-700 border-red-200",
-            PARTIAL: "bg-amber-50 text-amber-700 border-amber-200",
-            ACTIONABLE: "bg-emerald-50 text-emerald-700 border-emerald-200",
-        };
-
-        const variants = {
-            default: "bg-slate-100 text-slate-700 border-slate-200",
-            primary: "bg-indigo-50 text-indigo-700 border-indigo-200",
-            success: "bg-emerald-50 text-emerald-700 border-emerald-200",
-            warning: "bg-amber-50 text-amber-700 border-amber-200",
-            danger: "bg-red-50 text-red-700 border-red-200",
-            outline: "bg-transparent text-slate-600 border-slate-300",
-        };
-
-        const variantStyle = status ? statusVariants[status] : variants[variant];
+        const variantStyle = status ? BADGE_STATUS_VARIANTS[status] : BADGE_VARIANTS[variant];
 
         return (
             <span

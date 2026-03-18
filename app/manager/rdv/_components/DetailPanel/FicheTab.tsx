@@ -30,8 +30,10 @@ export function FicheTab({ meeting, setSelectedMeeting, ficheState, updateMeetin
     ficheSaved,
     ficheManualTranscript,
     setFicheManualTranscript,
+    ficheAutoSaveStatus,
     generateWithAI,
     saveFiche,
+    triggerAutoSave,
   } = ficheState;
 
   const hasAutoTranscript = transcriptToText(meeting.voipTranscript) !== "";
@@ -41,7 +43,10 @@ export function FicheTab({ meeting, setSelectedMeeting, ficheState, updateMeetin
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>Fiche RDV</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {ficheSaved && <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 500 }}>Sauvegardé ✓</span>}
+          {ficheAutoSaveStatus === "saving" && <span style={{ fontSize: 11, color: "var(--ink3)", fontWeight: 500 }}>Enregistrement…</span>}
+          {ficheAutoSaveStatus === "saved" && <span style={{ fontSize: 11, color: "var(--green)", fontWeight: 500 }}>Sauvegardé ✓</span>}
+          {ficheAutoSaveStatus === "error" && <span style={{ fontSize: 11, color: "var(--red)", fontWeight: 500 }}>Erreur</span>}
+          {ficheSaved && ficheAutoSaveStatus === "idle" && <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 500 }}>Sauvegardé ✓</span>}
           <button
             className="rdv-btn rdv-btn-ghost"
             style={{ fontSize: 12, padding: "6px 12px" }}
@@ -103,7 +108,11 @@ export function FicheTab({ meeting, setSelectedMeeting, ficheState, updateMeetin
               className="rdv-input"
               style={{ width: "100%", minHeight: 80, resize: "vertical", border: "1px solid var(--border2)", borderRadius: 8, fontSize: 13, lineHeight: 1.6, padding: "8px 10px", background: "var(--surface2)" }}
               value={ficheForm[field]}
-              onChange={(e) => setFicheForm((f) => ({ ...f, [field]: e.target.value }))}
+              onChange={(e) => {
+                const updated = { ...ficheForm, [field]: e.target.value };
+                setFicheForm(updated);
+                triggerAutoSave(meeting.id, updated);
+              }}
               placeholder={`Saisir ${label.toLowerCase()}…`}
             />
           </div>

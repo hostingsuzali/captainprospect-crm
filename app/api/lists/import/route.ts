@@ -7,7 +7,9 @@ import type { ActionResult } from "@prisma/client";
 // ============================================
 // CSV IMPORT API (streaming + batched for performance)
 // ============================================
-// Accepts multipart/form-data: file (raw CSV), missionId, listName, mappings (JSON), importType.
+// Accepts multipart/form-data: file (raw CSV), mappings (JSON), importType.
+// Either: listId (add to existing list) OR missionId + listName (create new list).
+// whenAlreadyWorkedOn: "skip" | "add_anyway" — when adding to existing list, skip rows whose company already has actions.
 // Streams CSV from the uploaded file and processes rows in batches to avoid loading
 // the full file and to reduce per-row DB round-trips.
 // ============================================
@@ -201,7 +203,8 @@ export async function POST(req: NextRequest) {
 
         const formData = await req.formData();
         const file = formData.get("file") as File | null;
-        const missionId = formData.get("missionId") as string | null;
+        const listIdParam = formData.get("listId") as string | null;
+        const missionIdParam = formData.get("missionId") as string | null;
         const listName = formData.get("listName") as string | null;
         const mappingsStr = formData.get("mappings") as string | null;
         const importType = (formData.get("importType") as string) || "companies-contacts";
@@ -211,12 +214,29 @@ export async function POST(req: NextRequest) {
         const actionColumnMappingStr = formData.get("actionColumnMapping") as string | null;
         const statusMappingsStr = formData.get("statusMappings") as string | null;
         const channelMappingsStr = formData.get("channelMappings") as string | null;
+        const whenAlreadyWorkedOn = (formData.get("whenAlreadyWorkedOn") as string) || "add_anyway";
 
-        if (!file || !missionId || !listName || !mappingsStr) {
+        if (!file || !mappingsStr) {
             return NextResponse.json(
-                { success: false, error: "Données manquantes (file, missionId, listName, mappings)" },
+                { success: false, error: "Données manquantes (file, mappings)" },
                 { status: 400 }
             );
+        }
+        const addToExistingList = !!listIdParam?.trim();
+        if (addToExistingList) {
+            if (!listIdParam?.trim()) {
+                return NextResponse.json(
+                    { success: false, error: "listId requis pour ajouter à une liste existante" },
+                    { status: 400 }
+                );
+            }
+        } else {
+            if (!missionIdParam?.trim() || !listName?.trim()) {
+                return NextResponse.json(
+                    { success: false, error: "Données manquantes (missionId et listName pour une nouvelle liste)" },
+                    { status: 400 }
+                );
+            }
         }
 
         let mappings: { csvColumn: string; targetField: string }[];
@@ -261,35 +281,54 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        const mission = await prisma.mission.findUnique({
-            where: { id: missionId },
-        });
-        if (!mission) {
-            return NextResponse.json(
-                { success: false, error: "Mission non trouvée" },
-                { status: 404 }
-            );
-        }
+        let list: { id: string; missionId: string };
+        let missionId: string;
 
-        const list = await prisma.list.create({
-            data: {
-                name: listName,
-                type: "CLIENT",
-                source: "CSV Import",
-                missionId,
-                importConfig: {
-                    importType,
-                    mappings,
-                    importedAt: new Date().toISOString(),
-                    actionHistory: {
-                        importActions,
-                        actionColumnMapping,
-                        statusMappings,
-                        channelMappings,
+        if (addToExistingList) {
+            const existingList = await prisma.list.findUnique({
+                where: { id: listIdParam!.trim() },
+                select: { id: true, missionId: true },
+            });
+            if (!existingList) {
+                return NextResponse.json(
+                    { success: false, error: "Liste existante non trouvée" },
+                    { status: 404 }
+                );
+            }
+            list = existingList;
+            missionId = existingList.missionId;
+        } else {
+            const mission = await prisma.mission.findUnique({
+                where: { id: missionIdParam! },
+            });
+            if (!mission) {
+                return NextResponse.json(
+                    { success: false, error: "Mission non trouvée" },
+                    { status: 404 }
+                );
+            }
+            missionId = missionIdParam!;
+            const created = await prisma.list.create({
+                data: {
+                    name: listName!,
+                    type: "CLIENT",
+                    source: "CSV Import",
+                    missionId,
+                    importConfig: {
+                        importType,
+                        mappings,
+                        importedAt: new Date().toISOString(),
+                        actionHistory: {
+                            importActions,
+                            actionColumnMapping,
+                            statusMappings,
+                            channelMappings,
+                        },
                     },
                 },
-            },
-        });
+            });
+            list = created;
+        }
 
         let companiesCreated = 0;
         let contactsCreated = 0;
@@ -339,6 +378,7 @@ export async function POST(req: NextRequest) {
                                         channelMappings,
                                         missionId,
                                         sdrId: session.user.id,
+                                        whenAlreadyWorkedOn: addToExistingList ? (whenAlreadyWorkedOn === "skip" ? "skip" : "add_anyway") : "add_anyway",
                                     }
                                 );
                             companiesCreated += batchCompanies;
@@ -370,6 +410,7 @@ export async function POST(req: NextRequest) {
                                     channelMappings,
                                     missionId,
                                     sdrId: session.user.id,
+                                    whenAlreadyWorkedOn: addToExistingList ? (whenAlreadyWorkedOn === "skip" ? "skip" : "add_anyway") : "add_anyway",
                                 }
                             );
                         companiesCreated += batchCompanies;
@@ -431,6 +472,7 @@ async function processBatch(
         channelMappings: { csvValue: string; channel: "CALL" | "EMAIL" | "LINKEDIN"; count: number }[];
         missionId: string | null;
         sdrId: string;
+        whenAlreadyWorkedOn?: "skip" | "add_anyway";
     }
 ): Promise<{ companies: number; contacts: number; actions: number; errs: string[] }> {
     const errs: string[] = [];
@@ -488,19 +530,28 @@ async function processBatch(
     }
 
     const uniqueNames = [...new Set(validRows.map((r) => r.companyName))];
+    const skipAlreadyWorked = options?.whenAlreadyWorkedOn === "skip";
 
-    // 2) Preload existing companies for this list and batch names
+    // 2) Preload existing companies for this list and batch names (and action count when skipping "already worked")
     const existingCompanies = await prisma.company.findMany({
         where: { listId, name: { in: uniqueNames } },
-        select: { id: true, name: true },
+        select: { id: true, name: true, _count: { select: { actions: true } } },
     });
-    const companyMap = new Map<string, { id: string }>();
+    const companyMap = new Map<string, { id: string; hasActions: boolean }>();
     for (const c of existingCompanies) {
-        companyMap.set(c.name, { id: c.id });
+        companyMap.set(c.name, { id: c.id, hasActions: (c._count?.actions ?? 0) > 0 });
     }
 
-    // 3) Create missing companies: one payload per unique name (first row wins for custom data)
-    const namesToCreate = uniqueNames.filter((n) => !companyMap.has(n));
+    // When "skip": exclude company names that already have actions from this batch (no new company, no new contacts)
+    const namesToConsider = skipAlreadyWorked
+        ? uniqueNames.filter((n) => {
+            const existing = companyMap.get(n);
+            return !existing || !existing.hasActions;
+        })
+        : uniqueNames;
+
+    // 3) Create missing companies: one payload per unique name (first row wins for custom data); skip names excluded by whenAlreadyWorkedOn
+    const namesToCreate = namesToConsider.filter((n) => !companyMap.has(n));
     const companyPayloadByName = new Map<
         string,
         {
@@ -566,7 +617,7 @@ async function processBatch(
                 data: createData as Parameters<typeof prisma.company.create>[0]["data"],
                 select: { id: true, name: true },
             });
-            companyMap.set(created.name, { id: created.id });
+            companyMap.set(created.name, { id: created.id, hasActions: false });
             companiesCreated++;
         }
     }
@@ -605,6 +656,7 @@ async function processBatch(
     for (const r of validRows) {
         const company = companyMap.get(r.companyName);
         if (!company || !r.contactData) continue;
+        if (skipAlreadyWorked && company.hasActions) continue;
         const cd = r.contactData;
         const email = cd.email || null;
         const firstName = cd.firstName || null;

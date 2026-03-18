@@ -36,3 +36,9 @@ export function sdrDrawerCompanyKey(companyId: string | null) {
 export function sdrClientBookingKey(missionId: string | null) {
     return ["sdr", "client-booking", missionId] as const;
 }
+export function sdrUnifiedDrawerMailboxesKey(missionId: string | null) {
+    return ["sdr", "unified-drawer", "mailboxes", missionId] as const;
+}
+export function sdrUnifiedDrawerTemplatesKey(missionId: string | null) {
+    return ["sdr", "unified-drawer", "templates", missionId] as const;
+}

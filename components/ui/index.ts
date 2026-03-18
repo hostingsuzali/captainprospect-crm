@@ -1,3 +1,8 @@
+// #region agent log
+if (typeof fetch !== "undefined") {
+    fetch("http://127.0.0.1:7867/ingest/490ac402-97ac-4553-b1e1-210c752f7614", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f98d12" }, body: JSON.stringify({ sessionId: "f98d12", location: "components/ui/index.ts:1", message: "barrel ui index evaluating", data: { t: Date.now() }, timestamp: Date.now(), hypothesisId: "barrel" }) }).catch(() => {});
+}
+// #endregion
 // UI Components
 export { default as Button } from "./Button";
 export { default as Input } from "./Input";

@@ -72,8 +72,13 @@ export default function ManagerProjectDetailPage() {
         try {
             const res = await fetch(`/api/projects/${projectId}`);
             const json = await res.json();
-            if (json.success) {
-                setProject(json.data);
+            if (json.success && json.data) {
+                // Ensure tasks is always an array so the UI never breaks
+                const data = {
+                    ...json.data,
+                    tasks: Array.isArray(json.data.tasks) ? json.data.tasks : [],
+                };
+                setProject(data);
             }
         } catch (e) {
             console.error(e);
@@ -98,10 +103,11 @@ export default function ManagerProjectDetailPage() {
             .catch(() => {});
     }, [project?.id]);
 
-    // Filter tasks
-    const filteredTasks = project?.tasks?.filter((t: any) => {
-        if (t.parentTaskId) return false; // Only show top-level tasks
-        if (filters.search && !t.title.toLowerCase().includes(filters.search.toLowerCase())) return false;
+    // All tasks (ensure array)
+    const allTasks = Array.isArray(project?.tasks) ? project.tasks : [];
+
+    const matchesFilter = (t: any) => {
+        if (filters.search && !t.title?.toLowerCase().includes(filters.search.toLowerCase())) return false;
         if (filters.statuses.length > 0 && !filters.statuses.includes(t.status)) return false;
         if (filters.priorities.length > 0 && !filters.priorities.includes(t.priority)) return false;
         if (filters.assigneeIds.length > 0) {
@@ -111,7 +117,16 @@ export default function ManagerProjectDetailPage() {
             return false;
         }
         return true;
-    }) || [];
+    };
+
+    // Kanban: only top-level tasks (no subtasks in columns)
+    const filteredTasksKanban = allTasks.filter((t: any) => {
+        if (t.parentTaskId) return false;
+        return matchesFilter(t);
+    });
+
+    // List: show all tasks (including subtasks) so nothing is hidden
+    const filteredTasksList = allTasks.filter(matchesFilter);
 
     const members = project?.members?.map((m) => ({ id: m.user.id, name: m.user.name })) || [];
 
@@ -212,7 +227,7 @@ export default function ManagerProjectDetailPage() {
 
     const tabs = [
         { id: "overview", label: "Vue d'ensemble", icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
-        { id: "tasks", label: `Tâches (${project.tasks?.length || 0})`, icon: <Columns3 className="w-3.5 h-3.5" /> },
+        { id: "tasks", label: `Tâches (${allTasks.length})`, icon: <Columns3 className="w-3.5 h-3.5" /> },
         { id: "analytics", label: "Analytique", icon: <BarChart3 className="w-3.5 h-3.5" /> },
         { id: "activity", label: "Activité", icon: <Activity className="w-3.5 h-3.5" /> },
         { id: "settings", label: "Paramètres", icon: <Settings className="w-3.5 h-3.5" /> },
@@ -518,7 +533,7 @@ export default function ManagerProjectDetailPage() {
 
                         {taskView === "kanban" ? (
                             <KanbanBoard
-                                tasks={filteredTasks}
+                                tasks={filteredTasksKanban}
                                 onStatusChange={handleStatusChange}
                                 onReorder={handleReorder}
                                 onTaskClick={handleTaskClick}
@@ -526,14 +541,17 @@ export default function ManagerProjectDetailPage() {
                             />
                         ) : (
                             <div className="space-y-2">
-                                {filteredTasks.length === 0 && (
+                                {filteredTasksList.length === 0 && (
                                     <p className="text-sm text-slate-400 text-center py-8">Aucune tâche</p>
                                 )}
-                                {filteredTasks.map((task: any) => (
+                                {filteredTasksList.map((task: any) => (
                                     <div
                                         key={task.id}
                                         onClick={() => handleTaskClick(task.id)}
-                                        className="flex items-center gap-4 bg-white border border-slate-200 rounded-lg px-4 py-3 hover:border-indigo-300 cursor-pointer transition-all"
+                                        className={cn(
+                                            "flex items-center gap-4 bg-white border border-slate-200 rounded-lg px-4 py-3 hover:border-indigo-300 cursor-pointer transition-all",
+                                            task.parentTaskId && "ml-4 border-l-2 border-l-indigo-200"
+                                        )}
                                     >
                                         <StatusDot status={task.status} />
                                         <div className="flex-1 min-w-0">

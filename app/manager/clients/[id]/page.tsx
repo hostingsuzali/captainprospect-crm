@@ -44,6 +44,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import AITaskExtractor, { type ExtractedTask } from "@/components/sessions/AITaskExtractor";
 
 // ============================================================
@@ -188,7 +190,9 @@ interface SessionTask {
     assignee?: string;
     assigneeRole?: "SDR" | "MANAGER" | "DEV" | "ALWAYS";
     priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+    dueDate?: string | null;
     doneAt?: string | null;
+    taskId?: string | null;
 }
 
 const ROLE_BADGE_COLORS: Record<string, { color: string; bg: string; label: string }> = {
@@ -213,6 +217,8 @@ interface ClientSession {
     recordingUrl?: string;
     crMarkdown?: string;
     summaryEmail?: string;
+    emailSentAt?: string | null;
+    projectId?: string | null;
     tasks: SessionTask[];
     createdAt: string;
 }
@@ -225,6 +231,12 @@ const SESSION_TYPE_COLORS: Record<SessionType, string> = {
     "Suivi":     "bg-slate-100 text-slate-600 border-slate-200",
     "Autre":     "bg-purple-100 text-purple-700 border-purple-200",
 };
+
+const SESSION_MARKDOWN_CLASS =
+    "prose prose-sm prose-slate max-w-none text-slate-800 " +
+    "[&_h1]:text-slate-900 [&_h2]:text-slate-900 [&_h3]:text-slate-900 [&_h4]:text-slate-900 " +
+    "[&_p]:text-slate-700 [&_li]:text-slate-700 [&_strong]:text-slate-900 " +
+    "[&_a]:text-indigo-700 [&_a]:underline [&_code]:text-slate-900 [&_pre]:text-slate-900 [&_blockquote]:text-slate-700";
 
 const CHANNEL_LABELS = { CALL: "Appel", EMAIL: "Email", LINKEDIN: "LinkedIn" };
 
@@ -363,10 +375,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [sessions, setSessions] = useState<ClientSession[]>([]);
     const [isLoadingSessions, setIsLoadingSessions] = useState(false);
     const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+    const [sessionCRTabs, setSessionCRTabs] = useState<Record<string, "cr" | "email">>({});
     const [showCRTab, setShowCRTab] = useState<"cr" | "email">("cr");
     const [editingSession, setEditingSession] = useState<ClientSession | null>(null);
+    const [editPreviewMode, setEditPreviewMode] = useState(false);
     const [isSavingEdit, setIsSavingEdit] = useState(false);
     const [isDeletingSession, setIsDeletingSession] = useState<string | null>(null);
+    const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+    const [sessionSearch, setSessionSearch] = useState("");
+    const [sessionTypeFilter, setSessionTypeFilter] = useState<SessionType | "all">("all");
+    const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
 
     // Leexi
     const [leexiTranscriptions, setLeexiTranscriptions] = useState<LeexiTranscription[]>([]);
@@ -701,23 +719,26 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         newSessionForm.type === "Autre" && newSessionForm.customTypeLabel.trim().length > 0
                             ? newSessionForm.customTypeLabel.trim()
                             : undefined,
-                    // AI-extracted tasks
                     tasks: extractedTasks.filter(t => t.label.trim().length > 0).map(t => ({
                         label: t.label.trim(),
                         assignee: t.assignee || undefined,
+                        assigneeId: t.assigneeId || undefined,
                         assigneeRole: t.assigneeRole,
                         priority: t.priority,
+                        dueDate: t.dueDate || undefined,
                     })),
                 }),
             });
             const json = await res.json();
             if (json.success) {
-                success(
-                    "Session enregistrée",
-                    json.emailSent
-                        ? `CR sauvegardé et mail envoyé à ${client.email}`
-                        : "CR sauvegardé. Le mail n'a pas été envoyé automatiquement."
-                );
+                const taskCount = extractedTasks.filter(t => t.label.trim().length > 0).length;
+                let msg = json.emailSent
+                    ? `CR sauvegardé et mail envoyé à ${client.email}`
+                    : "CR sauvegardé. Le mail n'a pas été envoyé automatiquement.";
+                if (taskCount > 0 && json.projectId) {
+                    msg += ` — ${taskCount} tâche${taskCount > 1 ? "s" : ""} ajoutée${taskCount > 1 ? "s" : ""} au projet.`;
+                }
+                success("Session enregistrée", msg);
                 setShowNewSessionModal(false);
                 setGeneratedCR(null);
                 setNewSessionForm({ type: "Kick-Off", leexiId: "", notifyByEmail: false, customTypeLabel: "" });
@@ -745,6 +766,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         if (!client || !editingSession) return;
         setIsSavingEdit(true);
         try {
+            const newTasks = extractedTasks.filter(t => t.label.trim().length > 0);
             const res = await fetch(`/api/clients/${client.id}/sessions/${editingSession.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
@@ -753,6 +775,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     date: editingSession.date,
                     crMarkdown: editingSession.crMarkdown,
                     summaryEmail: editingSession.summaryEmail,
+                    ...(newTasks.length > 0 ? {
+                        tasks: newTasks.map(t => ({
+                            label: t.label.trim(),
+                            assignee: t.assignee || undefined,
+                            assigneeId: t.assigneeId || undefined,
+                            assigneeRole: t.assigneeRole,
+                            priority: t.priority,
+                            dueDate: t.dueDate || undefined,
+                        })),
+                    } : {}),
                 }),
             });
             const json = await res.json();
@@ -760,8 +792,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 showError("Erreur", json.error || "Impossible de mettre à jour la session");
                 return;
             }
-            success("Session mise à jour", "");
+            const taskCount = newTasks.length;
+            success(
+                "Session mise à jour",
+                taskCount > 0 && json.data?.projectId
+                    ? `${taskCount} tâche${taskCount > 1 ? "s" : ""} ajoutée${taskCount > 1 ? "s" : ""} au projet.`
+                    : ""
+            );
             setEditingSession(null);
+            setExtractedTasks([]);
+            setEditPreviewMode(false);
             await fetchSessions();
         } catch {
             showError("Erreur", "Impossible de mettre à jour la session");
@@ -789,6 +829,36 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             showError("Erreur", "Impossible de supprimer la session");
         } finally {
             setIsDeletingSession(null);
+        }
+    };
+
+    // ============================================================
+    // TOGGLE SESSION TASK DONE/UNDONE
+    // ============================================================
+
+    const handleToggleTask = async (sessionId: string, taskId: string) => {
+        if (!client) return;
+        setTogglingTaskId(taskId);
+        try {
+            const res = await fetch(`/api/clients/${client.id}/sessions/${sessionId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ toggleTaskId: taskId }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                setSessions(prev => prev.map(s => {
+                    if (s.id !== sessionId) return s;
+                    return {
+                        ...s,
+                        tasks: s.tasks.map(t =>
+                            t.id === taskId ? { ...t, doneAt: json.data.doneAt } : t
+                        ),
+                    };
+                }));
+            }
+        } catch { /* silent */ } finally {
+            setTogglingTaskId(null);
         }
     };
 
@@ -1130,7 +1200,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 <div className="space-y-8">
 
                     {/* ── KPI CARDS ── */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                         <StatCard
                             label="Missions actives"
                             value={client.missions?.filter(m => m.isActive).length || 0}
@@ -1139,6 +1209,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             iconColor="text-indigo-600"
                             subtitle={client.missions?.length ? (
                                 <span className="text-slate-500">{client.missions.length} au total</span>
+                            ) : undefined}
+                        />
+                        <StatCard
+                            label="Sessions"
+                            value={sessions.length}
+                            icon={Mic}
+                            iconBg="bg-violet-50"
+                            iconColor="text-violet-600"
+                            subtitle={sessions.length > 0 ? (
+                                <button onClick={() => setActiveTab("sessions")} className="text-violet-600 font-medium text-xs hover:underline">Voir les sessions</button>
                             ) : undefined}
                         />
                         <StatCard
@@ -1710,6 +1790,77 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         </Button>
                     </div>
 
+                    {/* Session timeline mini-view */}
+                    {sessions.length > 1 && (
+                        <div className="relative px-2">
+                            <div className="absolute top-4 left-6 right-6 h-0.5 bg-slate-200" />
+                            <div className="flex justify-between relative">
+                                {sessions.slice().reverse().slice(0, 8).map((s, i) => (
+                                    <button
+                                        key={s.id}
+                                        onClick={() => setExpandedSessionId(expandedSessionId === s.id ? null : s.id)}
+                                        className={cn(
+                                            "flex flex-col items-center gap-1.5 group",
+                                            expandedSessionId === s.id && "z-10"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all",
+                                            expandedSessionId === s.id
+                                                ? "border-indigo-600 bg-indigo-600 text-white scale-110 shadow-lg shadow-indigo-200"
+                                                : "border-slate-300 bg-white text-slate-500 hover:border-indigo-400 hover:scale-105"
+                                        )}>
+                                            {s.type.charAt(0)}
+                                        </div>
+                                        <span className={cn(
+                                            "text-[10px] font-medium whitespace-nowrap",
+                                            expandedSessionId === s.id ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600"
+                                        )}>
+                                            {new Date(s.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Search bar + type filter chips */}
+                    {sessions.length > 0 && (
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <div className="relative flex-1 min-w-[200px]">
+                                <input
+                                    type="text"
+                                    value={sessionSearch}
+                                    onChange={e => setSessionSearch(e.target.value)}
+                                    placeholder="Rechercher dans les sessions..."
+                                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                                <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <button
+                                    onClick={() => setSessionTypeFilter("all")}
+                                    className={cn("px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all",
+                                        sessionTypeFilter === "all" ? "bg-indigo-100 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                                    )}
+                                >
+                                    Tous
+                                </button>
+                                {(["Kick-Off", "Onboarding", "Validation", "Reporting", "Suivi", "Autre"] as SessionType[]).map(t => (
+                                    <button
+                                        key={t}
+                                        onClick={() => setSessionTypeFilter(sessionTypeFilter === t ? "all" : t)}
+                                        className={cn("px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all",
+                                            sessionTypeFilter === t ? SESSION_TYPE_COLORS[t] + " shadow-sm" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                                        )}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {isLoadingSessions ? (
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
@@ -1728,11 +1879,30 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 </Button>
                             </div>
                         </Card>
-                    ) : (
+                    ) : (() => {
+                        const filteredSessions = sessions.filter(s => {
+                            if (sessionTypeFilter !== "all" && s.type !== sessionTypeFilter) return false;
+                            if (sessionSearch.trim()) {
+                                const q = sessionSearch.toLowerCase();
+                                return (
+                                    s.type.toLowerCase().includes(q) ||
+                                    s.crMarkdown?.toLowerCase().includes(q) ||
+                                    s.summaryEmail?.toLowerCase().includes(q) ||
+                                    s.tasks.some(t => t.label.toLowerCase().includes(q))
+                                );
+                            }
+                            return true;
+                        });
+                        return filteredSessions.length === 0 ? (
+                            <Card className="border-slate-200">
+                                <p className="text-sm text-slate-500 text-center py-12">Aucune session ne correspond à votre recherche.</p>
+                            </Card>
+                        ) : (
                         <div className="space-y-4">
-                            {sessions.map((session) => {
+                            {filteredSessions.map((session) => {
                                 const isExpanded = expandedSessionId === session.id;
                                 const openTasks = session.tasks.filter(t => !t.doneAt);
+                                const activeTab2 = sessionCRTabs[session.id] || "cr";
                                 return (
                                     <Card key={session.id} className="border-slate-200 overflow-hidden hover:shadow-md transition-all duration-200">
                                         {/* Session row */}
@@ -1763,12 +1933,24 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                         <Mic className="w-3.5 h-3.5" /> Enregistrement
                                                     </a>
                                                 )}
+                                                {session.projectId && session.tasks.length > 0 && (
+                                                    <Link
+                                                        href={`/manager/projects/${session.projectId}`}
+                                                        onClick={e => e.stopPropagation()}
+                                                        className="flex items-center gap-1 text-xs text-indigo-600 hover:underline font-medium"
+                                                    >
+                                                        <Briefcase className="w-3 h-3" />
+                                                        Voir le projet
+                                                    </Link>
+                                                )}
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
                                                     className="text-xs text-slate-500 hover:text-indigo-600 px-2 py-1"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
+                                                        setExtractedTasks([]);
+                                                        setEditPreviewMode(false);
                                                         setEditingSession({
                                                             ...session,
                                                             date: session.date.slice(0, 10),
@@ -1784,9 +1966,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                     className="text-xs text-red-500 hover:text-red-600 px-2 py-1"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        if (window.confirm("Supprimer définitivement cette session ?")) {
-                                                            handleDeleteSession(session.id);
-                                                        }
+                                                        setSessionToDelete(session.id);
                                                     }}
                                                     isLoading={isDeletingSession === session.id}
                                                 >
@@ -1818,41 +1998,43 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                         {/* Expanded content */}
                                         {isExpanded && (
                                             <div className="border-t border-slate-100">
-                                                {/* CR / Email tabs */}
+                                                {/* CR / Email tabs — per-session */}
                                                 <div className="flex gap-0 border-b border-slate-100">
                                                     <button
-                                                        onClick={() => setShowCRTab("cr")}
+                                                        onClick={() => setSessionCRTabs(prev => ({ ...prev, [session.id]: "cr" }))}
                                                         className={cn("px-5 py-3 text-sm font-semibold border-b-2 transition-colors",
-                                                            showCRTab === "cr" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"
+                                                            activeTab2 === "cr" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"
                                                         )}>
                                                         Compte rendu
                                                     </button>
                                                     <button
-                                                        onClick={() => setShowCRTab("email")}
+                                                        onClick={() => setSessionCRTabs(prev => ({ ...prev, [session.id]: "email" }))}
                                                         className={cn("px-5 py-3 text-sm font-semibold border-b-2 transition-colors",
-                                                            showCRTab === "email" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"
+                                                            activeTab2 === "email" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"
                                                         )}>
                                                         Mail de synthèse
                                                     </button>
                                                 </div>
 
                                                 <div className="p-5">
-                                                    {showCRTab === "cr" && (
+                                                    {activeTab2 === "cr" && (
                                                         session.crMarkdown ? (
-                                                            <div className="prose prose-sm prose-slate max-w-none">
-                                                                <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans leading-relaxed">
+                                                            <div className={SESSION_MARKDOWN_CLASS}>
+                                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                                     {session.crMarkdown}
-                                                                </pre>
+                                                                </ReactMarkdown>
                                                             </div>
                                                         ) : <p className="text-sm text-slate-400 italic">Pas de CR disponible.</p>
                                                     )}
-                                                    {showCRTab === "email" && (
+                                                    {activeTab2 === "email" && (
                                                         session.summaryEmail ? (
                                                             <div className="space-y-3">
                                                                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                                                                    <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans leading-relaxed">
-                                                                        {session.summaryEmail}
-                                                                    </pre>
+                                                                    <div className={SESSION_MARKDOWN_CLASS}>
+                                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                                            {session.summaryEmail}
+                                                                        </ReactMarkdown>
+                                                                    </div>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
                                                                     <Button
@@ -1873,19 +2055,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                                             Ouvrir dans le mail
                                                                         </a>
                                                                     )}
-                                                                    {/* Note on whether DB email was sent */}
                                                                     <span className="text-xs text-slate-400 italic ml-2">
-                                                                        {/* Replace with actual session.emailSentAt from your DB */}
-                                                                        {/* session.emailSentAt
-                                                                            ? `✓ Envoyé automatiquement le ${new Date(session.emailSentAt).toLocaleDateString("fr-FR")}`
-                                                                            : "Non envoyé automatiquement — copie manuelle" */}
+                                                                        {session.emailSentAt
+                                                                            ? `✓ Envoyé le ${new Date(session.emailSentAt).toLocaleDateString("fr-FR")}`
+                                                                            : "Non envoyé automatiquement — copie manuelle"}
                                                                     </span>
                                                                 </div>
                                                             </div>
                                                         ) : <p className="text-sm text-slate-400 italic">Pas de mail de synthèse disponible.</p>
                                                     )}
 
-                                                    {/* Tasks — Enhanced with role badges */}
+                                                    {/* Tasks — Enhanced with role badges + toggle */}
                                                     {session.tasks.length > 0 && (
                                                         <div className="mt-5 pt-5 border-t border-slate-100">
                                                             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Tâches d'équipe</h4>
@@ -1895,9 +2075,18 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                                     const priorityInfo = PRIORITY_INDICATOR[task.priority || "MEDIUM"];
                                                                     return (
                                                                         <div key={task.id} className="flex items-center gap-3 group">
-                                                                            <div className={cn("w-4 h-4 rounded-full border-2 shrink-0",
-                                                                                task.doneAt ? "bg-emerald-500 border-emerald-500" : "border-slate-300"
-                                                                            )} />
+                                                                            <button
+                                                                                onClick={() => handleToggleTask(session.id, task.id)}
+                                                                                disabled={togglingTaskId === task.id}
+                                                                                className={cn("w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all hover:scale-110",
+                                                                                    task.doneAt
+                                                                                        ? "bg-emerald-500 border-emerald-500 text-white"
+                                                                                        : "border-slate-300 hover:border-indigo-400"
+                                                                                )}
+                                                                            >
+                                                                                {task.doneAt && <CheckCircle2 className="w-3 h-3" />}
+                                                                                {togglingTaskId === task.id && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+                                                                            </button>
                                                                             <span className={cn("text-sm flex-1", task.doneAt ? "line-through text-slate-400" : "text-slate-700")}>
                                                                                 {task.label}
                                                                             </span>
@@ -1913,6 +2102,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                                             >
                                                                                 {priorityInfo.label}
                                                                             </span>
+                                                                            {task.dueDate && (
+                                                                                <span className="text-[10px] text-slate-400">
+                                                                                    <Calendar className="w-3 h-3 inline mr-0.5" />
+                                                                                    {new Date(task.dueDate).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                                                                                </span>
+                                                                            )}
                                                                             {task.assignee && <span className="text-xs text-slate-400">— {task.assignee}</span>}
                                                                         </div>
                                                                     );
@@ -1927,9 +2122,27 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 );
                             })}
                         </div>
-                    )}
+                        );
+                    })()}
                 </div>
             )}
+
+            {/* Delete session ConfirmModal */}
+            <ConfirmModal
+                isOpen={!!sessionToDelete}
+                onClose={() => setSessionToDelete(null)}
+                onConfirm={async () => {
+                    if (sessionToDelete) {
+                        await handleDeleteSession(sessionToDelete);
+                        setSessionToDelete(null);
+                    }
+                }}
+                title="Supprimer cette session ?"
+                message="La session et toutes ses tâches seront définitivement supprimées. Cette action est irréversible."
+                confirmText="Supprimer"
+                variant="danger"
+                isLoading={!!isDeletingSession}
+            />
 
             {/* ════════════════════════════════════════════
                 MODAL — EDIT SESSION
@@ -1976,18 +2189,43 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         </div>
 
                         <div>
-                            <label className="text-sm font-semibold text-slate-700 block mb-1">Compte rendu (markdown)</label>
-                            <textarea
-                                rows={8}
-                                value={editingSession.crMarkdown || ""}
-                                onChange={(e) =>
-                                    setEditingSession((prev) =>
-                                        prev ? { ...prev, crMarkdown: e.target.value } : prev
-                                    )
-                                }
-                                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
-                                placeholder="Modifiez ici le compte rendu..."
-                            />
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="text-sm font-semibold text-slate-700">Compte rendu (markdown)</label>
+                                <button
+                                    onClick={() => setEditPreviewMode(!editPreviewMode)}
+                                    className={cn(
+                                        "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all",
+                                        editPreviewMode
+                                            ? "bg-indigo-50 text-indigo-600 border-indigo-200"
+                                            : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                                    )}
+                                >
+                                    <Eye className="w-3 h-3" />
+                                    {editPreviewMode ? "Éditer" : "Aperçu"}
+                                </button>
+                            </div>
+                            {editPreviewMode ? (
+                                <div className={cn(
+                                    "border border-slate-200 rounded-xl p-4 bg-slate-50 min-h-[200px] max-h-80 overflow-y-auto",
+                                    SESSION_MARKDOWN_CLASS
+                                )}>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {editingSession.crMarkdown || ""}
+                                    </ReactMarkdown>
+                                </div>
+                            ) : (
+                                <textarea
+                                    rows={8}
+                                    value={editingSession.crMarkdown || ""}
+                                    onChange={(e) =>
+                                        setEditingSession((prev) =>
+                                            prev ? { ...prev, crMarkdown: e.target.value } : prev
+                                        )
+                                    }
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                                    placeholder="Modifiez ici le compte rendu..."
+                                />
+                            )}
                         </div>
 
                         <div>
@@ -2494,10 +2732,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             </button>
                         </div>
 
-                        <div className="border border-slate-200 rounded-xl p-4 max-h-80 overflow-y-auto bg-slate-50">
-                            <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans leading-relaxed">
+                        <div className="border border-slate-200 rounded-xl p-4 max-h-80 overflow-y-auto bg-slate-50 prose prose-sm prose-slate max-w-none">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                 {showCRTab === "cr" ? generatedCR.cr : generatedCR.email}
-                            </pre>
+                            </ReactMarkdown>
                         </div>
 
                         {/* Notify email info */}

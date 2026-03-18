@@ -115,7 +115,7 @@ export function CalendarView({ meetings, openPanel, updateMeeting, setMeetings }
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <div style={{ width: 4, height: 36, borderRadius: 2, background: statusColor(meetingStatus(m)), flexShrink: 0 }} />
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{contactName(m.contact)}</div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{m.contact ? contactName(m.contact) : (m.company ? "Société seule" : "—")}</div>
                               <div style={{ fontSize: 12, color: "var(--ink3)" }}>
                                 {m.company?.name || "—"} · {m.callbackDate ? new Date(m.callbackDate).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"}
                               </div>

@@ -36,9 +36,8 @@ const createActionSchema = z.object({
 }).refine(
     (data) => {
         if (data.result !== 'MEETING_BOOKED' || !data.meetingType) return true;
-        if (data.meetingType === 'VISIO') return !!data.meetingJoinUrl?.trim();
-        if (data.meetingType === 'PHYSIQUE') return !!data.meetingAddress?.trim();
-        return true; // TELEPHONIQUE: meetingPhone optional (fallback to contact)
+        // VISIO/PHYSIQUE: link and address are optional (e.g. manager-created RDV)
+        return true;
     },
     {
         message: 'VISIO requiert un lien de rejoindre ; PHYSIQUE requiert une adresse.',

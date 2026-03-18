@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Meeting } from "../../_types";
+import { Modal, ModalFooter } from "@/components/ui/Modal";
 
 interface EditCompanyModalProps {
   meeting: Meeting;
@@ -65,36 +66,37 @@ export function EditCompanyModal({ meeting, onClose, onSaved }: EditCompanyModal
   ];
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
-      onClick={() => !saving && onClose()}
-    >
-      <div
-        style={{ background: "var(--surface)", borderRadius: 16, padding: 24, width: "100%", maxWidth: 420, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", marginBottom: 20 }}>Modifier l&apos;entreprise</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {fields.map(([key, label, placeholder]) => (
-            <div key={key}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>{label}</label>
-              <input
-                className="rdv-input"
-                style={{ width: "100%" }}
-                value={form[key]}
-                placeholder={placeholder}
-                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-              />
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
-          <button className="rdv-btn rdv-btn-ghost" onClick={onClose} disabled={saving}>Annuler</button>
-          <button className="rdv-btn rdv-btn-primary" disabled={saving || !form.name.trim()} onClick={handleSave}>
-            {saving ? "Enregistrement…" : "Enregistrer"}
-          </button>
-        </div>
+    <Modal isOpen onClose={() => !saving && onClose()} title="Modifier l'entreprise" size="sm">
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {fields.map(([key, label, placeholder]) => (
+          <div key={key}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>{label}</label>
+            <input
+              className="rdv-input"
+              style={{ width: "100%" }}
+              value={form[key]}
+              placeholder={placeholder}
+              onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+            />
+          </div>
+        ))}
       </div>
-    </div>
+      <ModalFooter>
+        <button
+          onClick={onClose}
+          disabled={saving}
+          className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+        >
+          Annuler
+        </button>
+        <button
+          disabled={saving || !form.name.trim()}
+          onClick={handleSave}
+          className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50"
+        >
+          {saving ? "Enregistrement…" : "Enregistrer"}
+        </button>
+      </ModalFooter>
+    </Modal>
   );
 }

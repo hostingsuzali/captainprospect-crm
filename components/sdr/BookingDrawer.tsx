@@ -78,7 +78,8 @@ interface BookingDrawerProps {
     isOpen: boolean;
     onClose: () => void;
     bookingUrl: string;
-    contactId: string;
+    contactId?: string;
+    companyId?: string;
     contactName: string;
     contactInfo?: BookingContactInfo;
     rdvDate?: string;
@@ -213,6 +214,7 @@ export function BookingDrawer({
     onClose,
     bookingUrl,
     contactId,
+    companyId,
     contactName,
     contactInfo,
     rdvDate,
@@ -355,13 +357,15 @@ export function BookingDrawer({
                         showError("Adresse requise", "Veuillez renseigner une adresse pour un RDV physique.");
                         return;
                     }
+                    const isoRdvDate = effectiveRdvDate ? new Date(effectiveRdvDate).toISOString() : undefined;
                     const res = await fetch("/api/actions/booking-success", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            contactId,
+                            ...(contactId && { contactId }),
+                            ...(companyId && !contactId && { companyId }),
                             eventData,
-                            rdvDate: effectiveRdvDate || undefined,
+                            rdvDate: isoRdvDate,
                             ...(effectiveMeetingType && { meetingType: effectiveMeetingType }),
                             ...(effectiveMeetingCategory && { meetingCategory: effectiveMeetingCategory }),
                             ...(effectiveMeetingAddress != null && effectiveMeetingAddress.trim() && { meetingAddress: effectiveMeetingAddress.trim() }),
@@ -395,7 +399,7 @@ export function BookingDrawer({
 
         window.addEventListener("message", handleMessage);
         return () => window.removeEventListener("message", handleMessage);
-    }, [isOpen, contactId, contactName, effectiveRdvDate, effectiveMeetingType, effectiveMeetingCategory, effectiveMeetingAddress, effectiveMeetingJoinUrl, effectiveMeetingPhone, onBookingSuccess, onClose, success, showError]);
+    }, [isOpen, contactId, companyId, contactName, effectiveRdvDate, effectiveMeetingType, effectiveMeetingCategory, effectiveMeetingAddress, effectiveMeetingJoinUrl, effectiveMeetingPhone, onBookingSuccess, onClose, success, showError]);
 
     const handleConfirmRdv = useCallback(async () => {
         if (effectiveMeetingType === "PHYSIQUE" && !effectiveMeetingAddress.trim()) {
@@ -404,13 +408,15 @@ export function BookingDrawer({
         }
         setIsProcessing(true);
         try {
+            const isoRdvDate = effectiveRdvDate ? new Date(effectiveRdvDate).toISOString() : undefined;
             const res = await fetch("/api/actions/booking-success", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    contactId,
+                    ...(contactId && { contactId }),
+                    ...(companyId && !contactId && { companyId }),
                     eventData: {},
-                    rdvDate: effectiveRdvDate || undefined,
+                    rdvDate: isoRdvDate,
                     ...(effectiveMeetingType && { meetingType: effectiveMeetingType }),
                     ...(effectiveMeetingCategory && { meetingCategory: effectiveMeetingCategory }),
                     ...(effectiveMeetingAddress != null && effectiveMeetingAddress.trim() && { meetingAddress: effectiveMeetingAddress.trim() }),
@@ -433,7 +439,7 @@ export function BookingDrawer({
         } finally {
             setIsProcessing(false);
         }
-    }, [contactId, contactName, effectiveRdvDate, effectiveMeetingType, effectiveMeetingCategory, effectiveMeetingAddress, effectiveMeetingJoinUrl, effectiveMeetingPhone, onBookingSuccess, onClose, success, showError]);
+    }, [contactId, companyId, contactName, effectiveRdvDate, effectiveMeetingType, effectiveMeetingCategory, effectiveMeetingAddress, effectiveMeetingJoinUrl, effectiveMeetingPhone, onBookingSuccess, onClose, success, showError]);
 
     if (!isOpen) return null;
 
@@ -563,7 +569,6 @@ export function BookingDrawer({
                                 value={effectiveRdvDate}
                                 onChange={setEffectiveRdvDate}
                                 placeholder="Choisir date et heure…"
-                                min={new Date().toISOString().slice(0, 16)}
                                 triggerClassName="border-slate-200 focus:ring-indigo-400/30 focus:border-indigo-400 bg-white"
                             />
 
@@ -661,7 +666,7 @@ export function BookingDrawer({
                             </div>
                         </div>
 
-                        {/* Right: calendar iframe — flex to use remaining height */}
+                        {/* Right: calendar selector + iframe */}
                         <div className="relative bg-white min-h-0 flex-1 flex flex-col">
                             {!selectedOption ? (
                                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-50">
@@ -674,6 +679,44 @@ export function BookingDrawer({
                                     </p>
                                 </div>
                             ) : (
+                                <>
+                                    {bookingOptions.length > 1 && (
+                                        <div className="flex-shrink-0 px-4 py-3 border-b border-slate-200 bg-slate-50/80">
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                                                Choisir un commercial / calendrier
+                                            </p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {bookingOptions.map((opt) => (
+                                                    <button
+                                                        key={opt.id}
+                                                        type="button"
+                                                        onClick={() => handleSelectCalendar(opt.id)}
+                                                        className={cn(
+                                                            "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-all",
+                                                            selectedOptionId === opt.id
+                                                                ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
+                                                                : "bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/50"
+                                                        )}
+                                                    >
+                                                        <span
+                                                            className={cn(
+                                                                "w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0",
+                                                                selectedOptionId === opt.id ? "bg-white/20" : opt.avatarColor ?? "bg-slate-100 text-slate-600"
+                                                            )}
+                                                        >
+                                                            {opt.initials ?? "?"}
+                                                        </span>
+                                                        <span className="text-left">
+                                                            <span className="block truncate max-w-[140px]">{opt.label}</span>
+                                                            {opt.sublabel && (
+                                                                <span className="block text-xs opacity-80 truncate max-w-[140px]">{opt.sublabel}</span>
+                                                            )}
+                                                        </span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 <div className="flex-1 min-h-0 relative">
                                     {iframeLoading && !isProcessing && !booked && (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white z-10">
@@ -711,6 +754,7 @@ export function BookingDrawer({
                                         allow="camera; microphone; geolocation"
                                     />
                                 </div>
+                                </>
                             )}
                         </div>
                     </div>

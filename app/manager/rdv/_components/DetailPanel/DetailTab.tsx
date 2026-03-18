@@ -10,6 +10,8 @@ import {
   categoryColor,
   categoryLabel,
   contactName,
+  proximityLabel,
+  formatDuration,
 } from "../../_lib/formatters";
 import type { DetailFormState } from "../../_hooks/useDetailPanel";
 import { Avatar } from "../shared/Avatar";
@@ -127,20 +129,36 @@ export function DetailTab({
             onChange={(e) => setDetailForm((f) => ({ ...f, callbackDate: e.target.value }))}
           />
         ) : (
-          <span style={{ color: dateProximityColor(meeting.callbackDate), fontWeight: 500 }}>
-            {meeting.callbackDate
-              ? new Date(meeting.callbackDate).toLocaleDateString("fr-FR", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "—"}
-          </span>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+            <span style={{ color: dateProximityColor(meeting.callbackDate), fontWeight: 500 }}>
+              {meeting.callbackDate
+                ? new Date(meeting.callbackDate).toLocaleDateString("fr-FR", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "—"}
+            </span>
+            {meeting.callbackDate && (() => {
+              const prox = proximityLabel(meeting.callbackDate);
+              return (
+                <span style={{ fontSize: 11, fontWeight: 600, color: prox.color, background: `${prox.color}12`, borderRadius: 6, padding: "2px 8px" }}>
+                  {prox.text}
+                </span>
+              );
+            })()}
+          </div>
         )}
       </DetailRow>
+
+      {meeting.duration != null && meeting.duration > 0 && (
+        <DetailRow label="Durée">
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--ink2)" }}>{formatDuration(meeting.duration)}</span>
+        </DetailRow>
+      )}
 
       <DetailRow label="Type de RDV">
         {editMode ? (
@@ -169,7 +187,7 @@ export function DetailTab({
               key={cat}
               className="rdv-pill"
               style={{
-                cursor: "pointer",
+                cursor: editMode ? "pointer" : "default",
                 padding: "5px 14px",
                 fontSize: 12,
                 background: meeting.meetingCategory === cat ? categoryBg(cat) : "var(--surface2)",
@@ -177,8 +195,10 @@ export function DetailTab({
                 border: `1.5px solid ${meeting.meetingCategory === cat ? categoryColor(cat) : "transparent"}`,
                 fontWeight: meeting.meetingCategory === cat ? 600 : 400,
                 transition: "all 0.15s",
+                opacity: !editMode && meeting.meetingCategory !== cat ? 0.5 : 1,
               }}
               onClick={() => {
+                if (!editMode) return;
                 const newCat = meeting.meetingCategory === cat ? null : cat;
                 updateMeeting(meeting.id, { meetingCategory: newCat });
                 setSelectedMeeting({ ...meeting, meetingCategory: newCat });
