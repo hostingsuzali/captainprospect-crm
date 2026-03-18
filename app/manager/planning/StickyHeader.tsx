@@ -1,18 +1,16 @@
 'use client';
 
-import { ChevronLeft, ChevronRight, AlertTriangle, CalendarDays, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, RefreshCw } from 'lucide-react';
 import { usePlanningMonth } from './PlanningMonthContext';
 import { formatMonthLabel, prevMonth as prevMonthFn, nextMonth as nextMonthFn } from './planning-utils';
 import { cn } from '@/lib/utils';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export function StickyHeader() {
-    const { month, setMonth, snapshot, loading, drawerOpen, setDrawerOpen, reload } = usePlanningMonth();
+    const { month, setMonth, snapshot, loading, reload } = usePlanningMonth();
     const [refreshing, setRefreshing] = useState(false);
-    const [shakeConflicts, setShakeConflicts] = useState(false);
 
     const health = snapshot?.healthSummary;
-    const cSum = snapshot?.conflictSummary;
 
     const totalMissions = (health?.missions.active ?? 0) + (health?.missions.noSdr ?? 0);
     const totalSdrs = (health?.sdrs.optimal ?? 0) + (health?.sdrs.overloaded ?? 0) + (health?.sdrs.underutilized ?? 0);
@@ -33,15 +31,6 @@ export function StickyHeader() {
 
     const today = new Date();
     const isCurrentMonth = month === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-
-    useEffect(() => {
-        if (cSum && cSum.P0 > 0) {
-            setShakeConflicts(true);
-            const t = setTimeout(() => setShakeConflicts(false), 800);
-            return () => clearTimeout(t);
-        }
-        return;
-    }, [cSum?.P0]);
 
     return (
         <div className="bg-white border-b border-slate-200 sticky top-0 z-30">
@@ -86,30 +75,6 @@ export function StickyHeader() {
                         >
                             <RefreshCw className={cn('w-4 h-4', (refreshing || loading) && 'animate-spin')} />
                         </button>
-                    </div>
-
-                    {/* Right — Conflict toggle */}
-                    <div className="flex items-center gap-2">
-                        {cSum && cSum.total > 0 && (
-                            <button
-                                onClick={() => setDrawerOpen(!drawerOpen)}
-                                className={cn(
-                                    'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium border transition-all',
-                                    drawerOpen
-                                        ? 'bg-red-100 text-red-800 border-red-200'
-                                        : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',
-                                    shakeConflicts && 'animate-bounce',
-                                )}
-                            >
-                                <AlertTriangle className="w-4 h-4" />
-                                {cSum.total} conflit{cSum.total !== 1 ? 's' : ''}
-                                {cSum.P0 > 0 && (
-                                    <span className="bg-red-600 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center ml-0.5">
-                                        {cSum.P0}
-                                    </span>
-                                )}
-                            </button>
-                        )}
                     </div>
                 </div>
 

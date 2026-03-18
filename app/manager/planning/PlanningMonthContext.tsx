@@ -134,11 +134,6 @@ interface PlanningMonthContextValue {
     focusedSdrId: string | null;
     setFocusedSdrId: (id: string | null) => void;
 
-    drawerOpen: boolean;
-    setDrawerOpen: (open: boolean) => void;
-    assignModalMissionId: string | null;
-    setAssignModalMissionId: (id: string | null) => void;
-
     updateAllocation: (allocationId: string, newDays: number) => Promise<void>;
     createMonthPlan: (missionId: string, targetDays: number, monthOverride?: string) => Promise<boolean>;
     updateMonthPlan: (planId: string, targetDays: number) => Promise<boolean>;
@@ -146,7 +141,6 @@ interface PlanningMonthContextValue {
     assignSdrToMission: (missionId: string, sdrId: string) => Promise<boolean>;
     createAllocation: (missionMonthPlanId: string, sdrId: string, days: number) => Promise<boolean>;
     createAllocationWithBlocks: (missionMonthPlanId: string, sdrId: string, days: number, missionId: string) => Promise<boolean>;
-    resolveConflict: (conflictId: string) => Promise<void>;
 }
 
 const PlanningMonthCtx = createContext<PlanningMonthContextValue | null>(null);
@@ -174,8 +168,6 @@ export function PlanningMonthProvider({ children }: { children: ReactNode }) {
     const [hoveredSdrId, setHoveredSdrId] = useState<string | null>(null);
     const [focusedMissionId, setFocusedMissionId] = useState<string | null>(null);
     const [focusedSdrId, setFocusedSdrId] = useState<string | null>(null);
-    const [drawerOpen, setDrawerOpen] = useState(false);
-    const [assignModalMissionId, setAssignModalMissionId] = useState<string | null>(null);
 
     const monthRef = useRef(month);
     monthRef.current = month;
@@ -429,25 +421,6 @@ export function PlanningMonthProvider({ children }: { children: ReactNode }) {
         }
     }, [success, showError, backgroundSync]);
 
-    // ── resolveConflict: optimistic removal ───────────────────────────
-    const resolveConflict = useCallback(async (conflictId: string) => {
-        const snap = snapshotRef.current;
-        if (snap) setSnapshot(patchRemoveConflict(snap, conflictId));
-
-        try {
-            await fetch('/api/planning/conflicts', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: [conflictId] }),
-            });
-            success('Résolu', 'Conflit marqué comme résolu');
-            backgroundSync();
-        } catch {
-            if (snap) setSnapshot(snap);
-            showError('Erreur', 'Impossible de résoudre le conflit');
-        }
-    }, [success, showError, backgroundSync]);
-
     const getSnapshot = useCallback(() => snapshotRef.current, []);
 
     return (
@@ -460,8 +433,6 @@ export function PlanningMonthProvider({ children }: { children: ReactNode }) {
             hoveredSdrId, setHoveredSdrId,
             focusedMissionId, setFocusedMissionId,
             focusedSdrId, setFocusedSdrId,
-            drawerOpen, setDrawerOpen,
-            assignModalMissionId, setAssignModalMissionId,
             updateAllocation,
             createMonthPlan,
             updateMonthPlan,
@@ -469,7 +440,6 @@ export function PlanningMonthProvider({ children }: { children: ReactNode }) {
             assignSdrToMission,
             createAllocation,
             createAllocationWithBlocks,
-            resolveConflict,
         }}>
             {children}
         </PlanningMonthCtx.Provider>
@@ -603,16 +573,3 @@ function patchAddAllocation(
     };
 }
 
-function patchRemoveConflict(snap: MonthSnapshot, conflictId: string): MonthSnapshot {
-    const newConflicts = snap.conflicts.filter((c) => c.id !== conflictId);
-    return {
-        ...snap,
-        conflicts: newConflicts,
-        conflictSummary: {
-            P0: newConflicts.filter((c) => c.severity === 'P0').length,
-            P1: newConflicts.filter((c) => c.severity === 'P1').length,
-            P2: newConflicts.filter((c) => c.severity === 'P2').length,
-            total: newConflicts.length,
-        },
-    };
-}

@@ -23,11 +23,10 @@ const assignSchema = z.object({
 });
 
 export const PATCH = withErrorHandler(async (request: NextRequest, { params }: RouteParams) => {
-    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
+    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'SDR'], request);
     const { id } = await params;
     const data = await validateRequest(request, assignSchema);
 
-    // Check if mission exists
     const mission = await prisma.mission.findUnique({
         where: { id },
     });
@@ -36,7 +35,6 @@ export const PATCH = withErrorHandler(async (request: NextRequest, { params }: R
         return errorResponse('Mission non trouvée', 404);
     }
 
-    // Check if SDR exists
     const sdr = await prisma.user.findUnique({
         where: { id: data.sdrId },
     });
@@ -45,19 +43,20 @@ export const PATCH = withErrorHandler(async (request: NextRequest, { params }: R
         return errorResponse('SDR non trouvé', 404);
     }
 
-    // Check if assignment already exists
     const existingAssignment = await prisma.sDRAssignment.findFirst({
         where: {
             missionId: id,
             sdrId: data.sdrId,
         },
+        include: {
+            sdr: { select: { id: true, name: true, email: true } },
+        },
     });
 
     if (existingAssignment) {
-        return errorResponse('Ce SDR est déjà assigné à cette mission', 400);
+        return successResponse(existingAssignment);
     }
 
-    // Create assignment
     const assignment = await prisma.sDRAssignment.create({
         data: {
             missionId: id,
