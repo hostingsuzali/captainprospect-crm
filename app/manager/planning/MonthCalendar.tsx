@@ -114,7 +114,7 @@ const HOURS_PER_DAY = 8;
 
 export function MonthCalendar() {
     const { month, setMonth, snapshot, assignSdrToMission } = usePlanningMonth();
-    const { error: showError } = useToast();
+    const { success, error: showError } = useToast();
 
     const [data, setData] = useState<MonthlyData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -129,6 +129,8 @@ export function MonthCalendar() {
     const [quickAddPosition, setQuickAddPosition] = useState<CellPosition | null>(null);
     const [dragState, setDragState] = useState<DragState | null>(null);
     const [dragOverCell, setDragOverCell] = useState<QuickAddCell | null>(null);
+    const [dragOverTrash, setDragOverTrash] = useState(false);
+    const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
 
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -138,7 +140,9 @@ export function MonthCalendar() {
         try {
             const res = await fetch(`/api/planning/month?month=${month}`);
             const json = await res.json();
-            if (json.success) setData(json.data as MonthlyData);
+            if (json.success) {
+                setData(normalizeMonthlyData(json.data as MonthlyData));
+            }
             else showError('Erreur', json.error || 'Impossible de charger');
         } catch {
             showError('Erreur', 'Impossible de charger le calendrier');
@@ -417,6 +421,33 @@ export function MonthCalendar() {
         }
     }, [assignSdrToMission, data, dragState, fetchMonthly, month, showError]);
 
+    const handleDeleteBlock = useCallback(async (blockId: string) => {
+        if (deletingBlockId) return;
+        setDragState(null);
+        setDragOverCell(null);
+        setDragOverTrash(false);
+        setDeletingBlockId(blockId);
+
+        try {
+            const res = await fetch(`/api/planning/${blockId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'CANCELLED' }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError('Erreur', json.error || 'Suppression échouée');
+                return;
+            }
+            success('Créneau supprimé', '');
+        } catch {
+            showError('Erreur', 'Suppression échouée');
+        } finally {
+            await fetchMonthly();
+            setDeletingBlockId(null);
+        }
+    }, [deletingBlockId, fetchMonthly, showError, success]);
+
     function prevNav() {
         if (view === 'week') {
             setWeekOffset((current) => current - 1);
@@ -529,6 +560,11 @@ export function MonthCalendar() {
                                     weeks={weeks}
                                     data={data}
                                     onOpenQuickAdd={openQuickAdd}
+                                    onOpenDayDetails={(date) => {
+                                        setSelectedDate(date);
+                                        setShowAddForm(false);
+                                        setView('week');
+                                    }}
                                 />
                             ) : (
                                 <WeekView
@@ -548,6 +584,8 @@ export function MonthCalendar() {
                                     onOpenQuickAdd={openQuickAdd}
                                     onMoveBlock={handleBlockMove}
                                     rowRefs={rowRefs}
+                                    onSetDragOverTrash={setDragOverTrash}
+                                    deletingBlockId={deletingBlockId}
                                 />
                             )}
                         </div>
@@ -602,6 +640,24 @@ export function MonthCalendar() {
                     assignSdrToMission={assignSdrToMission}
                 />
             )}
+
+            {view === 'week' && dragState && (
+                <TrashDropZone
+                    isOver={dragOverTrash}
+                    isDeleting={!!deletingBlockId}
+                    onDragOver={(event) => {
+                        if (deletingBlockId) return;
+                        event.preventDefault();
+                        setDragOverTrash(true);
+                    }}
+                    onDragLeave={() => setDragOverTrash(false)}
+                    onDrop={(event) => {
+                        event.preventDefault();
+                        if (!dragState || deletingBlockId) return;
+                        void handleDeleteBlock(dragState.blockId);
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -610,10 +666,12 @@ function MonthView({
     weeks,
     data,
     onOpenQuickAdd,
+    onOpenDayDetails,
 }: {
     weeks: MonthCell[][];
     data: MonthlyData | null;
     onOpenQuickAdd: (cell: QuickAddCell, target: HTMLElement) => void;
+    onOpenDayDetails: (date: string) => void;
 }) {
     return (
         <>
@@ -636,7 +694,13 @@ function MonthView({
                     {weeks.map((week, weekIndex) => (
                         <div key={weekIndex} className="grid grid-cols-7 border-b border-slate-100">
                             {week.map((cell, cellIndex) => {
-                                const dateBlocks = data?.blocksByDate[cell.date] ?? [];
+                                const cellDateKey = normalizeDateKey(cell.date);
+                                const dateBlocks = data?.blocksByDate[cellDateKey]
+                                    ?? data?.blocks.filter((block) => {
+                                        const blockDateKey = normalizeDateKey(String(block.date).slice(0, 10));
+                                        return blockDateKey === cellDateKey;
+                                    })
+                                    ?? [];
                                 const segments = buildMonthSegments(dateBlocks);
                                 const isWeekend = cellIndex >= 5;
 
@@ -646,14 +710,18 @@ function MonthView({
                                         type="button"
                                         onClick={(event) => {
                                             if (!cell.isCurrentMonth) return;
-                                            onOpenQuickAdd({ sdrId: '', date: cell.date }, event.currentTarget);
+                                            if (dateBlocks.length > 0) {
+                                                onOpenDayDetails(cellDateKey);
+                                                return;
+                                            }
+                                            onOpenQuickAdd({ sdrId: '', date: cellDateKey }, event.currentTarget);
                                         }}
                                         className={cn(
                                             'relative text-left px-3 py-2 border-r border-slate-100 last:border-r-0 transition-colors group',
                                             cell.isCurrentMonth ? 'bg-white hover:bg-slate-50/80' : 'bg-slate-50/30',
                                             isWeekend && cell.isCurrentMonth && 'bg-slate-50/40',
                                         )}
-                                        title={cell.isCurrentMonth ? `Planifier le ${cell.date}` : undefined}
+                                        title={cell.isCurrentMonth ? `Planifier le ${cellDateKey}` : undefined}
                                     >
                                         <div className="flex items-center justify-between mb-3">
                                             <span
@@ -679,9 +747,9 @@ function MonthView({
                                         </div>
 
                                         <div className="border-t border-slate-100 pt-3">
-                                            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
+                                            <div className="bg-slate-100 rounded-full overflow-hidden flex" style={{ height: '6px', width: '100%' }}>
                                                 {segments.length === 0 ? (
-                                                    <div className="w-full h-full bg-slate-100" />
+                                                    <div style={{ width: '100%', height: '100%' }} />
                                                 ) : (
                                                     segments.map((segment) => (
                                                         <Tooltip
@@ -696,9 +764,11 @@ function MonthView({
                                                             position="top"
                                                         >
                                                             <div
-                                                                className="h-full transition-opacity hover:opacity-80"
+                                                                className="transition-opacity hover:opacity-80"
                                                                 style={{
                                                                     width: `${segment.width}%`,
+                                                                    height: '100%',
+                                                                    display: 'inline-block',
                                                                     backgroundColor: segment.color.hex,
                                                                 }}
                                                             />
@@ -735,6 +805,8 @@ function WeekView({
     onOpenQuickAdd,
     onMoveBlock,
     rowRefs,
+    onSetDragOverTrash,
+    deletingBlockId,
 }: {
     days: WeekDay[];
     data: MonthlyData | null;
@@ -752,6 +824,8 @@ function WeekView({
     onOpenQuickAdd: (cell: QuickAddCell, target: HTMLElement) => void;
     onMoveBlock: (blockId: string, newDate: string, newSdrId: string) => Promise<void>;
     rowRefs: MutableRefObject<Record<string, HTMLDivElement | null>>;
+    onSetDragOverTrash: (active: boolean) => void;
+    deletingBlockId: string | null;
 }) {
     return (
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -855,6 +929,7 @@ function WeekView({
                                                 onOpenQuickAdd({ sdrId: sdr.id, date: day.dateStr }, event.currentTarget);
                                             }}
                                             onDragOver={(event) => {
+                                                if (deletingBlockId) return;
                                                 event.preventDefault();
                                                 if (!dragState) return;
                                                 onSetDragOverCell({ sdrId: sdr.id, date: day.dateStr });
@@ -864,7 +939,7 @@ function WeekView({
                                             }}
                                             onDrop={(event) => {
                                                 event.preventDefault();
-                                                if (!dragState) return;
+                                                if (!dragState || deletingBlockId) return;
                                                 void onMoveBlock(dragState.blockId, day.dateStr, sdr.id);
                                             }}
                                             className={cn(
@@ -882,11 +957,16 @@ function WeekView({
                                                 {dayBlocks.map((block) => {
                                                     const color = getMissionColor(block.mission.id);
                                                     const Icon = CHANNEL_ICONS[block.mission.channel] || Phone;
+                                                    const isDeleting = deletingBlockId === block.id;
                                                     return (
                                                         <div
                                                             key={block.id}
-                                                            draggable
+                                                            draggable={!isDeleting && !deletingBlockId}
                                                             onDragStart={(event: DragEvent<HTMLDivElement>) => {
+                                                                if (isDeleting || deletingBlockId) {
+                                                                    event.preventDefault();
+                                                                    return;
+                                                                }
                                                                 event.dataTransfer.effectAllowed = 'move';
                                                                 onSetDragState({
                                                                     blockId: block.id,
@@ -898,10 +978,12 @@ function WeekView({
                                                             onDragEnd={() => {
                                                                 onSetDragState(null);
                                                                 onSetDragOverCell(null);
+                                                                onSetDragOverTrash(false);
                                                             }}
                                                             className={cn(
                                                                 'rounded-lg px-2 py-1.5 text-[10px] leading-tight border shadow-sm cursor-move',
                                                                 dragState?.blockId === block.id && 'opacity-60',
+                                                                isDeleting && 'opacity-50 cursor-not-allowed',
                                                             )}
                                                             style={{
                                                                 backgroundColor: color.hex + '10',
@@ -920,6 +1002,12 @@ function WeekView({
                                                                 <Clock className="w-2.5 h-2.5" />
                                                                 <span>{block.startTime}–{block.endTime}</span>
                                                             </div>
+                                                            {isDeleting && (
+                                                                <div className="mt-1.5 inline-flex items-center gap-1 text-[9px] font-semibold text-red-600">
+                                                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                                                    Suppression...
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     );
                                                 })}
@@ -947,6 +1035,42 @@ function WeekView({
                         );
                     })
                 )}
+            </div>
+        </div>
+    );
+}
+
+function TrashDropZone({
+    isOver,
+    isDeleting,
+    onDragOver,
+    onDragLeave,
+    onDrop,
+}: {
+    isOver: boolean;
+    isDeleting: boolean;
+    onDragOver: (event: DragEvent<HTMLDivElement>) => void;
+    onDragLeave: () => void;
+    onDrop: (event: DragEvent<HTMLDivElement>) => void;
+}) {
+    return (
+        <div className="fixed inset-x-0 bottom-6 z-50 flex justify-center pointer-events-none">
+            <div
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+                className={cn(
+                    'pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-2.5 shadow-lg transition-all',
+                    isDeleting && 'opacity-90',
+                    isOver
+                        ? 'bg-red-600 border-red-600 text-white scale-105'
+                        : 'bg-white border-red-200 text-red-600',
+                )}
+            >
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                <span className="text-xs font-semibold">
+                    {isDeleting ? 'Suppression en cours...' : isOver ? 'Relâchez pour supprimer' : 'Glissez ici pour supprimer'}
+                </span>
             </div>
         </div>
     );
@@ -1462,10 +1586,7 @@ function AddBlockForm({
     const [endTime, setEndTime] = useState('12:00');
     const [submitting, setSubmitting] = useState(false);
 
-    const filteredMissions = useMemo(
-        () => (sdrId ? missions.filter((mission) => mission.sdrAssignments.some((assignment) => assignment.sdr.id === sdrId)) : missions),
-        [missions, sdrId],
-    );
+    const filteredMissions = missions;
 
     async function handleSubmit(event: React.FormEvent) {
         event.preventDefault();
@@ -1585,10 +1706,10 @@ function getBlockDayUnits(block: Pick<CalBlock, 'startTime' | 'endTime'>): numbe
 
 function buildMonthSegments(blocks: CalBlock[]) {
     if (blocks.length === 0) return [];
-    const totalUnits = blocks.reduce((sum, block) => sum + getBlockDayUnits(block), 0);
+    const total = blocks.length;
     return blocks.map((block) => {
         const color = getMissionColor(block.mission.id);
-        const width = totalUnits > 0 ? (getBlockDayUnits(block) / totalUnits) * 100 : 100 / blocks.length;
+        const width = total > 0 ? (1 / total) * 100 : 0;
         return { block, color, width };
     });
 }
@@ -1619,6 +1740,24 @@ function formatFullDate(date: string): string {
         day: 'numeric',
         month: 'long',
     });
+}
+
+function normalizeDateKey(dateKey: string): string {
+    const [year, month, day] = dateKey.split('-');
+    if (!year || !month || !day) return dateKey;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+function normalizeMonthlyData(payload: MonthlyData): MonthlyData {
+    const normalizedByDate: Record<string, CalBlock[]> = {};
+    for (const [rawKey, blocks] of Object.entries(payload.blocksByDate ?? {})) {
+        const normalizedKey = normalizeDateKey(rawKey).slice(0, 10);
+        normalizedByDate[normalizedKey] = blocks;
+    }
+    return {
+        ...payload,
+        blocksByDate: normalizedByDate,
+    };
 }
 
 function toDateString(date: Date): string {

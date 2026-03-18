@@ -39,11 +39,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         ? `AND l.id = '${listId.replace(/'/g, "''")}'`
         : '';
 
-    // Booker: no SDRAssignment join; SDR/BD: join on SDRAssignment
-    const sdrAssignmentJoin = isBooker
+    const shouldBypassAssignmentGate = Boolean(missionId);
+
+    // Booker and mission-filtered requests: no SDRAssignment join
+    const sdrAssignmentJoin = isBooker || shouldBypassAssignmentGate
         ? ""
         : `INNER JOIN "SDRAssignment" sa ON sa."missionId" = m.id`;
-    const sdrAssignmentWhere = isBooker
+    const sdrAssignmentWhere = isBooker || shouldBypassAssignmentGate
         ? ""
         : `AND sa."sdrId" = $1`;
 
@@ -221,12 +223,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         )
         SELECT *
         FROM targets_with_last_action
-        WHERE (last_action_created IS NULL OR last_action_created < $${isBooker ? 1 : 2})
+        WHERE (last_action_created IS NULL OR last_action_created < $${isBooker || shouldBypassAssignmentGate ? 1 : 2})
         ORDER BY 
             CASE WHEN contact_status = 'ACTIONABLE' THEN 0 WHEN contact_status = 'PARTIAL' THEN 1 WHEN contact_status = 'INCOMPLETE' THEN 2 ELSE 3 END,
             COALESCE(last_action_created, '1970-01-01'::timestamp) ASC
         LIMIT 500
-    `, ...(isBooker ? [cooldownDate] : [sdrId, cooldownDate]));
+    `, ...(isBooker || shouldBypassAssignmentGate ? [cooldownDate] : [sdrId, cooldownDate]));
 
     // Resolve missionId for config and fetch interlocuteurs in parallel
     const configMissionIdPromise = (async () => {

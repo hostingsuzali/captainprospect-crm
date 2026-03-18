@@ -83,6 +83,7 @@ interface ChannelMapping {
 interface ActionColumnMapping {
     statusColumn: string;
     dateColumn: string;
+    callbackDateColumn: string;
     noteColumn: string;
     channelColumn: string;
 }
@@ -179,6 +180,7 @@ export default function ImportListPage() {
     const [actionColumnMapping, setActionColumnMapping] = useState<ActionColumnMapping>({
         statusColumn: "",
         dateColumn: "",
+        callbackDateColumn: "",
         noteColumn: "",
         channelColumn: "",
     });
@@ -1060,6 +1062,9 @@ export default function ImportListPage() {
                                         <p className="text-xs text-slate-500">
                                             Valeurs comme &quot;Tentative&quot;, &quot;Meeting booké&quot;, etc.
                                         </p>
+                                        <p className="text-xs text-slate-400">
+                                            Plusieurs actions possibles dans une même ligne avec &quot;;&quot;.
+                                        </p>
                                     </div>
                                     <div className="space-y-1">
                                         <p className="text-xs font-medium text-slate-700">Colonne date</p>
@@ -1075,6 +1080,25 @@ export default function ImportListPage() {
                                         />
                                         <p className="text-xs text-slate-500">
                                             Date à laquelle l&apos;action a eu lieu (optionnel).
+                                        </p>
+                                        <p className="text-xs text-slate-400">
+                                            Si besoin, séparez plusieurs dates avec &quot;;&quot;.
+                                        </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-slate-700">Colonne date callback / RDV</p>
+                                        <Select
+                                            options={[
+                                                { value: "", label: "Ignorer" },
+                                                ...csvHeaders.map(h => ({ value: h, label: h })),
+                                            ]}
+                                            value={actionColumnMapping.callbackDateColumn}
+                                            onChange={(value) =>
+                                                setActionColumnMapping(prev => ({ ...prev, callbackDateColumn: value }))
+                                            }
+                                        />
+                                        <p className="text-xs text-slate-500">
+                                            Date planifiée du rappel / RDV (optionnel).
                                         </p>
                                     </div>
                                     <div className="space-y-1">
@@ -1092,6 +1116,9 @@ export default function ImportListPage() {
                                         <p className="text-xs text-slate-500">
                                             Notes d&apos;appel ou commentaires (optionnel).
                                         </p>
+                                        <p className="text-xs text-slate-400">
+                                            Optionnel: plusieurs notes avec &quot;;&quot;.
+                                        </p>
                                     </div>
                                     <div className="space-y-1">
                                         <p className="text-xs font-medium text-slate-700">Colonne canal</p>
@@ -1107,6 +1134,9 @@ export default function ImportListPage() {
                                         />
                                         <p className="text-xs text-slate-500">
                                             Canal utilisé (téléphone, email, LinkedIn). Par défaut: Appel.
+                                        </p>
+                                        <p className="text-xs text-slate-400">
+                                            Optionnel: plusieurs canaux avec &quot;;&quot;.
                                         </p>
                                     </div>
                                 </div>

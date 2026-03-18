@@ -2878,7 +2878,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             <p className="text-sm text-emerald-600">Transmettez ces identifiants de manière sécurisée.</p>
                         </div>
                         {[
-                            { label: "URL de connexion", value: "app.suzalink.com/client/login", mono: false },
                             { label: "Email", value: createdUserCredentials.email, mono: false },
                             { label: "Mot de passe provisoire", value: createdUserCredentials.password || "", mono: true },
                         ].map(({ label, value, mono }) => (

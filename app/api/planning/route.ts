@@ -142,17 +142,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     // Overlapping blocks are allowed: managers can place the same SDR on multiple missions
     // on the same day/time, and the conflict engine will surface the conflict instead.
 
-    // Verify SDR is assigned to mission
-    const assignment = await prisma.sDRAssignment.findFirst({
+    // Ensure assignment exists (auto-create if missing)
+    await prisma.sDRAssignment.upsert({
         where: {
+            sdrId_missionId: {
+                sdrId: data.sdrId,
+                missionId: data.missionId,
+            },
+        },
+        create: {
             sdrId: data.sdrId,
             missionId: data.missionId,
         },
+        update: {},
     });
-
-    if (!assignment) {
-        return errorResponse('Le SDR n\'est pas assigné à cette mission', 400);
-    }
 
     // Pre-start validation: block date must be within mission startDate/endDate
     const mission = await prisma.mission.findUnique({

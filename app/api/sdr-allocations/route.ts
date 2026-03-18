@@ -47,6 +47,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     });
     if (!plan) return errorResponse('Plan mensuel introuvable', 404);
 
+    await prisma.sDRAssignment.upsert({
+        where: {
+            sdrId_missionId: {
+                sdrId: data.sdrId,
+                missionId: plan.missionId,
+            },
+        },
+        create: {
+            sdrId: data.sdrId,
+            missionId: plan.missionId,
+        },
+        update: {},
+    });
+
     const existing = await prisma.sdrDayAllocation.findUnique({
         where: { sdrId_missionMonthPlanId: { sdrId: data.sdrId, missionMonthPlanId: data.missionMonthPlanId } },
     });

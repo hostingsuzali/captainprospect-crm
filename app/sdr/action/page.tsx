@@ -199,6 +199,8 @@ const RESULT_ICON_MAP: Record<string, React.ReactNode> = {
     ENVOIE_MAIL: <Mail className="w-4 h-4" />,
     MAIL_ENVOYE: <Send className="w-4 h-4" />,
 };
+const TABLE_QUEUE_LIMIT = 120;
+const STATS_QUEUE_LIMIT = 250;
 
 const PRIORITY_LABELS: Record<string, { label: string; color: string }> = {
     CALLBACK: { label: "Rappel", color: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -429,6 +431,7 @@ export default function SDRActionPage() {
         queryFn: async () => {
             const params = new URLSearchParams();
             params.set("missionId", selectedMissionId!);
+            params.set("limit", String(TABLE_QUEUE_LIMIT));
             if (selectedListId) params.set("listId", selectedListId);
             if (tableSearchApi) params.set("search", tableSearchApi);
             const res = await fetch(`/api/sdr/action-queue?${params.toString()}`);
@@ -556,28 +559,20 @@ export default function SDRActionPage() {
                 const todayJson = await todayRes.json();
                 if (signal.aborted) return;
 
-                let todayMissionIds: string[] = [];
-                let hasBlocksToday = false;
                 if (todayJson.success) {
                     setTodayBlocksData(todayJson.data);
-                    todayMissionIds = todayJson.data.todayMissionIds ?? [];
-                    hasBlocksToday = todayJson.data.hasBlocksToday ?? false;
                 }
                 setTodayBlocksLoading(false);
 
                 if (missionsJson.success) {
                     const allMissions: Mission[] = missionsJson.data;
-                    // Filter to only today's missions if blocks exist
-                    const filteredMissions = hasBlocksToday
-                        ? allMissions.filter((m) => todayMissionIds.includes(m.id))
-                        : allMissions;
-                    setMissions(filteredMissions);
+                    setMissions(allMissions);
 
                     const saved = localStorage.getItem("sdr_selected_mission");
-                    const missionId = (saved && filteredMissions.some((m: Mission) => m.id === saved))
+                    const missionId = (saved && allMissions.some((m: Mission) => m.id === saved))
                         ? saved
-                        : filteredMissions.length > 0
-                            ? filteredMissions[0].id
+                        : allMissions.length > 0
+                            ? allMissions[0].id
                             : null;
                     if (missionId) setSelectedMissionId(missionId);
                     if (listsJson.success && missionId) {
@@ -953,6 +948,7 @@ export default function SDRActionPage() {
         setStatsLoading(true);
         const params = new URLSearchParams();
         params.set("missionId", selectedMissionId);
+        params.set("limit", String(STATS_QUEUE_LIMIT));
         if (selectedListId) params.set("listId", selectedListId);
         fetch(`/api/sdr/action-queue?${params.toString()}`, { cache: "no-store" })
             .then((res) => res.json())

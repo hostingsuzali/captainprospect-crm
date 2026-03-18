@@ -43,25 +43,18 @@ export const PATCH = withErrorHandler(async (request: NextRequest, { params }: R
         return errorResponse('SDR non trouvé', 404);
     }
 
-    const existingAssignment = await prisma.sDRAssignment.findFirst({
+    const assignment = await prisma.sDRAssignment.upsert({
         where: {
+            sdrId_missionId: {
+                sdrId: data.sdrId,
+                missionId: id,
+            },
+        },
+        create: {
             missionId: id,
             sdrId: data.sdrId,
         },
-        include: {
-            sdr: { select: { id: true, name: true, email: true } },
-        },
-    });
-
-    if (existingAssignment) {
-        return successResponse(existingAssignment);
-    }
-
-    const assignment = await prisma.sDRAssignment.create({
-        data: {
-            missionId: id,
-            sdrId: data.sdrId,
-        },
+        update: {},
         include: {
             sdr: {
                 select: {
@@ -73,7 +66,7 @@ export const PATCH = withErrorHandler(async (request: NextRequest, { params }: R
         },
     });
 
-    return successResponse(assignment, 201);
+    return successResponse(assignment);
 });
 
 // ============================================

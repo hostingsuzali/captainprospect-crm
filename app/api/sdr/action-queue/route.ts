@@ -6,8 +6,8 @@ import { statusConfigService } from "@/lib/services/StatusConfigService";
 // ============================================
 // GET /api/sdr/action-queue
 // Returns a list of queue items (same pool as /api/actions/next) for table view.
-// Query: missionId?, listId?, limit? (0 or omitted = all), search? (filter by name/company)
-// Returns all queue items by default so the SDR table shows the complete listing.
+// Query: missionId?, listId?, limit?, search? (filter by name/company)
+// Returns a bounded list by default to keep response times stable.
 // ============================================
 
 function escapeIlikePattern(raw: string): string {
@@ -29,9 +29,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         : "";
     const search = searchParams.get("search")?.trim() ?? "";
     const hasSearch = search.length > 0;
-    // No hard limit – return all queue items so the SDR can see the full listing
     const limitParam = searchParams.get("limit");
-    const limit = limitParam ? parseInt(limitParam, 10) || 0 : 0; // 0 = no limit
+    const requestedLimit = limitParam
+        ? Math.min(Math.max(parseInt(limitParam, 10) || 100, 1), 500)
+        : 100;
+    // Query a larger candidate pool than requested so priority filtering/sorting still has headroom
+    const sqlLimit = Math.min(Math.max(requestedLimit * 3, 200), 2000);
 
     const COOLDOWN_HOURS = 24;
     const cooldownDate = new Date(Date.now() - COOLDOWN_HOURS * 60 * 60 * 1000);
@@ -41,11 +44,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const missionFilter = missionId ? `AND m.id = '${missionId.replace(/'/g, "''")}'` : "";
     const listFilter = listId ? `AND l.id = '${listId.replace(/'/g, "''")}'` : "";
 
-    // Booker: no SDRAssignment join; SDR/BD: join on SDRAssignment
-    const sdrAssignmentJoin = isBooker
+    const shouldBypassAssignmentGate = Boolean(missionId);
+
+    // Booker and mission-filtered requests: no SDRAssignment join
+    const sdrAssignmentJoin = isBooker || shouldBypassAssignmentGate
         ? ""
         : `INNER JOIN "SDRAssignment" sa ON sa."missionId" = m.id`;
-    const sdrAssignmentWhere = isBooker
+    const sdrAssignmentWhere = isBooker || shouldBypassAssignmentGate
         ? ""
         : `AND sa."sdrId" = $1`;
 
@@ -209,15 +214,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             LEFT JOIN last_actions_companies lac2 ON at.contact_id IS NULL AND at.company_id = lac2."companyId"
         )
         SELECT * FROM targets_with_last_action
-        WHERE (last_action_created IS NULL OR last_action_created < $${isBooker ? 1 : 2})
+        WHERE (last_action_created IS NULL OR last_action_created < $${isBooker || shouldBypassAssignmentGate ? 1 : 2})
         ${hasSearch ? `
         AND (
-            (contact_first_name IS NOT NULL AND contact_first_name ILIKE $${isBooker ? 2 : 3})
-            OR (contact_last_name IS NOT NULL AND contact_last_name ILIKE $${isBooker ? 2 : 3})
-            OR (company_name IS NOT NULL AND company_name ILIKE $${isBooker ? 2 : 3})
+            (contact_first_name IS NOT NULL AND contact_first_name ILIKE $${isBooker || shouldBypassAssignmentGate ? 2 : 3})
+            OR (contact_last_name IS NOT NULL AND contact_last_name ILIKE $${isBooker || shouldBypassAssignmentGate ? 2 : 3})
+            OR (company_name IS NOT NULL AND company_name ILIKE $${isBooker || shouldBypassAssignmentGate ? 2 : 3})
         )` : ""}
+        LIMIT ${sqlLimit}
     `,
-        ...(isBooker
+        ...(isBooker || shouldBypassAssignmentGate
             ? (hasSearch ? [cooldownDate, `%${escapeIlikePattern(search)}%`] : [cooldownDate])
             : (hasSearch ? [sdrId, cooldownDate, `%${escapeIlikePattern(search)}%`] : [sdrId, cooldownDate])
         )
@@ -260,7 +266,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 (b.contact_status === "ACTIONABLE" ? 0 : b.contact_status === "PARTIAL" ? 1 : 2) ||
             new Date(a.last_action_created ?? 0).getTime() - new Date(b.last_action_created ?? 0).getTime()
     );
-    const result = limit > 0 ? sorted.slice(0, limit) : sorted;
+    const result = sorted.slice(0, requestedLimit);
 
     const items = result.map((row) => ({
         contactId: row.contact_id,

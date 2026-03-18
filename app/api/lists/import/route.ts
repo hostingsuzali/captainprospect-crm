@@ -253,6 +253,7 @@ export async function POST(req: NextRequest) {
         let actionColumnMapping: {
             statusColumn?: string;
             dateColumn?: string;
+            callbackDateColumn?: string;
             noteColumn?: string;
             channelColumn?: string;
         } | null = null;
@@ -465,6 +466,7 @@ async function processBatch(
         actionColumnMapping: {
             statusColumn?: string;
             dateColumn?: string;
+            callbackDateColumn?: string;
             noteColumn?: string;
             channelColumn?: string;
         } | null;
@@ -797,6 +799,7 @@ async function processBatch(
 
         const statusColumn = actionColumnMapping.statusColumn!;
         const dateColumn = actionColumnMapping.dateColumn;
+        const callbackDateColumn = actionColumnMapping.callbackDateColumn;
         const noteColumn = actionColumnMapping.noteColumn;
         const channelColumn = actionColumnMapping.channelColumn;
 
@@ -841,51 +844,70 @@ async function processBatch(
                 const company = companyMap.get(info.companyName);
                 if (!company) continue;
 
-                const rawStatus = info.row[statusColumn];
-                if (!rawStatus || !rawStatus.trim()) continue;
-                const trimmedStatus = rawStatus.trim();
-                const result = statusMap.get(trimmedStatus);
-                if (!result) continue;
+                const splitCellValues = (raw: string | undefined): string[] => {
+                    if (!raw) return [];
+                    const trimmed = raw.trim();
+                    if (!trimmed) return [];
+                    // Allow importing multiple actions in one row: "status1; status2; status3"
+                    return trimmed
+                        .split(/[;|]/)
+                        .map((part) => part.trim())
+                        .filter((part) => part.length > 0);
+                };
 
-                let channel: "CALL" | "EMAIL" | "LINKEDIN" = defaultChannel;
-                if (channelColumn) {
-                    const rawChannel = info.row[channelColumn];
-                    if (rawChannel && rawChannel.trim()) {
-                        const mapped = channelMap.get(rawChannel.trim());
-                        if (mapped) channel = mapped;
-                    }
-                }
-
-                let createdAt: Date | undefined;
-                if (dateColumn) {
-                    const rawDate = info.row[dateColumn];
-                    if (rawDate && rawDate.trim()) {
-                        const parsed = parseCsvDate(rawDate.trim());
-                        if (parsed) {
-                            createdAt = parsed;
-                        }
-                    }
-                }
-
-                const note = noteColumn ? (info.row[noteColumn] || "").trim() || undefined : undefined;
+                const statuses = splitCellValues(info.row[statusColumn]);
+                if (statuses.length === 0) continue;
+                const dateValues = dateColumn ? splitCellValues(info.row[dateColumn]) : [];
+                const callbackDateValues = callbackDateColumn ? splitCellValues(info.row[callbackDateColumn]) : [];
+                const noteValues = noteColumn ? splitCellValues(info.row[noteColumn]) : [];
+                const channelValues = channelColumn ? splitCellValues(info.row[channelColumn]) : [];
                 const contactId = findContactIdForRow(company.id, info);
 
-                let callbackDate: Date | undefined;
-                if (result === "MEETING_BOOKED" || result === "CALLBACK_REQUESTED" || result === "MEETING_CANCELLED") {
-                    callbackDate = createdAt;
-                }
+                for (let i = 0; i < statuses.length; i++) {
+                    const result = statusMap.get(statuses[i]);
+                    if (!result) continue;
 
-                actionsToCreate.push({
-                    companyId: company.id,
-                    contactId: contactId ?? null,
-                    sdrId,
-                    campaignId,
-                    channel,
-                    result,
-                    note: note ?? null,
-                    createdAt,
-                    callbackDate,
-                });
+                    let channel: "CALL" | "EMAIL" | "LINKEDIN" = defaultChannel;
+                    const rawChannel = channelValues[i] ?? channelValues[0];
+                    if (rawChannel) {
+                        const mapped = channelMap.get(rawChannel);
+                        if (mapped) channel = mapped;
+                    }
+
+                    let createdAt: Date | undefined;
+                    const rawDate = dateValues[i] ?? dateValues[0];
+                    if (rawDate) {
+                        const parsed = parseCsvDate(rawDate);
+                        if (parsed) createdAt = parsed;
+                    }
+
+                    const rawNote = noteValues[i] ?? noteValues[0];
+                    const note = rawNote?.trim() ? rawNote.trim() : undefined;
+
+                    let callbackDate: Date | undefined;
+                    const rawCallbackDate = callbackDateValues[i] ?? callbackDateValues[0];
+                    if (rawCallbackDate) {
+                        const parsedCallback = parseCsvDate(rawCallbackDate);
+                        if (parsedCallback) callbackDate = parsedCallback;
+                    }
+
+                    // Backward-compatible fallback when no explicit callback date is provided
+                    if (!callbackDate && (result === "MEETING_BOOKED" || result === "CALLBACK_REQUESTED" || result === "MEETING_CANCELLED")) {
+                        callbackDate = createdAt;
+                    }
+
+                    actionsToCreate.push({
+                        companyId: company.id,
+                        contactId: contactId ?? null,
+                        sdrId,
+                        campaignId,
+                        channel,
+                        result,
+                        note: note ?? null,
+                        createdAt,
+                        callbackDate,
+                    });
+                }
             }
 
             if (actionsToCreate.length > 0) {

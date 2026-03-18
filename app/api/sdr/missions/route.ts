@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -39,68 +40,73 @@ export async function GET() {
             defaultMailbox: { select: { id: true, email: true, displayName: true } },
         } as const;
 
-        const missionsRaw =
-            role === "BOOKER"
-                ? await prisma.mission.findMany({
-                      where: { isActive: true },
-                      include: baseMissionInclude,
-                      orderBy: { createdAt: "desc" },
-                  })
-                : (
-                      await prisma.sDRAssignment.findMany({
-                          where: {
-                              sdrId: session.user.id,
-                              mission: { isActive: true },
-                          },
-                          include: { mission: { include: baseMissionInclude } },
-                          orderBy: { createdAt: "desc" },
-                      })
-                  ).map((a) => a.mission);
+        const missionsRaw = await prisma.mission.findMany({
+            where: {
+                isActive: true,
+                startDate: { lte: new Date() },
+                endDate: { gte: new Date() },
+            },
+            include: baseMissionInclude,
+            orderBy: { createdAt: "desc" },
+        });
 
-        // Calculate progress and remaining contacts for each mission
-        const missions = await Promise.all(
-            missionsRaw.map(async (mission) => {
-                // Get total contacts count for this mission's lists
-                const totalContacts = await prisma.contact.count({
-                    where: {
-                        company: {
-                            list: {
-                                missionId: mission.id,
-                            },
-                        },
-                    },
-                });
+        if (missionsRaw.length === 0) {
+            return NextResponse.json({
+                success: true,
+                data: [],
+            });
+        }
 
-                // Get actioned contacts (contacts with at least one action)
-                const actionedContacts = await prisma.contact.count({
-                    where: {
-                        company: {
-                            list: {
-                                missionId: mission.id,
-                            },
-                        },
-                        actions: {
-                            some: {},
-                        },
-                    },
-                });
+        const missionIds = missionsRaw.map((mission) => mission.id);
+        const [totalsRows, actionedRows] = await Promise.all([
+            prisma.$queryRaw<Array<{ missionId: string; count: bigint }>>`
+                SELECT
+                    l."missionId" AS "missionId",
+                    COUNT(*)::bigint AS count
+                FROM "Contact" c
+                INNER JOIN "Company" co ON co.id = c."companyId"
+                INNER JOIN "List" l ON l.id = co."listId"
+                WHERE l."missionId" IN (${Prisma.join(missionIds)})
+                GROUP BY l."missionId"
+            `,
+            prisma.$queryRaw<Array<{ missionId: string; count: bigint }>>`
+                SELECT
+                    l."missionId" AS "missionId",
+                    COUNT(DISTINCT c.id)::bigint AS count
+                FROM "Contact" c
+                INNER JOIN "Company" co ON co.id = c."companyId"
+                INNER JOIN "List" l ON l.id = co."listId"
+                WHERE l."missionId" IN (${Prisma.join(missionIds)})
+                  AND EXISTS (
+                    SELECT 1
+                    FROM "Action" a
+                    WHERE a."contactId" = c.id
+                  )
+                GROUP BY l."missionId"
+            `,
+        ]);
 
-                const progress = totalContacts > 0
-                    ? Math.round((actionedContacts / totalContacts) * 100)
-                    : 0;
+        const totalsByMission = new Map(totalsRows.map((row) => [row.missionId, Number(row.count)]));
+        const actionedByMission = new Map(actionedRows.map((row) => [row.missionId, Number(row.count)]));
 
-                return {
-                    id: mission.id,
-                    name: mission.name,
-                    channel: mission.channel,
-                    client: mission.client,
-                    defaultMailboxId: mission.defaultMailboxId ?? null,
-                    progress,
-                    contactsRemaining: totalContacts - actionedContacts,
-                    _count: mission._count,
-                };
-            })
-        );
+        const missions = missionsRaw.map((mission) => {
+            const totalContacts = totalsByMission.get(mission.id) ?? 0;
+            const actionedContacts = actionedByMission.get(mission.id) ?? 0;
+            const progress = totalContacts > 0
+                ? Math.round((actionedContacts / totalContacts) * 100)
+                : 0;
+
+            return {
+                id: mission.id,
+                name: mission.name,
+                channel: mission.channel,
+                client: mission.client,
+                defaultMailboxId: mission.defaultMailboxId ?? null,
+                progress,
+                contactsRemaining: totalContacts - actionedContacts,
+                _count: mission._count,
+            };
+        });
 
         return NextResponse.json({
             success: true,

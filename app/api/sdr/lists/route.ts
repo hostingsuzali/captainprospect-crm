@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 // ============================================
 // GET /api/sdr/lists
-// Fetch lists available for current SDR (from assigned missions)
+// Fetch active lists available for SDR action views
 // ============================================
 
 export async function GET(request: NextRequest) {
@@ -22,47 +23,16 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const missionId = searchParams.get("missionId");
 
-        const isBooker = (session.user as { role?: string }).role === "BOOKER";
-
-        // Booker sees all active missions; SDR/BD sees only assigned missions
-        let assignedMissionIds: string[];
-        if (isBooker) {
-            const activeMissions = await prisma.mission.findMany({
-                where: { isActive: true },
-                select: { id: true },
-            });
-            assignedMissionIds = activeMissions.map(m => m.id);
-        } else {
-            // Get SDR's assigned missions
-            const assignments = await prisma.sDRAssignment.findMany({
-                where: {
-                    sdrId: session.user.id,
-                    mission: {
-                        isActive: true,
-                    },
-                },
-                select: {
-                    missionId: true,
-                },
-            });
-            assignedMissionIds = assignments.map(a => a.missionId);
-        }
-
-        // If missionId is provided, validate it's in accessible missions
-        if (missionId && !assignedMissionIds.includes(missionId)) {
-            return NextResponse.json(
-                { success: false, error: "Mission non accessible" },
-                { status: 403 }
-            );
-        }
-
-        // Fetch lists (only active lists so SDR sees the same scope as the action queue)
+        // Fetch lists from active mission window (same scope as mission dropdown)
         const lists = await prisma.list.findMany({
             where: {
                 isActive: true,
-                missionId: missionId
-                    ? missionId
-                    : { in: assignedMissionIds },
+                mission: {
+                    isActive: true,
+                    startDate: { lte: new Date() },
+                    endDate: { gte: new Date() },
+                    ...(missionId ? { id: missionId } : {}),
+                },
             },
             include: {
                 mission: {
@@ -88,58 +58,92 @@ export async function GET(request: NextRequest) {
             },
         });
 
-        // Get contact counts and completeness for each list
-        const listsWithStats = await Promise.all(
-            lists.map(async (list) => {
-                const contacts = await prisma.contact.findMany({
-                    where: {
-                        company: {
-                            listId: list.id,
-                        },
-                    },
-                    select: {
-                        status: true,
-                    },
-                });
+        if (lists.length === 0) {
+            return NextResponse.json({
+                success: true,
+                data: [],
+            });
+        }
 
-                const totalContacts = contacts.length;
-                const actionableContacts = contacts.filter(c => c.status === "ACTIONABLE").length;
-                const partialContacts = contacts.filter(c => c.status === "PARTIAL").length;
-                const incompleteContacts = contacts.filter(c => c.status === "INCOMPLETE").length;
+        const listIds = lists.map((list) => list.id);
 
-                // Contacted count (contacts with at least one action)
-                const contactedCount = await prisma.contact.count({
-                    where: {
-                        company: {
-                            listId: list.id,
-                        },
-                        actions: {
-                            some: {},
-                        },
-                    },
-                });
+        const [statusRows, contactedRows] = await Promise.all([
+            prisma.$queryRaw<Array<{ listId: string; status: string; count: bigint }>>`
+                SELECT
+                    co."listId" AS "listId",
+                    c.status::text AS status,
+                    COUNT(*)::bigint AS count
+                FROM "Contact" c
+                INNER JOIN "Company" co ON c."companyId" = co.id
+                WHERE co."listId" IN (${Prisma.join(listIds)})
+                GROUP BY co."listId", c.status
+            `,
+            prisma.$queryRaw<Array<{ listId: string; count: bigint }>>`
+                SELECT
+                    co."listId" AS "listId",
+                    COUNT(DISTINCT c.id)::bigint AS count
+                FROM "Contact" c
+                INNER JOIN "Company" co ON c."companyId" = co.id
+                WHERE co."listId" IN (${Prisma.join(listIds)})
+                  AND EXISTS (
+                    SELECT 1
+                    FROM "Action" a
+                    WHERE a."contactId" = c.id
+                  )
+                GROUP BY co."listId"
+            `,
+        ]);
 
-                return {
-                    id: list.id,
-                    name: list.name,
-                    type: list.type,
-                    source: list.source,
-                    mission: list.mission,
-                    companiesCount: list._count.companies,
-                    contactsCount: totalContacts,
-                    contactedCount,
-                    completeness: {
-                        actionable: actionableContacts,
-                        partial: partialContacts,
-                        incomplete: incompleteContacts,
-                    },
-                    progress: totalContacts > 0
-                        ? Math.round((contactedCount / totalContacts) * 100)
-                        : 0,
-                    createdAt: list.createdAt,
-                };
-            })
-        );
+        const completenessByList = new Map<
+            string,
+            { total: number; actionable: number; partial: number; incomplete: number }
+        >();
+        for (const row of statusRows) {
+            const entry = completenessByList.get(row.listId) ?? {
+                total: 0,
+                actionable: 0,
+                partial: 0,
+                incomplete: 0,
+            };
+            const count = Number(row.count);
+            entry.total += count;
+            if (row.status === "ACTIONABLE") entry.actionable += count;
+            else if (row.status === "PARTIAL") entry.partial += count;
+            else if (row.status === "INCOMPLETE") entry.incomplete += count;
+            completenessByList.set(row.listId, entry);
+        }
+
+        const contactedByList = new Map(contactedRows.map((row) => [row.listId, Number(row.count)]));
+
+        const listsWithStats = lists.map((list) => {
+            const stats = completenessByList.get(list.id) ?? {
+                total: 0,
+                actionable: 0,
+                partial: 0,
+                incomplete: 0,
+            };
+            const contactedCount = contactedByList.get(list.id) ?? 0;
+
+            return {
+                id: list.id,
+                name: list.name,
+                type: list.type,
+                source: list.source,
+                mission: list.mission,
+                companiesCount: list._count.companies,
+                contactsCount: stats.total,
+                contactedCount,
+                completeness: {
+                    actionable: stats.actionable,
+                    partial: stats.partial,
+                    incomplete: stats.incomplete,
+                },
+                progress: stats.total > 0
+                    ? Math.round((contactedCount / stats.total) * 100)
+                    : 0,
+                createdAt: list.createdAt,
+            };
+        });
 
         return NextResponse.json({
             success: true,
