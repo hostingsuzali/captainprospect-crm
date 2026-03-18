@@ -474,6 +474,7 @@ interface Meeting {
     company: {
       id: string;
       name: string;
+      phone?: string | null;
       industry?: string | null;
       country?: string | null;
       website?: string | null;
@@ -484,6 +485,7 @@ interface Meeting {
   company?: {
     id: string;
     name: string;
+    phone?: string | null;
     industry?: string | null;
     country?: string | null;
     website?: string | null;
@@ -1199,7 +1201,12 @@ function Card({
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:"3px 12px",marginTop:6}}>
                 {m.contact?.email   && <a href={`mailto:${m.contact.email}`}  className="cp-link" onClick={e=>e.stopPropagation()}><Mail   style={{width:11,height:11}} />{m.contact.email}</a>}
-                {m.contact?.phone   && <a href={`tel:${m.contact.phone}`}     className="cp-link" onClick={e=>e.stopPropagation()}><Phone  style={{width:11,height:11}} />{m.contact.phone}</a>}
+                {[m.contact?.phone, m.contact?.company?.phone, m.company?.phone]
+                  .filter((p): p is string => !!p && p.trim() !== "")
+                  .filter((p, i, arr) => arr.indexOf(p) === i)
+                  .map((phone) => (
+                    <a key={phone} href={`tel:${phone}`} className="cp-link" onClick={e=>e.stopPropagation()}><Phone style={{width:11,height:11}} />{phone}</a>
+                  ))}
                 {m.contact?.linkedin&& <a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" className="cp-link" onClick={e=>e.stopPropagation()}><Linkedin style={{width:11,height:11}} />LinkedIn</a>}
               </div>
               {/* Format action links on card: Rejoindre / Itinéraire / Appeler */}
@@ -1214,8 +1221,8 @@ function Card({
                     <MapPin style={{width:12,height:12}} /> Itinéraire
                   </a>
                 )}
-                {m.meetingType==="TELEPHONIQUE" && (m.meetingPhone || m.contact?.phone) && (
-                  <a href={`tel:${m.meetingPhone || m.contact?.phone}`} className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none",fontSize:12,padding:"6px 12px"}} onClick={e=>e.stopPropagation()}>
+                {m.meetingType==="TELEPHONIQUE" && (m.meetingPhone || m.contact?.phone || m.contact?.company?.phone || m.company?.phone) && (
+                  <a href={`tel:${m.meetingPhone || m.contact?.phone || m.contact?.company?.phone || m.company?.phone}`} className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none",fontSize:12,padding:"6px 12px"}} onClick={e=>e.stopPropagation()}>
                     <Phone style={{width:12,height:12}} /> Appeler
                   </a>
                 )}
@@ -1365,7 +1372,6 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
   return (
     <Modal wide title="Fiche du rendez-vous" subtitle={`${cn_name} · ${companyName}`} onClose={onClose}
       footer={<>
-        {up && onCancel && <Btn variant="secondary" onClick={onCancel}><XCircle style={{width:14,height:14}} />Annuler le RDV</Btn>}
         {onDelete && <Btn variant="ghost" onClick={onDelete} style={{color:tk.redText}}><Trash2 style={{width:14,height:14}} />Supprimer</Btn>}
         {!up && !fb && <Btn variant="primary" onClick={onFeedback}><MessageSquare style={{width:14,height:14}} />Donner mon avis</Btn>}
         {fb && <Btn variant="secondary" onClick={onFeedback}><Edit3 style={{width:14,height:14}} />Modifier mon avis</Btn>}
@@ -1406,10 +1412,10 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
               style={{fontSize:12,color:tk.accentText,textDecoration:"none",marginLeft:2}}>Itinéraire →</a>
           </div>
         )}
-        {m.meetingType==="TELEPHONIQUE" && (m.meetingPhone || m.contact?.phone) && (
+        {m.meetingType==="TELEPHONIQUE" && (m.meetingPhone || m.contact?.phone || m.contact?.company?.phone || m.company?.phone) && (
           <div style={{marginTop:10}}>
-            <a href={`tel:${m.meetingPhone || m.contact?.phone}`} className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none"}}>
-              <Phone style={{width:14,height:14}} />Appeler {m.meetingPhone || m.contact?.phone}
+            <a href={`tel:${m.meetingPhone || m.contact?.phone || m.contact?.company?.phone || m.company?.phone}`} className="cp-btn cp-btn-secondary" style={{display:"inline-flex",textDecoration:"none"}}>
+              <Phone style={{width:14,height:14}} />Appeler {m.meetingPhone || m.contact?.phone || m.contact?.company?.phone || m.company?.phone}
             </a>
           </div>
         )}
@@ -1428,7 +1434,18 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:11}}>
               <Fld label="E-mail">{m.contact?.email&&<a href={`mailto:${m.contact.email}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.email}</a>}</Fld>
-              <Fld label="Téléphone">{m.contact?.phone&&<a href={`tel:${m.contact.phone}`} style={{color:tk.accentText,textDecoration:"none"}}>{m.contact.phone}</a>}</Fld>
+              <Fld label="Téléphone">
+                {[m.contact?.phone, m.contact?.company?.phone, m.company?.phone]
+                  .filter((p): p is string => !!p && p.trim() !== "")
+                  .filter((p, i, arr) => arr.indexOf(p) === i)
+                  .map((phone, i) => (
+                    <span key={phone}>
+                      {i > 0 && " · "}
+                      <a href={`tel:${phone}`} style={{color:tk.accentText,textDecoration:"none"}}>{phone}</a>
+                    </span>
+                  ))}
+                {![m.contact?.phone, m.contact?.company?.phone, m.company?.phone].some(Boolean) && <span style={{color:tk.ink4}}>—</span>}
+              </Fld>
               <Fld label="LinkedIn">{m.contact?.linkedin&&<a href={m.contact.linkedin} target="_blank" rel="noopener noreferrer" style={{color:tk.accentText,textDecoration:"none"}}>Voir le profil →</a>}</Fld>
             </div>
           </div>

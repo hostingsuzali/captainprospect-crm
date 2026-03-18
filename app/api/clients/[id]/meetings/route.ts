@@ -101,6 +101,7 @@ export const GET = withErrorHandler(async (
                         select: {
                             id: true,
                             name: true,
+                            phone: true,
                             industry: true,
                             country: true,
                             website: true,
@@ -114,6 +115,7 @@ export const GET = withErrorHandler(async (
                 select: {
                     id: true,
                     name: true,
+                    phone: true,
                     industry: true,
                     country: true,
                     website: true,
