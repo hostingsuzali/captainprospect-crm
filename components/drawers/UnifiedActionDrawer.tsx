@@ -176,6 +176,17 @@ const RESULT_CHIP_CONFIG: Record<
         selectedText: "text-red-800",
         selectedBorder: "border-red-400",
     },
+    NUMERO_KO: {
+        label: "NUMERO KO",
+        icon: PhoneOff,
+        bg: "bg-orange-50",
+        text: "text-orange-600",
+        border: "border-orange-200",
+        dot: "bg-orange-400",
+        selectedBg: "bg-orange-100",
+        selectedText: "text-orange-800",
+        selectedBorder: "border-orange-400",
+    },
     INTERESTED: {
         label: "Intéressé",
         icon: ThumbsUp,
@@ -663,10 +674,15 @@ export function UnifiedActionDrawer({
     );
 
     const statusOptions = useMemo(
-        () =>
-            statusConfig?.statuses?.length
-                ? statusConfig.statuses.map((s) => ({ value: s.code, label: s.label }))
-                : Object.entries(ACTION_RESULT_LABELS).map(([value, label]) => ({ value, label })),
+        () => {
+            const raw =
+                statusConfig?.statuses?.length
+                    ? statusConfig.statuses.map((s) => ({ value: s.code, label: s.label }))
+                    : Object.entries(ACTION_RESULT_LABELS).map(([value, label]) => ({ value, label }));
+            // Exclude MEETING_CANCELLED from call result options — invalid phone / bad number
+            // should use NUMERO_KO, BAD_CONTACT, or INVALIDE, not meeting cancelled
+            return raw.filter((opt) => opt.value !== "MEETING_CANCELLED");
+        },
         [statusConfig]
     );
 
@@ -2719,10 +2735,12 @@ export function UnifiedActionDrawer({
                     actionId={voipModalActionId}
                     callData={voipModalData}
                     enrichmentSummary={voipEnrichmentSummary}
-                    statusOptions={statusConfig?.statuses?.map((s) => ({
-                        value: s.code,
-                        label: s.label,
-                    }))}
+                    statusOptions={statusConfig?.statuses
+                        ?.filter((s) => s.code !== "MEETING_CANCELLED")
+                        ?.map((s) => ({
+                            value: s.code,
+                            label: s.label,
+                        }))}
                     onValidated={() => {
                         queryClient.invalidateQueries({ queryKey: actionsQueryKey });
                         onActionRecorded?.();

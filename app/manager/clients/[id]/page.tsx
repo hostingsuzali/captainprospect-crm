@@ -40,7 +40,7 @@ import {
     ShieldCheck, BarChart3, Loader2, ExternalLink, Zap, Video,
     MapPin, ChevronDown, ChevronUp, Mic, Sparkles, Clock,
     AlertCircle, RefreshCw, Send, Eye, List, Hash, ArrowUpRight,
-    PenLine,
+    PenLine, Download,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -212,6 +212,7 @@ const PRIORITY_INDICATOR: Record<string, { color: string; label: string }> = {
 interface ClientSession {
     id: string;
     type: SessionType;
+    customTypeLabel?: string;
     date: string;
     leexiId?: string;
     recordingUrl?: string;
@@ -375,8 +376,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [sessions, setSessions] = useState<ClientSession[]>([]);
     const [isLoadingSessions, setIsLoadingSessions] = useState(false);
     const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
-    const [sessionCRTabs, setSessionCRTabs] = useState<Record<string, "cr" | "email">>({});
     const [showCRTab, setShowCRTab] = useState<"cr" | "email">("cr");
+    const [reportDialogSession, setReportDialogSession] = useState<ClientSession | null>(null);
+    const [reportDialogTab, setReportDialogTab] = useState<"cr" | "email">("cr");
     const [editingSession, setEditingSession] = useState<ClientSession | null>(null);
     const [editPreviewMode, setEditPreviewMode] = useState(false);
     const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -405,6 +407,72 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [generatedCR, setGeneratedCR] = useState<{ cr: string; email: string } | null>(null);
     const [isSavingSession, setIsSavingSession] = useState(false);
     const [extractedTasks, setExtractedTasks] = useState<ExtractedTask[]>([]);
+
+    const getSessionTypeLabel = (session: ClientSession) =>
+        session.type === "Autre" && session.customTypeLabel?.trim()
+            ? session.customTypeLabel.trim()
+            : session.type;
+
+    const openSessionReportDialog = (session: ClientSession, tab: "cr" | "email" = "cr") => {
+        setReportDialogSession(session);
+        setReportDialogTab(tab);
+    };
+
+    const downloadSessionReportCsv = (session: ClientSession) => {
+        if (!client) return;
+
+        const BOM = "\uFEFF";
+        const delimiter = ";";
+        const headers = [
+            "Client",
+            "Date session",
+            "Type session",
+            "Compte rendu complet",
+            "Mail de synthese",
+            "Statut email",
+            "Lien enregistrement",
+            "Projet",
+            "Tache",
+            "Statut tache",
+            "Priorite",
+            "Role",
+            "Assignee",
+            "Echeance",
+        ];
+
+        const taskRows = session.tasks.length > 0 ? session.tasks : [null];
+        const rows = taskRows.map((task) => [
+            client.name,
+            new Date(session.date).toLocaleDateString("fr-FR"),
+            getSessionTypeLabel(session),
+            session.crMarkdown || "",
+            session.summaryEmail || "",
+            session.emailSentAt
+                ? `Envoye le ${new Date(session.emailSentAt).toLocaleDateString("fr-FR")}`
+                : "Non envoye automatiquement",
+            session.recordingUrl || "",
+            session.projectId ? `/manager/projects/${session.projectId}` : "",
+            task?.label || "",
+            task?.doneAt ? "Terminee" : task ? "A faire" : "",
+            task?.priority || "",
+            task?.assigneeRole || "",
+            task?.assignee || "",
+            task?.dueDate ? new Date(task.dueDate).toLocaleDateString("fr-FR") : "",
+        ]);
+
+        const escapeCell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+        const csv = BOM + [headers, ...rows].map((row) => row.map(escapeCell).join(delimiter)).join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const safeClientName = client.name.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "").toLowerCase();
+
+        link.href = url;
+        link.download = `${safeClientName || "client"}_rapport_session_${session.date.slice(0, 10)}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+        success("Export CSV", "Le rapport a ete telecharge.");
+    };
 
     // ============================================================
     // FETCH CLIENT
@@ -1902,7 +1970,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             {filteredSessions.map((session) => {
                                 const isExpanded = expandedSessionId === session.id;
                                 const openTasks = session.tasks.filter(t => !t.doneAt);
-                                const activeTab2 = sessionCRTabs[session.id] || "cr";
                                 return (
                                     <Card key={session.id} className="border-slate-200 overflow-hidden hover:shadow-md transition-all duration-200">
                                         {/* Session row */}
@@ -1918,11 +1985,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                     <p className="font-semibold text-slate-900 text-sm">
                                                         Session du {new Date(session.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
                                                     </p>
-                                                    {session.crMarkdown && (
-                                                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
-                                                            {session.crMarkdown.split("\n").find(l => l && !l.startsWith("#"))?.slice(0, 100)}
-                                                        </p>
-                                                    )}
+                                                    <p className="text-xs text-slate-500 mt-0.5">
+                                                        {(session.crMarkdown || session.summaryEmail)
+                                                            ? "Rapport complet disponible dans la fenetre dediee"
+                                                            : "Aucun rapport disponible"}
+                                                    </p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-3 shrink-0 ml-4">
@@ -1991,83 +2058,75 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                         Copier le mail
                                                     </button>
                                                 )}
+                                                {(session.crMarkdown || session.summaryEmail) && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            openSessionReportDialog(session, session.crMarkdown ? "cr" : "email");
+                                                        }}
+                                                        className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 border border-indigo-200 rounded-lg px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                                                    >
+                                                        <Eye className="w-3.5 h-3.5" />
+                                                        Voir le rapport
+                                                    </button>
+                                                )}
                                                 {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                                             </div>
                                         </button>
 
                                         {/* Expanded content */}
                                         {isExpanded && (
-                                            <div className="border-t border-slate-100">
-                                                {/* CR / Email tabs — per-session */}
-                                                <div className="flex gap-0 border-b border-slate-100">
-                                                    <button
-                                                        onClick={() => setSessionCRTabs(prev => ({ ...prev, [session.id]: "cr" }))}
-                                                        className={cn("px-5 py-3 text-sm font-semibold border-b-2 transition-colors",
-                                                            activeTab2 === "cr" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"
-                                                        )}>
-                                                        Compte rendu
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setSessionCRTabs(prev => ({ ...prev, [session.id]: "email" }))}
-                                                        className={cn("px-5 py-3 text-sm font-semibold border-b-2 transition-colors",
-                                                            activeTab2 === "email" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"
-                                                        )}>
-                                                        Mail de synthèse
-                                                    </button>
+                                            <div className="border-t border-slate-100 p-5">
+                                                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 mb-5">
+                                                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                                                        <div>
+                                                            <p className="text-sm font-semibold text-slate-900">Rapport complet</p>
+                                                            <p className="text-sm text-slate-500 mt-1">
+                                                                Le compte rendu complet s&apos;ouvre maintenant dans une fenetre dediee.
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            {session.crMarkdown && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="gap-2"
+                                                                    onClick={() => openSessionReportDialog(session, "cr")}
+                                                                >
+                                                                    <Eye className="w-3.5 h-3.5" />
+                                                                    Ouvrir le rapport
+                                                                </Button>
+                                                            )}
+                                                            {session.summaryEmail && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="gap-2"
+                                                                    onClick={() => openSessionReportDialog(session, "email")}
+                                                                >
+                                                                    <Mail className="w-3.5 h-3.5" />
+                                                                    Voir le mail
+                                                                </Button>
+                                                            )}
+                                                            {(session.crMarkdown || session.summaryEmail) && (
+                                                                <Button
+                                                                    variant="primary"
+                                                                    size="sm"
+                                                                    className="gap-2"
+                                                                    onClick={() => downloadSessionReportCsv(session)}
+                                                                >
+                                                                    <Download className="w-3.5 h-3.5" />
+                                                                    Export CSV
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
 
-                                                <div className="p-5">
-                                                    {activeTab2 === "cr" && (
-                                                        session.crMarkdown ? (
-                                                            <div className={SESSION_MARKDOWN_CLASS}>
-                                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                                    {session.crMarkdown}
-                                                                </ReactMarkdown>
-                                                            </div>
-                                                        ) : <p className="text-sm text-slate-400 italic">Pas de CR disponible.</p>
-                                                    )}
-                                                    {activeTab2 === "email" && (
-                                                        session.summaryEmail ? (
-                                                            <div className="space-y-3">
-                                                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                                                                    <div className={SESSION_MARKDOWN_CLASS}>
-                                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                                            {session.summaryEmail}
-                                                                        </ReactMarkdown>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <Button
-                                                                        variant="outline"
-                                                                        size="sm"
-                                                                        className="gap-2"
-                                                                        onClick={() => { navigator.clipboard.writeText(session.summaryEmail!); success("Copié", "Mail copié"); }}
-                                                                    >
-                                                                        <Copy className="w-3.5 h-3.5" />
-                                                                        Copier
-                                                                    </Button>
-                                                                    {client.email && (
-                                                                        <a
-                                                                            href={`mailto:${client.email}?subject=Synthèse de notre session ${session.type}&body=${encodeURIComponent(session.summaryEmail)}`}
-                                                                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 transition-colors"
-                                                                        >
-                                                                            <Send className="w-3.5 h-3.5" />
-                                                                            Ouvrir dans le mail
-                                                                        </a>
-                                                                    )}
-                                                                    <span className="text-xs text-slate-400 italic ml-2">
-                                                                        {session.emailSentAt
-                                                                            ? `✓ Envoyé le ${new Date(session.emailSentAt).toLocaleDateString("fr-FR")}`
-                                                                            : "Non envoyé automatiquement — copie manuelle"}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        ) : <p className="text-sm text-slate-400 italic">Pas de mail de synthèse disponible.</p>
-                                                    )}
-
-                                                    {/* Tasks — Enhanced with role badges + toggle */}
+                                                {/* Tasks — Enhanced with role badges + toggle */}
+                                                <div>
                                                     {session.tasks.length > 0 && (
-                                                        <div className="mt-5 pt-5 border-t border-slate-100">
+                                                        <div className="pt-1">
                                                             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Tâches d'équipe</h4>
                                                             <div className="space-y-2">
                                                                 {session.tasks.map((task) => {
@@ -2143,6 +2202,123 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 variant="danger"
                 isLoading={!!isDeletingSession}
             />
+
+            <Modal
+                isOpen={!!reportDialogSession}
+                onClose={() => setReportDialogSession(null)}
+                title={reportDialogSession ? `Rapport complet — ${getSessionTypeLabel(reportDialogSession)}` : "Rapport complet"}
+                description={reportDialogSession ? `Session du ${new Date(reportDialogSession.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}` : undefined}
+                size="xl"
+            >
+                {reportDialogSession && (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge className={cn("text-xs border", SESSION_TYPE_COLORS[reportDialogSession.type])}>
+                                        {getSessionTypeLabel(reportDialogSession)}
+                                    </Badge>
+                                    <span className="text-xs text-slate-500">
+                                        {reportDialogSession.tasks.length} tache{reportDialogSession.tasks.length > 1 ? "s" : ""}
+                                    </span>
+                                    <span className="text-xs text-slate-500">
+                                        {reportDialogSession.emailSentAt
+                                            ? `Mail envoye le ${new Date(reportDialogSession.emailSentAt).toLocaleDateString("fr-FR")}`
+                                            : "Mail non envoye automatiquement"}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2"
+                                        onClick={() => downloadSessionReportCsv(reportDialogSession)}
+                                    >
+                                        <Download className="w-3.5 h-3.5" />
+                                        Export CSV
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2"
+                                        onClick={() => {
+                                            const content = reportDialogTab === "cr"
+                                                ? (reportDialogSession.crMarkdown || "")
+                                                : (reportDialogSession.summaryEmail || "");
+                                            navigator.clipboard.writeText(content);
+                                            success("Copie", reportDialogTab === "cr" ? "Rapport copie" : "Mail copie");
+                                        }}
+                                    >
+                                        <Copy className="w-3.5 h-3.5" />
+                                        Copier
+                                    </Button>
+                                    {reportDialogTab === "email" && reportDialogSession.summaryEmail && client?.email && (
+                                        <a
+                                            href={`mailto:${client.email}?subject=Synthèse de notre session ${reportDialogSession.type}&body=${encodeURIComponent(reportDialogSession.summaryEmail)}`}
+                                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 transition-colors"
+                                        >
+                                            <Send className="w-3.5 h-3.5" />
+                                            Ouvrir dans le mail
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1">
+                            <button
+                                onClick={() => setReportDialogTab("cr")}
+                                className={cn(
+                                    "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+                                    reportDialogTab === "cr" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600"
+                                )}
+                            >
+                                Compte rendu
+                            </button>
+                            <button
+                                onClick={() => setReportDialogTab("email")}
+                                className={cn(
+                                    "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+                                    reportDialogTab === "email" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600"
+                                )}
+                            >
+                                Mail de synthese
+                            </button>
+                        </div>
+
+                        <div className="border border-slate-200 rounded-2xl bg-white max-h-[65vh] overflow-y-auto">
+                            {reportDialogTab === "cr" ? (
+                                reportDialogSession.crMarkdown ? (
+                                    <div className="p-6">
+                                        <div className={SESSION_MARKDOWN_CLASS}>
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {reportDialogSession.crMarkdown}
+                                            </ReactMarkdown>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-400 italic p-6">Pas de rapport disponible.</p>
+                                )
+                            ) : reportDialogSession.summaryEmail ? (
+                                <div className="p-6">
+                                    <div className={SESSION_MARKDOWN_CLASS}>
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                            {reportDialogSession.summaryEmail}
+                                        </ReactMarkdown>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-slate-400 italic p-6">Pas de mail de synthese disponible.</p>
+                            )}
+                        </div>
+                    </div>
+                )}
+                <ModalFooter>
+                    <Button variant="ghost" onClick={() => setReportDialogSession(null)}>
+                        Fermer
+                    </Button>
+                </ModalFooter>
+            </Modal>
 
             {/* ════════════════════════════════════════════
                 MODAL — EDIT SESSION
