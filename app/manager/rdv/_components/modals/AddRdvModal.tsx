@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Calendar } from "lucide-react";
 import { Modal, ModalFooter } from "@/components/ui/Modal";
+import { DateTimePicker } from "@/components/ui";
+import { BookingDrawer } from "@/components/sdr/BookingDrawer";
 
 interface Mission {
   id: string;
@@ -51,6 +53,19 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
   const [meetingPhone, setMeetingPhone] = useState("");
   const [duration, setDuration] = useState(30);
 
+  const [clientBookingUrl, setClientBookingUrl] = useState<string>("");
+  const [clientInterlocuteurs, setClientInterlocuteurs] = useState<Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    title?: string;
+    emails: Array<{ value: string; label: string; isPrimary: boolean }>;
+    phones: Array<{ value: string; label: string; isPrimary: boolean }>;
+    bookingLinks: Array<{ label: string; url: string; durationMinutes: number }>;
+    isActive: boolean;
+  }>>([]);
+  const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+
   const fetchMissions = useCallback(async () => {
     const res = await fetch("/api/missions?limit=200");
     const json = await res.json();
@@ -60,7 +75,32 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
   }, []);
 
   useEffect(() => {
-    if (isOpen) fetchMissions();
+    if (isOpen) {
+      fetchMissions();
+    } else {
+      setMissionId("");
+      setListId("");
+      setCompanyMode("existing");
+      setCompanyId("");
+      setNewCompanyName("");
+      setContactMode("existing");
+      setContactId("");
+      setNewContactFirstName("");
+      setNewContactLastName("");
+      setNewContactEmail("");
+      setCallbackDate("");
+      setMeetingType("VISIO");
+      setMeetingCategory("");
+      setNote("");
+      setMeetingAddress("");
+      setMeetingJoinUrl("");
+      setMeetingPhone("");
+      setDuration(30);
+      setClientBookingUrl("");
+      setClientInterlocuteurs([]);
+      setShowBookingDrawer(false);
+      setError(null);
+    }
   }, [isOpen, fetchMissions]);
 
   useEffect(() => {
@@ -76,6 +116,8 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
       setNewContactLastName("");
       setNewContactEmail("");
       setCompanies([]);
+      setClientBookingUrl("");
+      setClientInterlocuteurs([]);
       return;
     }
     const mission = missions.find((m) => m.id === missionId);
@@ -86,6 +128,28 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
     setContactId("");
     setCompanies([]);
   }, [missionId, missions]);
+
+  useEffect(() => {
+    if (!missionId) {
+      setClientBookingUrl("");
+      setClientInterlocuteurs([]);
+      return;
+    }
+    fetch(`/api/missions/${missionId}/client-booking`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data) {
+          setClientBookingUrl(json.data.bookingUrl ?? "");
+          setClientInterlocuteurs(
+            Array.isArray(json.data.interlocuteurs) ? json.data.interlocuteurs : []
+          );
+        }
+      })
+      .catch(() => {
+        setClientBookingUrl("");
+        setClientInterlocuteurs([]);
+      });
+  }, [missionId]);
 
   useEffect(() => {
     if (!listId) {
@@ -226,6 +290,7 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
   const defaultDatetimeStr = defaultDatetime.toISOString().slice(0, 16);
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={() => !saving && onClose()} title="Ajouter un RDV" size="lg">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
@@ -376,13 +441,13 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
           </div>
 
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 6 }}>Date et heure du RDV *</label>
-            <input
-              type="datetime-local"
-              className="rdv-input"
-              style={{ width: "100%" }}
-              value={callbackDate || defaultDatetimeStr}
-              onChange={(e) => setCallbackDate(e.target.value)}
+            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 6 }}>
+              Date et heure du RDV *
+            </label>
+            <DateTimePicker
+              value={callbackDate}
+              onChange={setCallbackDate}
+              placeholder="Choisir date et heure du RDV…"
               min={new Date().toISOString().slice(0, 16)}
             />
           </div>
@@ -412,6 +477,58 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
               ))}
             </div>
           </div>
+
+          {(clientBookingUrl || clientInterlocuteurs.some(i => (i.bookingLinks?.length ?? 0) > 0)) && (
+            <div style={{
+              padding: "14px 16px",
+              borderRadius: 12,
+              background: "var(--accentLight)",
+              border: "1px solid rgba(79,70,229,0.15)",
+            }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)", marginBottom: 10 }}>
+                📅 Calendrier client disponible
+              </p>
+              {clientInterlocuteurs.filter(i => i.isActive && i.bookingLinks?.length > 0).length > 1 && (
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 6 }}>
+                    Commercial client destinataire
+                  </label>
+                  <select
+                    className="rdv-input"
+                    style={{ width: "100%" }}
+                  >
+                    <option value="">Tous les commerciaux disponibles</option>
+                    {clientInterlocuteurs
+                      .filter(i => i.isActive && i.bookingLinks?.length > 0)
+                      .map(i => (
+                        <option key={i.id} value={i.id}>
+                          {i.firstName} {i.lastName}{i.title ? ` — ${i.title}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+              <button
+                type="button"
+                className="rdv-btn rdv-btn-primary"
+                style={{ width: "100%", justifyContent: "center", padding: "10px 0", display: "flex", alignItems: "center", gap: 8 }}
+                onClick={() => setShowBookingDrawer(true)}
+                disabled={!callbackDate || companyMode !== "existing" || contactMode !== "existing"}
+              >
+                <Calendar size={14} /> Ouvrir le calendrier client
+              </button>
+              {!callbackDate && (
+                <p style={{ fontSize: 11, color: "var(--ink3)", marginTop: 6, textAlign: "center" }}>
+                  Choisissez d&apos;abord une date/heure ci-dessus
+                </p>
+              )}
+              {callbackDate && (companyMode !== "existing" || contactMode !== "existing") && (
+                <p style={{ fontSize: 11, color: "var(--ink3)", marginTop: 6, textAlign: "center" }}>
+                  Le calendrier client nécessite une société et un contact existants
+                </p>
+              )}
+            </div>
+          )}
 
           {meetingType === "VISIO" && (
             <div>
@@ -529,5 +646,42 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
           </button>
         </ModalFooter>
     </Modal>
+
+    {showBookingDrawer && 
+     contactMode === "existing" && contactId &&
+     companyMode === "existing" && companyId &&
+     (clientBookingUrl || clientInterlocuteurs.some(i => i.bookingLinks?.length > 0)) && (
+      <BookingDrawer
+        isOpen={showBookingDrawer}
+        onClose={() => setShowBookingDrawer(false)}
+        bookingUrl={clientBookingUrl || ""}
+        contactId={contactId}
+        companyId={companyId}
+        contactName={
+          contacts.find(c => c.id === contactId)
+            ? [contacts.find(c => c.id === contactId)?.firstName, contacts.find(c => c.id === contactId)?.lastName].filter(Boolean).join(" ")
+            : selectedCompany?.name || "Contact"
+        }
+        rdvDate={callbackDate ? callbackDate : undefined}
+        meetingType={meetingType || undefined}
+        meetingCategory={meetingCategory || undefined}
+        meetingAddress={meetingAddress}
+        meetingJoinUrl={meetingJoinUrl}
+        meetingPhone={meetingPhone}
+        interlocuteurs={clientInterlocuteurs}
+        onRdvDateChange={(val) => setCallbackDate(val || "")}
+        onMeetingTypeChange={setMeetingType}
+        onMeetingCategoryChange={setMeetingCategory}
+        onMeetingJoinUrlChange={setMeetingJoinUrl}
+        onMeetingAddressChange={setMeetingAddress}
+        onMeetingPhoneChange={setMeetingPhone}
+        onBookingSuccess={() => {
+          setShowBookingDrawer(false);
+          onSuccess();
+          onClose();
+        }}
+      />
+    )}
+  </>
   );
 }

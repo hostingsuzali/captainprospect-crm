@@ -1,66 +1,91 @@
 // ============================================
 // API: /api/comms/events
-// Server-Sent Events stream for real-time comms updates
+// REPLACED: SSE long-polling → standard REST polling
+// Reason: SSE is incompatible with Vercel serverless (300s hard timeout)
+// Now returns VoIP events (call-completed, enrichment-ready) via polling
 // ============================================
 
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { subscribeToUser, type CommsRealtimePayload } from "@/lib/comms/events";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
 
-export async function GET() {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-        return new Response("Unauthorized", { status: 401 });
-    }
+export async function GET(request: NextRequest) {
+    try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
 
-    const userId = session.user.id;
-    const encoder = new TextEncoder();
-    let keepAliveId: ReturnType<typeof setInterval> | null = null;
-    let unsubscribe: (() => void) | null = null;
+        const { searchParams } = new URL(request.url);
+        const sinceParam = searchParams.get("since");
+        const since = sinceParam ? new Date(sinceParam) : new Date(Date.now() - 30_000);
 
-    const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-            const send = (payload: CommsRealtimePayload) => {
-                try {
-                    const data = `data: ${JSON.stringify(payload)}\n\n`;
-                    controller.enqueue(encoder.encode(data));
-                } catch (_) {
-                    /* stream closed */
-                }
+        // Fetch recent VoIP-enriched actions for this SDR
+        const recentActions = await prisma.action.findMany({
+            where: {
+                sdrId: session.user.id,
+                voipEnrichedAt: { gt: since },
+            },
+            select: {
+                id: true,
+                voipProvider: true,
+                duration: true,
+                voipSummary: true,
+                voipTranscript: true,
+                voipEnrichedAt: true,
+                contact: {
+                    select: {
+                        firstName: true,
+                        lastName: true,
+                    },
+                },
+                company: {
+                    select: {
+                        name: true,
+                    },
+                },
+                voipRecordingUrl: true,
+            },
+            orderBy: { voipEnrichedAt: "asc" },
+            take: 20,
+        });
+
+        const events = recentActions.map((action) => {
+            const contactName =
+                action.contact
+                    ? `${action.contact.firstName ?? ""} ${action.contact.lastName ?? ""}`.trim()
+                    : action.company?.name ?? "Contact inconnu";
+
+            return {
+                type: "voip:enrichment-ready" as const,
+                actionId: action.id,
+                provider: action.voipProvider ?? "unknown",
+                duration: action.duration ?? 0,
+                summary: action.voipSummary ?? undefined,
+                hasTranscript: Boolean(action.voipTranscript),
+                contactName,
+                enrichmentPending: false,
+                recordingUrl: action.voipRecordingUrl ?? undefined,
+                autoValidated: false,
+                createdAt: action.voipEnrichedAt?.toISOString(),
             };
+        });
 
-            send({
-                type: "presence_online",
-                threadId: "",
-                userId,
-                userName: session.user.name ?? undefined,
-            } as CommsRealtimePayload);
-
-            unsubscribe = subscribeToUser(userId, send);
-
-            keepAliveId = setInterval(() => {
-                try {
-                    controller.enqueue(encoder.encode(": keepalive\n\n"));
-                } catch {
-                    if (keepAliveId) clearInterval(keepAliveId);
-                }
-            }, 25000);
-        },
-        cancel() {
-            if (keepAliveId) clearInterval(keepAliveId);
-            unsubscribe?.();
-        },
-    });
-
-    return new Response(stream, {
-        headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-store, no-cache, must-revalidate",
-            Connection: "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    });
+        return NextResponse.json({
+            success: true,
+            data: {
+                events,
+                timestamp: new Date().toISOString(),
+            },
+        });
+    } catch (error) {
+        console.error("Error fetching VoIP events:", error);
+        return NextResponse.json(
+            { error: "Failed to fetch events" },
+            { status: 500 }
+        );
+    }
 }

@@ -103,6 +103,9 @@ export function CSVImportDialog({ isOpen, onClose, onSuccess, missions }: Import
     const [mappings, setMappings] = useState<ColumnMapping[]>([]);
     const [previewData, setPreviewData] = useState<PreviewRow[]>([]);
     const [importProgress, setImportProgress] = useState<number | null>(null);
+    // Counting lines to compute a progress percentage can be very slow on large CSVs.
+    // For big files, we skip it and show "Import en cours..." instead of a % bar.
+    const SHOULD_COUNT_ROWS_MAX_BYTES = 10 * 1024 * 1024; // 10MB
 
     // ============================================
     // AUTO-DETECT FIELD MAPPINGS
@@ -288,16 +291,16 @@ export function CSVImportDialog({ isOpen, onClose, onSuccess, missions }: Import
         if (!file || !validateMappings()) return;
 
         setIsImporting(true);
-        setImportProgress(0);
+        setImportProgress(null);
 
         try {
-            const totalRows = await countFileLines(file);
+            const totalRows = file.size <= SHOULD_COUNT_ROWS_MAX_BYTES ? await countFileLines(file) : null;
             const formData = new FormData();
             formData.append("file", file);
             formData.append("missionId", missionId);
             formData.append("listName", listName);
             formData.append("mappings", JSON.stringify(mappings));
-            if (totalRows > 0) formData.append("totalRows", String(totalRows));
+            if (totalRows != null && totalRows > 0) formData.append("totalRows", String(totalRows));
 
             const res = await fetch("/api/lists/import", {
                 method: "POST",

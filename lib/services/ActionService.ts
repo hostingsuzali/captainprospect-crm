@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { parseDateFromNote } from '@/lib/utils/parseDateFromNote';
-import { createClientPortalNotification, sendNewRdvEmailNotification } from '@/lib/notifications';
+import { createClientPortalNotification, sendNewRdvEmailNotification, createNotification } from '@/lib/notifications';
 import type { EffectiveStatusDefinition } from './StatusConfigService';
 
 // ============================================
@@ -108,6 +108,29 @@ export class ActionService {
                 callbackDate = input.callbackDate;
             }
 
+            // Auto-generate note label if none provided
+            if (!noteToStore?.trim()) {
+                const resultLabels: Record<string, string> = {
+                    NO_RESPONSE: 'Pas de réponse',
+                    BAD_CONTACT: 'Mauvais contact — pas la bonne personne',
+                    BARRAGE_STANDARD: 'Barrage standard',
+                    NUMERO_KO: 'Numéro invalide / hors service',
+                    INTERESTED: 'Contact intéressé',
+                    CALLBACK_REQUESTED: 'Rappel demandé',
+                    MEETING_BOOKED: 'Rendez-vous planifié',
+                    MEETING_CANCELLED: 'Rendez-vous annulé',
+                    INVALIDE: 'Lead invalide',
+                    DISQUALIFIED: 'Contact disqualifié',
+                    ENVOIE_MAIL: 'Email à envoyer',
+                    MAIL_ENVOYE: 'Email envoyé',
+                    CONNECTION_SENT: 'Demande de connexion envoyée',
+                    MESSAGE_SENT: 'Message envoyé',
+                    REPLIED: 'Réponse reçue',
+                    NOT_INTERESTED: 'Pas intéressé',
+                };
+                noteToStore = resultLabels[input.result] ?? input.result;
+            }
+
             // 1. Create the action — prefer explicit category, fallback to auto-detection from note
             const autoCategory = (input.result === 'MEETING_BOOKED')
                 ? (input.meetingCategory || detectMeetingCategoryFromNote(noteToStore || input.note))
@@ -200,6 +223,33 @@ export class ActionService {
                 }
             }
         }
+
+        // 5. Auto-create reminder notification 24h before RDV for the SDR
+        if (actionRecord.result === 'MEETING_BOOKED' && (actionRecord as any).callbackDate) {
+            const rdvDate = new Date((actionRecord as any).callbackDate);
+            const reminderDate = new Date(rdvDate.getTime() - 24 * 60 * 60 * 1000);
+            const now = new Date();
+
+            if (reminderDate > now) {
+                const contactData = (actionRecord as any).contact as {
+                    firstName?: string | null;
+                    lastName?: string | null;
+                    company?: { name?: string | null } | null;
+                } | null | undefined;
+                const contactName = [contactData?.firstName, contactData?.lastName].filter(Boolean).join(' ') || 'le prospect';
+                const companyName = contactData?.company?.name;
+                const dateStr = rdvDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+
+                void createNotification({
+                    userId: input.sdrId,
+                    title: 'Confirmer le RDV',
+                    message: `Pensez à confirmer le RDV du ${dateStr} avec ${contactName}${companyName ? ` (${companyName})` : ''}`,
+                    type: 'info',
+                    link: '/manager/rdv',
+                });
+            }
+        }
+
         return actionRecord as any;
     }
 

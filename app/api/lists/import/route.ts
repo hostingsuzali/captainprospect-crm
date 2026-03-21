@@ -14,7 +14,9 @@ import type { ActionResult } from "@prisma/client";
 // the full file and to reduce per-row DB round-trips.
 // ============================================
 
-const BATCH_SIZE = 500;
+// Bigger batches => fewer DB round-trips (each batch does multiple queries).
+// Keep it reasonably small to avoid heavy per-batch CPU/memory usage.
+const BATCH_SIZE = 1000;
 
 // ----- Server-side CSV parsing (same logic as client for consistent behavior) -----
 function parseCSVLine(line: string, delimiter: string = ","): string[] {
@@ -572,55 +574,65 @@ async function processBatch(
         }
     }
 
-    // Create missing companies one-by-one (no transaction to avoid P2028 in long-running/serverless)
+    // Create missing companies in batch (avoids long sequential DB calls and Vercel 300s timeouts)
     if (namesToCreate.length > 0) {
-        for (const name of namesToCreate) {
-            const payload = companyPayloadByName.get(name);
-            if (!payload) continue;
-            const { companyData, companyCustomData } = payload;
+        const companiesCreateData = namesToCreate
+            .map((name) => {
+                const payload = companyPayloadByName.get(name);
+                if (!payload) return null;
+                const { companyData, companyCustomData } = payload;
 
-            // Normalize company phone: allow multiple numbers in one cell, separated by ; or ,
-            let companyPhone: string | null = null;
-            let companyExtraPhones: string[] = [];
-            if (companyData.phone) {
-                const parts = companyData.phone
-                    .split(/[;,]/)
-                    .map((p) => p.trim())
-                    .filter((p) => p.length > 0);
-                if (parts.length > 0) {
-                    companyPhone = parts[0];
-                    if (parts.length > 1) {
-                        companyExtraPhones = parts.slice(1);
+                // Normalize company phone: allow multiple numbers in one cell, separated by ; or ,
+                let companyPhone: string | null = null;
+                let companyExtraPhones: string[] = [];
+                if (companyData.phone) {
+                    const parts = companyData.phone
+                        .split(/[;,]/)
+                        .map((p) => p.trim())
+                        .filter((p) => p.length > 0);
+                    if (parts.length > 0) {
+                        companyPhone = parts[0];
+                        if (parts.length > 1) companyExtraPhones = parts.slice(1);
                     }
                 }
-            }
 
-            const createData: Record<string, unknown> = {
-                name: companyData.name,
-                industry: companyData.industry || null,
-                country: companyData.country || null,
-                website: companyData.website || null,
-                size: companyData.size || null,
-                listId,
-            };
+                const createData: Record<string, unknown> = {
+                    name: companyData.name,
+                    industry: companyData.industry || null,
+                    country: companyData.country || null,
+                    website: companyData.website || null,
+                    size: companyData.size || null,
+                    listId,
+                };
 
-            if (companyPhone) {
-                (createData as Record<string, string>).phone = companyPhone;
-            }
+                if (companyPhone) (createData as Record<string, unknown>).phone = companyPhone;
 
-            const customData: Record<string, unknown> = { ...companyCustomData };
-            if (companyExtraPhones.length > 0) {
-                customData.additionalPhones = companyExtraPhones;
-            }
-            if (Object.keys(customData).length > 0) {
-                createData.customData = customData;
-            }
-            const created = await prisma.company.create({
-                data: createData as Parameters<typeof prisma.company.create>[0]["data"],
+                const customData: Record<string, unknown> = { ...companyCustomData };
+                if (companyExtraPhones.length > 0) customData.additionalPhones = companyExtraPhones;
+                if (Object.keys(customData).length > 0) createData.customData = customData;
+
+                return createData as Parameters<typeof prisma.company.createMany>[0]["data"][number];
+            })
+            .filter(Boolean);
+
+        if (companiesCreateData.length > 0) {
+            const created = await prisma.company.createMany({
+                data: companiesCreateData,
+            });
+            companiesCreated += created.count;
+
+            // Fetch inserted IDs so contacts/actions can link to the right company.
+            const createdCompanies = await prisma.company.findMany({
+                where: {
+                    listId,
+                    name: { in: namesToCreate },
+                },
                 select: { id: true, name: true },
             });
-            companyMap.set(created.name, { id: created.id, hasActions: false });
-            companiesCreated++;
+            for (const c of createdCompanies) {
+                // hasActions=false for newly created records in this batch
+                companyMap.set(c.name, { id: c.id, hasActions: false });
+            }
         }
     }
 

@@ -49,6 +49,7 @@ import {
     Check,
     Info,
     Video,
+    UserX,
 } from "lucide-react";
 import { BookingDrawer } from "@/components/sdr/BookingDrawer";
 import { ContactDrawer } from "./ContactDrawer";
@@ -584,6 +585,48 @@ export function UnifiedActionDrawer({
             setIsEditingCompany(false);
         }
     }, [isOpen, companyId]);
+
+    // Auto-expand history when prior actions exist
+    useEffect(() => {
+        if (actions.length > 0) {
+            setHistoryExpanded(true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [actions.length]);
+
+    // "Pas bon contact" — one-click BAD_CONTACT action
+    const handleBadContact = async (targetContactId?: string) => {
+        const campaignId = campaigns[0]?.id;
+        if (!campaignId) return;
+        try {
+            const channel = (campaigns[0]?.mission?.channel ?? "CALL") as "CALL" | "EMAIL" | "LINKEDIN";
+            const res = await fetch("/api/actions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contactId: targetContactId || contactId || undefined,
+                    companyId: (targetContactId || contactId) ? undefined : companyId,
+                    campaignId,
+                    channel,
+                    result: "BAD_CONTACT",
+                    note: "Mauvais contact",
+                }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success("Contact marqué", "Ce contact a été marqué comme mauvais contact");
+                queryClient.invalidateQueries({ queryKey: actionsQueryKey });
+                onActionRecorded?.();
+                if (!targetContactId || targetContactId === contactId) {
+                    onValidateAndNext?.();
+                }
+            } else {
+                showError("Erreur", json.error || "Impossible d'enregistrer");
+            }
+        } catch {
+            showError("Erreur", "Erreur de connexion");
+        }
+    };
 
     // Allo sync: sync call summaries then invalidate actions
     useEffect(() => {
@@ -1262,26 +1305,37 @@ export function UnifiedActionDrawer({
                                             </button>
                                         </>
                                     ) : (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setEditContactData({
-                                                    firstName: contact.firstName,
-                                                    lastName: contact.lastName,
-                                                    title: contact.title,
-                                                    email: contact.email,
-                                                    phone: contact.phone,
-                                                    additionalPhones: Array.isArray(contact.additionalPhones) ? contact.additionalPhones : [],
-                                                    additionalEmails: Array.isArray(contact.additionalEmails) ? contact.additionalEmails : [],
-                                                    linkedin: contact.linkedin,
-                                                });
-                                                setIsEditingContact(true);
-                                            }}
-                                            aria-label="Modifier le contact"
-                                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-                                        >
-                                            <Pencil className="w-4 h-4" aria-hidden="true" />
-                                        </button>
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleBadContact()}
+                                                title="Marquer comme mauvais contact"
+                                                aria-label="Marquer comme mauvais contact"
+                                                className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                                            >
+                                                <UserX className="w-4 h-4" aria-hidden="true" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setEditContactData({
+                                                        firstName: contact.firstName,
+                                                        lastName: contact.lastName,
+                                                        title: contact.title,
+                                                        email: contact.email,
+                                                        phone: contact.phone,
+                                                        additionalPhones: Array.isArray(contact.additionalPhones) ? contact.additionalPhones : [],
+                                                        additionalEmails: Array.isArray(contact.additionalEmails) ? contact.additionalEmails : [],
+                                                        linkedin: contact.linkedin,
+                                                    });
+                                                    setIsEditingContact(true);
+                                                }}
+                                                aria-label="Modifier le contact"
+                                                className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                                            >
+                                                <Pencil className="w-4 h-4" aria-hidden="true" />
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -1997,10 +2051,30 @@ export function UnifiedActionDrawer({
                                                                 <Mail className="w-3.5 h-3.5" aria-hidden="true" />
                                                             </a>
                                                         )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleBadContact(c.id);
+                                                            }}
+                                                            title="Mauvais contact"
+                                                            aria-label={`Marquer ${c.firstName || c.lastName || "contact"} comme mauvais contact`}
+                                                            className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                        >
+                                                            <UserX className="w-3.5 h-3.5" aria-hidden="true" />
+                                                        </button>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAddContact(true)}
+                                            className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-indigo-200 text-indigo-600 hover:bg-indigo-50 text-sm font-medium transition-colors"
+                                        >
+                                            <Plus className="w-4 h-4" aria-hidden="true" />
+                                            Ajouter un nouveau contact
+                                        </button>
                                     </div>
                                 )}
                             </div>
