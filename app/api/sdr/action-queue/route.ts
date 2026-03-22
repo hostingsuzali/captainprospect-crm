@@ -110,6 +110,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             ${sdrAssignmentJoin}
             WHERE m."isActive" = true
               AND (l."isActive" IS NULL OR l."isActive" = true)
+              AND (l."isArchived" IS NULL OR l."isArchived" = false)
               AND camp."isActive" = true
               ${sdrAssignmentWhere}
               AND (
@@ -150,6 +151,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             ${sdrAssignmentJoin}
             WHERE m."isActive" = true
               AND (l."isActive" IS NULL OR l."isActive" = true)
+              AND (l."isArchived" IS NULL OR l."isArchived" = false)
               AND camp."isActive" = true
               ${sdrAssignmentWhere}
               AND 'CALL' = ANY(m.channels)

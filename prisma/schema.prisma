@@ -690,6 +690,8 @@ model List {
   importConfig  Json?     // Store import configuration (type, mappings, custom fields)
   companies     Company[]
   isActive      Boolean   @default(true) // When false, list is disabled for this mission (e.g. excluded from assignment)
+  isArchived    Boolean   @default(false)
+  archivedAt    DateTime?
 
   // Optional commercial (client interlocuteur) owning this list
   commercialInterlocuteurId String?

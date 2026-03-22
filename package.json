@@ -35,6 +35,7 @@
     "imapflow": "^1.2.6",
     "ioredis": "^5.9.2",
     "juice": "^11.1.0",
+    "lru-cache": "^11.1.0",
     "lucide-react": "^0.562.0",
     "luxon": "^3.7.2",
     "mailparser": "^3.9.1",

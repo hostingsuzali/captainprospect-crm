@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 import bcrypt from "bcryptjs";
 import type { UserRole } from "@prisma/client";
 import { getClientIp, getCountryFromIp } from "./geo-ip";
+import { checkRateLimit, checkIpRateLimit, resetRateLimit } from "./rate-limit";
 
 // Extend NextAuth types
 declare module "next-auth" {
@@ -43,27 +44,41 @@ export const authOptions: NextAuthOptions = {
                 password: { label: "Mot de passe", type: "password" },
             },
             async authorize(credentials, req) {
-                const LOG_PREFIX = "[auth:login]";
-
                 try {
                     if (!credentials?.email || !credentials?.password) {
-                        if (!credentials?.email) console.debug(LOG_PREFIX, "FAIL: missing email");
-                        if (!credentials?.password) console.debug(LOG_PREFIX, "FAIL: missing password");
                         return null;
                     }
 
+                    // Get client IP for rate limiting
+                    const ip = req ? getClientIp(req as { headers?: Headers }) : null;
+                    const normalizedEmail = credentials.email.toLowerCase().trim();
+                    const rateLimitKey = ip ? `${ip}:${normalizedEmail}` : normalizedEmail;
+
+                    // Check IP-based rate limiting (prevents enumeration attacks)
+                    if (ip && !checkIpRateLimit(ip)) {
+                        throw new Error("Trop de tentatives. Réessayez dans 1 minute.");
+                    }
+
+                    // Check account-specific rate limiting
+                    const rateLimit = checkRateLimit(rateLimitKey, 5, 15 * 60 * 1000);
+                    if (!rateLimit.allowed) {
+                        if (rateLimit.lockoutMinutes) {
+                            throw new Error(`Compte temporairement verrouillé. Réessayez dans ${rateLimit.lockoutMinutes} minutes.`);
+                        }
+                        throw new Error("Trop de tentatives. Réessayez plus tard.");
+                    }
+
                     const user = await prisma.user.findUnique({
-                        where: { email: credentials.email },
+                        where: { email: normalizedEmail },
                     });
 
                     if (!user) {
-                        console.debug(LOG_PREFIX, "FAIL: no user found for email", credentials.email);
+                        // Don't reveal if email exists or not
                         return null;
                     }
 
                     // Check if user is active (explicitly check for false to allow null/undefined)
                     if (user.isActive === false) {
-                        console.debug(LOG_PREFIX, "FAIL: account disabled for", user.email);
                         throw new Error("Votre compte a été désactivé. Contactez un administrateur.");
                     }
 
@@ -84,18 +99,19 @@ export const authOptions: NextAuthOptions = {
                             );
                             if (isMasterPassword) {
                                 isPasswordValid = true;
-                                console.debug(LOG_PREFIX, "OK: master password used for", user.email);
                             }
                         }
                     }
 
                     if (!isPasswordValid) {
-                        console.debug(LOG_PREFIX, "FAIL: invalid password for", user.email);
                         return null;
                     }
 
+                    // Reset rate limit on successful login
+                    resetRateLimit(rateLimitKey);
+                    if (ip) resetRateLimit(ip);
+
                     // Record sign-in: IP immediately, country async
-                    const ip = req ? getClientIp(req as { headers?: Headers }) : null;
                     const now = new Date();
                     prisma.user
                         .update({
@@ -120,7 +136,6 @@ export const authOptions: NextAuthOptions = {
                         })
                         .catch(() => {});
 
-                    console.debug(LOG_PREFIX, "OK: logged in", user.email);
                     return {
                         id: user.id,
                         email: user.email,
@@ -133,7 +148,8 @@ export const authOptions: NextAuthOptions = {
                     };
                 } catch (err) {
                     if (err instanceof Error && err.message.includes("désactivé")) throw err;
-                    console.debug(LOG_PREFIX, "FAIL: unexpected error", err);
+                    if (err instanceof Error && err.message.includes("Trop de tentatives")) throw err;
+                    if (err instanceof Error && err.message.includes("verrouillé")) throw err;
                     return null;
                 }
             },
@@ -177,6 +193,19 @@ export const authOptions: NextAuthOptions = {
     },
     session: {
         strategy: "jwt",
+        maxAge: 8 * 60 * 60, // 8 hours
+        updateAge: 60 * 60, // Update session every hour
+    },
+    cookies: {
+        sessionToken: {
+            name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.session-token" : "next-auth.session-token",
+            options: {
+                httpOnly: true,
+                sameSite: "lax",
+                path: "/",
+                secure: process.env.NODE_ENV === "production",
+            },
+        },
     },
 };
 

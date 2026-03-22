@@ -88,7 +88,7 @@ export const PATCH = withErrorHandler(async (
     const { id } = await params;
     const body = await request.json();
 
-    const { name, type, source, missionId, commercialInterlocuteurId, isActive } = body;
+    const { name, type, source, missionId, commercialInterlocuteurId, isActive, isArchived } = body;
 
     // Load current list with mission + client for validation
     const existing = await prisma.list.findUnique({
@@ -147,6 +147,12 @@ export const PATCH = withErrorHandler(async (
     // isActive: use raw SQL so this works even if Prisma client was generated before the column existed
     if (typeof isActive === 'boolean') {
         await prisma.$executeRaw`UPDATE "List" SET "isActive" = ${isActive} WHERE id = ${id}`;
+    }
+
+    // isArchived: use raw SQL so this works even if Prisma client was generated before the column existed
+    if (typeof isArchived === 'boolean') {
+        const archivedAt = isArchived ? new Date() : null;
+        await prisma.$executeRaw`UPDATE "List" SET "isArchived" = ${isArchived}, "archivedAt" = ${archivedAt} WHERE id = ${id}`;
     }
 
     const hasOtherUpdates =
@@ -211,6 +217,12 @@ export const PATCH = withErrorHandler(async (
     // Attach isActive from DB when we updated it (client may not have the field in its type yet)
     if (typeof isActive === 'boolean' && updatedList) {
         (updatedList as { isActive?: boolean }).isActive = isActive;
+    }
+
+    // Attach isArchived from DB when we updated it
+    if (typeof isArchived === 'boolean' && updatedList) {
+        (updatedList as { isArchived?: boolean; archivedAt?: Date | null }).isArchived = isArchived;
+        (updatedList as { isArchived?: boolean; archivedAt?: Date | null }).archivedAt = isArchived ? new Date() : null;
     }
 
     return successResponse(updatedList!);

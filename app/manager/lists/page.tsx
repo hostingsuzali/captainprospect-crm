@@ -19,6 +19,8 @@ import {
     Download,
     Database, // newly added for search tab
     Edit,
+    Archive,
+    ArchiveRestore,
 } from "lucide-react";
 import Link from "next/link";
 import { ListingSearchTab } from "@/components/listing/ListingSearchTab";
@@ -35,6 +37,8 @@ interface ListData {
     type: "SUZALI" | "CLIENT" | "MIXED";
     source?: string;
     createdAt: string;
+    isArchived?: boolean;
+    archivedAt?: string | null;
     mission?: {
         id: string;
         name: string;
@@ -86,7 +90,9 @@ export default function ListsPage() {
         queryFn: fetchListsApi,
     });
     const [searchQuery, setSearchQuery] = useState("");
-    const [typeFilter, setTypeFilter] = useState<string>("all");
+    const [sizeFilter, setSizeFilter] = useState<string>("all");
+    const [qualityFilter, setQualityFilter] = useState<string>("all");
+    const [showArchived, setShowArchived] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deletingList, setDeletingList] = useState<ListData | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -145,6 +151,54 @@ export default function ListsPage() {
     // CONTEXT MENU ITEMS
     // ============================================
 
+    const handleArchiveToggle = async (list: ListData) => {
+        const newArchivedState = !list.isArchived;
+        
+        // Optimistic update
+        queryClient.setQueryData<ListData[]>(LISTS_QUERY_KEY, (old) => {
+            if (!old) return old;
+            return old.map((l) =>
+                l.id === list.id
+                    ? { ...l, isArchived: newArchivedState, archivedAt: newArchivedState ? new Date().toISOString() : null }
+                    : l
+            );
+        });
+
+        try {
+            const res = await fetch(`/api/lists/${list.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ isArchived: newArchivedState }),
+            });
+            const json = await res.json();
+
+            if (json.success) {
+                success(
+                    newArchivedState ? "Liste archivée" : "Liste désarchivée",
+                    `${list.name} a été ${newArchivedState ? "archivée" : "désarchivée"}`
+                );
+            } else {
+                // Rollback on error
+                queryClient.setQueryData<ListData[]>(LISTS_QUERY_KEY, (old) => {
+                    if (!old) return old;
+                    return old.map((l) =>
+                        l.id === list.id ? { ...l, isArchived: list.isArchived, archivedAt: list.archivedAt } : l
+                    );
+                });
+                showError("Erreur", json.error || "Impossible de modifier la liste");
+            }
+        } catch (err) {
+            // Rollback on error
+            queryClient.setQueryData<ListData[]>(LISTS_QUERY_KEY, (old) => {
+                if (!old) return old;
+                return old.map((l) =>
+                    l.id === list.id ? { ...l, isArchived: list.isArchived, archivedAt: list.archivedAt } : l
+                );
+            });
+            showError("Erreur", "Impossible de modifier la liste");
+        }
+    };
+
     const getContextMenuItems = (list: ListData) => [
         {
             label: "Voir les détails",
@@ -162,6 +216,13 @@ export default function ListsPage() {
             onClick: () => window.open(`/api/lists/${list.id}/export`, "_blank"),
         },
         {
+            label: list.isArchived ? "Désarchiver" : "Archiver",
+            icon: list.isArchived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />,
+            onClick: () => handleArchiveToggle(list),
+            variant: "default" as const,
+            divider: true,
+        },
+        {
             label: "Supprimer",
             icon: <Trash2 className="w-4 h-4" />,
             onClick: () => {
@@ -169,7 +230,6 @@ export default function ListsPage() {
                 setShowDeleteModal(true);
             },
             variant: "danger" as const,
-            divider: true,
         },
     ];
 
@@ -182,9 +242,27 @@ export default function ListsPage() {
             list.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             list.mission?.name.toLowerCase().includes(searchQuery.toLowerCase());
 
-        const matchesType = typeFilter === "all" || list.type === typeFilter;
+        // Size filter based on contact count
+        const contactCount = list.stats?.contactCount || 0;
+        let matchesSize = true;
+        if (sizeFilter === "small") matchesSize = contactCount < 50;
+        else if (sizeFilter === "medium") matchesSize = contactCount >= 50 && contactCount < 200;
+        else if (sizeFilter === "large") matchesSize = contactCount >= 200;
 
-        return matchesSearch && matchesType;
+        // Quality filter based on actionable %
+        const totalContacts = list.stats?.contactCount || 0;
+        const actionablePercent = totalContacts > 0
+            ? Math.round(((list.stats?.completeness?.ACTIONABLE || 0) / totalContacts) * 100)
+            : 0;
+        let matchesQuality = true;
+        if (qualityFilter === "low") matchesQuality = actionablePercent < 50;
+        else if (qualityFilter === "medium") matchesQuality = actionablePercent >= 50 && actionablePercent < 80;
+        else if (qualityFilter === "high") matchesQuality = actionablePercent >= 80;
+
+        // Archived: when ON show only archived, when OFF show only non-archived
+        const matchesArchived = showArchived ? !!list.isArchived : !list.isArchived;
+
+        return matchesSearch && matchesSize && matchesQuality && matchesArchived;
     });
 
     // ============================================
@@ -299,194 +377,220 @@ export default function ListsPage() {
                         </div>
                     )}
 
-                    {/* Premium Filters */}
-                    <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-4">
-                        <div className="flex-1 relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    {/* Compact Filter Bar */}
+                    <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2">
+                        <div className="relative flex-1 max-w-xs">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                             <input
                                 type="text"
-                                placeholder="Rechercher une liste par nom ou par mission..."
+                                placeholder="Rechercher..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="mgr-search-input w-full h-11 pl-12 pr-10 text-sm font-medium text-slate-900 bg-slate-50 border border-transparent focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-lg transition-all"
+                                className="w-full h-8 pl-9 pr-8 text-xs font-medium text-slate-900 bg-slate-50 border border-transparent focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/10 rounded-md transition-all"
                             />
                             {searchQuery && (
                                 <button
                                     onClick={() => setSearchQuery("")}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-slate-200 rounded-lg transition-colors"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-200 rounded transition-colors"
                                 >
-                                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
                                 </button>
                             )}
                         </div>
-                        <select
-                            value={typeFilter}
-                            onChange={(e) => setTypeFilter(e.target.value)}
-                            className="h-11 px-4 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 bg-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 cursor-pointer transition-all"
-                        >
-                            <option value="all">Tous les types</option>
-                            <option value="SUZALI">🔮 Suzali</option>
-                            <option value="CLIENT">🏢 Client</option>
-                            <option value="MIXED">🔄 Mixte</option>
-                        </select>
-                    </div>
 
-                    {/* Lists Grid */}
-                    {isLoading && lists.length === 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                            {[1, 2, 3, 4, 5, 6].map(i => (
-                                <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 animate-pulse">
-                                    <div className="flex items-center gap-4 mb-5">
-                                        <div className="w-12 h-12 bg-slate-100 rounded-xl" />
-                                        <div className="space-y-2 flex-1">
-                                            <div className="h-4 bg-slate-100 rounded w-1/2" />
-                                            <div className="h-3 bg-slate-100 rounded w-1/3" />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <div className="h-2 bg-slate-100 rounded w-full" />
-                                        <div className="h-8 bg-slate-100 rounded w-full" />
-                                    </div>
-                                </div>
+                        <div className="h-5 w-px bg-slate-200" />
+
+                        {/* Size filter */}
+                        <div className="flex items-center gap-1">
+                            {[
+                                { value: "all", label: "Toutes tailles" },
+                                { value: "small", label: "< 50" },
+                                { value: "medium", label: "50–200" },
+                                { value: "large", label: "200+" },
+                            ].map((s) => (
+                                <button
+                                    key={s.value}
+                                    onClick={() => setSizeFilter(s.value)}
+                                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                                        sizeFilter === s.value
+                                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent"
+                                    }`}
+                                >
+                                    {s.label}
+                                </button>
                             ))}
                         </div>
-                    ) : filteredLists.length === 0 ? (
-                        <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 shadow-sm">
-                            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-50 to-slate-50 border border-indigo-100/50 flex items-center justify-center mx-auto mb-6 shadow-sm shadow-indigo-500/5">
-                                <List className="w-10 h-10 text-indigo-400" />
+
+                        <div className="h-5 w-px bg-slate-200" />
+
+                        {/* Quality filter */}
+                       
+
+                        <div className="h-5 w-px bg-slate-200" />
+
+                        {/* Archive toggle — shows ONLY archived when active */}
+                        <button
+                            onClick={() => setShowArchived(p => !p)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                                showArchived
+                                    ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent"
+                            }`}
+                        >
+                            <Archive className="w-3.5 h-3.5" />
+                            Archivées
+                        </button>
+
+                        {/* Spacer */}
+                        <div className="flex-1" />
+
+                        {/* Result count */}
+                        <span className="text-xs font-medium text-slate-400">
+                            {filteredLists.length} liste{filteredLists.length !== 1 ? "s" : ""}
+                        </span>
+
+                        {(searchQuery || sizeFilter !== "all" || qualityFilter !== "all" || showArchived) && (
+                            <button
+                                onClick={() => { setSearchQuery(""); setSizeFilter("all"); setQualityFilter("all"); setShowArchived(false); }}
+                                className="text-xs font-medium text-slate-400 hover:text-rose-500 transition-colors"
+                            >
+                                Réinitialiser
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Table View */}
+                    {isLoading && lists.length === 0 ? (
+                        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                            <div className="divide-y divide-slate-100">
+                                {[1, 2, 3, 4, 5, 6].map(i => (
+                                    <div key={i} className="flex items-center gap-4 px-5 py-3.5 animate-pulse">
+                                        <div className="w-8 h-8 bg-slate-100 rounded-lg flex-shrink-0" />
+                                        <div className="flex-1 space-y-1.5">
+                                            <div className="h-3.5 bg-slate-100 rounded w-1/3" />
+                                            <div className="h-2.5 bg-slate-100 rounded w-1/5" />
+                                        </div>
+                                        <div className="h-3 bg-slate-100 rounded w-12" />
+                                        <div className="h-3 bg-slate-100 rounded w-16" />
+                                        <div className="h-3 bg-slate-100 rounded w-10" />
+                                    </div>
+                                ))}
                             </div>
-                            <h3 className="text-xl font-bold text-slate-900 mb-2">
-                                {searchQuery || typeFilter !== "all"
-                                    ? "Aucune liste ne correspond à vos critères"
+                        </div>
+                    ) : filteredLists.length === 0 ? (
+                        <div className="text-center py-16 bg-white rounded-xl border border-slate-200">
+                            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-50 to-slate-50 border border-indigo-100/50 flex items-center justify-center mx-auto mb-4">
+                                <List className="w-7 h-7 text-indigo-400" />
+                            </div>
+                            <h3 className="text-base font-bold text-slate-900 mb-1">
+                                {searchQuery || sizeFilter !== "all" || qualityFilter !== "all" || showArchived
+                                    ? "Aucune liste ne correspond"
                                     : "Aucune liste de contacts"}
                             </h3>
-                            <p className="text-sm text-slate-500 mb-8 max-w-md mx-auto">
-                                {searchQuery || typeFilter !== "all"
-                                    ? "Essayez de modifier vos filtres ou votre terme de recherche."
-                                    : "Commencez par importer une base de données existante ou créez une nouvelle liste depuis zéro."}
+                            <p className="text-xs text-slate-500 mb-6 max-w-sm mx-auto">
+                                {searchQuery || sizeFilter !== "all" || qualityFilter !== "all"
+                                    ? "Modifiez vos filtres."
+                                    : "Importez une base de données ou créez une nouvelle liste."}
                             </p>
-                            {!searchQuery && typeFilter === "all" && (
-                                <div className="flex items-center justify-center gap-4">
-                                    <Link href="/manager/lists/import" className="flex items-center gap-2 h-11 px-6 text-sm font-medium border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-indigo-600 rounded-lg transition-colors shadow-sm">
-                                        <Upload className="w-4 h-4" />
-                                        Importer un CSV
-                                    </Link>
-                                </div>
+                            {!searchQuery && sizeFilter === "all" && qualityFilter === "all" && !showArchived && (
+                                <Link href="/manager/lists/import" className="inline-flex items-center gap-2 h-9 px-5 text-xs font-medium border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-indigo-600 rounded-lg transition-colors shadow-sm">
+                                    <Upload className="w-3.5 h-3.5" />
+                                    Importer un CSV
+                                </Link>
                             )}
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                            {filteredLists.map((list, index) => {
-                                const totalContacts = list.stats?.contactCount || 0;
-                                const actionablePercent = totalContacts > 0
-                                    ? Math.round(((list.stats?.completeness?.ACTIONABLE || 0) / totalContacts) * 100)
-                                    : 0;
+                        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                            {/* Table header */}
+                            <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_80px_80px_80px_100px_90px_36px] gap-3 px-5 py-2.5 bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                                <span>Nom</span>
+                                <span>Mission</span>
+                                <span className="text-center">Type</span>
+                                <span className="text-center">Sociétés</span>
+                                <span className="text-center">Contacts</span>
+                                <span className="text-center">Source</span>
+                                <span></span>
+                            </div>
+                            {/* Table rows */}
+                            <div className="divide-y divide-slate-100">
+                                {filteredLists.map((list) => {
+                                    const totalContacts = list.stats?.contactCount || 0;
+                                    const actionablePercent = totalContacts > 0
+                                        ? Math.round(((list.stats?.completeness?.ACTIONABLE || 0) / totalContacts) * 100)
+                                        : 0;
 
-                                return (
-                                    <div
-                                        key={list.id}
-                                        onClick={() => router.push(`/manager/lists/${list.id}`)}
-                                        onContextMenu={(e) => handleContextMenu(e, list)}
-                                        className="group bg-white border border-slate-200 hover:border-indigo-300 rounded-2xl p-5 cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/5 hover:-translate-y-1 relative overflow-hidden flex flex-col"
-                                        style={{ animationDelay: `${index * 50}ms` }}
-                                    >
-                                        {/* Subtle gradient background effect on hover */}
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/5 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-                                        <div className="flex items-start justify-between mb-5 relative z-10">
-                                            <div className="flex items-center gap-4 min-w-0">
-                                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 group-hover:shadow-md group-hover:border-indigo-200 flex-shrink-0">
-                                                    <List className="w-6 h-6 text-slate-400 group-hover:text-indigo-500 transition-colors" />
+                                    return (
+                                        <div
+                                            key={list.id}
+                                            onClick={() => router.push(`/manager/lists/${list.id}`)}
+                                            onContextMenu={(e) => handleContextMenu(e, list)}
+                                            className={`group grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_80px_80px_80px_100px_90px_36px] gap-3 px-5 py-3 cursor-pointer transition-colors hover:bg-indigo-50/40 ${list.isArchived ? "opacity-60" : ""}`}
+                                        >
+                                            {/* Name + badges */}
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 flex items-center justify-center flex-shrink-0 group-hover:border-indigo-200 transition-colors">
+                                                    <List className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" />
                                                 </div>
-                                                <div className="min-w-0">
-                                                    <h3 className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate text-base">{list.name}</h3>
-                                                    <p className="text-xs font-medium text-slate-500 truncate mt-0.5">
-                                                        {list.mission?.name || <span className="text-amber-500 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">Sans mission assignée</span>}
-                                                    </p>
+                                                <div className="min-w-0 flex items-center gap-2">
+                                                    <span className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">{list.name}</span>
+                                                    {list.isArchived && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex-shrink-0">
+                                                            Archivée
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                                                <span className={`text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-full border ${TYPE_STYLES[list.type].color}`}>
+
+                                            {/* Mission */}
+                                            <div className="flex items-center min-w-0">
+                                                <span className="text-xs font-medium text-slate-500 truncate">
+                                                    {list.mission?.name || "—"}
+                                                </span>
+                                            </div>
+
+                                            {/* Type */}
+                                            <div className="flex items-center justify-center">
+                                                <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full border ${TYPE_STYLES[list.type].color}`}>
                                                     {TYPE_STYLES[list.type].label}
                                                 </span>
+                                            </div>
+
+                                            {/* Companies */}
+                                            <div className="flex items-center justify-center">
+                                                <span className="text-sm font-semibold text-slate-700">{list._count?.companies || 0}</span>
+                                            </div>
+
+                                            {/* Contacts */}
+                                            <div className="flex items-center justify-center">
+                                                <span className="text-sm font-semibold text-slate-700">{totalContacts}</span>
+                                            </div>
+
+                                            
+
+                                            {/* Source */}
+                                            <div className="flex items-center justify-center">
+                                                <span className="text-[11px] font-medium text-slate-400 truncate">{list.source || "—"}</span>
+                                            </div>
+
+                                            {/* Actions */}
+                                            <div className="flex items-center justify-center">
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleContextMenu(e, list);
                                                     }}
-                                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
                                                 >
                                                     <MoreVertical className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         </div>
-
-                                        {/* Stats block */}
-                                        <div className="flex items-center gap-4 mb-5 p-3 rounded-xl bg-slate-50/50 border border-slate-100 group-hover:border-indigo-100/50 transition-colors relative z-10">
-                                            <div className="flex-1 text-center">
-                                                <div className="flex items-center justify-center gap-1.5 mb-1">
-                                                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sociétés</span>
-                                                </div>
-                                                <p className="text-lg font-bold text-slate-900">{list._count?.companies || 0}</p>
-                                            </div>
-                                            <div className="w-px h-8 bg-slate-200" />
-                                            <div className="flex-1 text-center">
-                                                <div className="flex items-center justify-center gap-1.5 mb-1">
-                                                    <Users className="w-3.5 h-3.5 text-slate-400" />
-                                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Contacts</span>
-                                                </div>
-                                                <p className="text-lg font-bold text-slate-900">{totalContacts}</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Completeness logic */}
-                                        <div className="mt-auto relative z-10">
-                                            {totalContacts > 0 ? (
-                                                <div className="space-y-2.5">
-                                                    <div className="flex items-center justify-between text-xs">
-                                                        <span className="font-medium text-slate-500">Qualité de la donnée</span>
-                                                        <span className={`font-bold ${actionablePercent >= 80 ? 'text-emerald-600' : actionablePercent >= 50 ? 'text-amber-600' : 'text-slate-600'}`}>
-                                                            {actionablePercent}% actionnable
-                                                        </span>
-                                                    </div>
-                                                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden flex gap-0.5">
-                                                        <div
-                                                            className="h-full bg-rose-400 transition-all duration-1000"
-                                                            style={{ width: `${((list.stats?.completeness?.INCOMPLETE || 0) / totalContacts) * 100}%` }}
-                                                        />
-                                                        <div
-                                                            className="h-full bg-amber-400 transition-all duration-1000 delay-100"
-                                                            style={{ width: `${((list.stats?.completeness?.PARTIAL || 0) / totalContacts) * 100}%` }}
-                                                        />
-                                                        <div
-                                                            className="h-full bg-emerald-500 transition-all duration-1000 delay-200"
-                                                            style={{ width: `${((list.stats?.completeness?.ACTIONABLE || 0) / totalContacts) * 100}%` }}
-                                                        />
-                                                    </div>
-                                                    <div className="flex items-center justify-between text-[10px] font-medium text-slate-400 mt-1">
-                                                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-rose-400" /> {list.stats?.completeness?.INCOMPLETE || 0}</span>
-                                                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-amber-400" /> {list.stats?.completeness?.PARTIAL || 0}</span>
-                                                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {list.stats?.completeness?.ACTIONABLE || 0}</span>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="h-[76px] flex flex-col items-center justify-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                                                    <p className="text-xs font-medium text-slate-500">Aucun contact importé</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Footer */}
-                                        <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-100 text-[10px] font-semibold text-slate-400 relative z-10">
-                                            <span className="uppercase tracking-wider">Source: {list.source || "Inconnue"}</span>
-                                            <span className="uppercase tracking-wider">Créée le {new Date(list.createdAt).toLocaleDateString("fr-FR")}</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </>
