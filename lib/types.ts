@@ -33,7 +33,20 @@ export type ActionResult =
     | "CONNECTION_SENT"
     | "MESSAGE_SENT"
     | "REPLIED"
-    | "NOT_INTERESTED";
+    | "NOT_INTERESTED"
+    | "REFUS"
+    | "REFUS_ARGU"
+    | "REFUS_CATEGORIQUE"
+    | "RELANCE"
+    | "RAPPEL"
+    | "GERE_PAR_SIEGE"
+    | "FAUX_NUMERO"
+    | "PROJET_A_SUIVRE"
+    | "MAUVAIS_INTERLOCUTEUR"
+    | "MAIL_UNIQUEMENT"
+    | "BARRAGE_SECRETAIRE"
+    | "MAIL_DOC"
+    | "HORS_CIBLE";
 
 // Opportunity urgency levels
 export type Urgency = "SHORT" | "MEDIUM" | "LONG";
@@ -56,6 +69,19 @@ export const ACTION_RESULT_LABELS: Record<string, string> = {
     MESSAGE_SENT: "Message envoyé",
     REPLIED: "A répondu",
     NOT_INTERESTED: "Pas intéressé",
+    REFUS: "Refus",
+    REFUS_ARGU: "Refus argu",
+    REFUS_CATEGORIQUE: "Refus catégorique",
+    RELANCE: "Relance",
+    RAPPEL: "Rappel",
+    GERE_PAR_SIEGE: "Géré par le siège",
+    FAUX_NUMERO: "Faux numéro",
+    PROJET_A_SUIVRE: "Projet à suivre",
+    MAUVAIS_INTERLOCUTEUR: "Mauvais interlocuteur",
+    MAIL_UNIQUEMENT: "Mail uniquement",
+    BARRAGE_SECRETAIRE: "Barrage secrétaire",
+    MAIL_DOC: "Mail doc",
+    HORS_CIBLE: "Hors cible",
 };
 
 export const CHANNEL_LABELS: Record<Channel, string> = {

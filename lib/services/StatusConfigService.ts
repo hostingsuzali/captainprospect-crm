@@ -60,6 +60,19 @@ const LEGACY_PRIORITY: Record<string, { order: number; label: ActionPriorityLabe
     MESSAGE_SENT: { order: 999, label: "SKIP" },
     REPLIED: { order: 2, label: "FOLLOW_UP" },
     NOT_INTERESTED: { order: 999, label: "SKIP" },
+    REFUS: { order: 999, label: "SKIP" },
+    REFUS_ARGU: { order: 999, label: "SKIP" },
+    REFUS_CATEGORIQUE: { order: 999, label: "SKIP" },
+    RELANCE: { order: 1, label: "CALLBACK" },
+    RAPPEL: { order: 1, label: "CALLBACK" },
+    GERE_PAR_SIEGE: { order: 999, label: "SKIP" },
+    FAUX_NUMERO: { order: 999, label: "SKIP" },
+    PROJET_A_SUIVRE: { order: 2, label: "FOLLOW_UP" },
+    MAUVAIS_INTERLOCUTEUR: { order: 999, label: "SKIP" },
+    MAIL_UNIQUEMENT: { order: 999, label: "SKIP" },
+    BARRAGE_SECRETAIRE: { order: 999, label: "SKIP" },
+    MAIL_DOC: { order: 999, label: "SKIP" },
+    HORS_CIBLE: { order: 999, label: "SKIP" },
 };
 
 export interface ScopeContext {

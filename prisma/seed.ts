@@ -229,6 +229,19 @@ const RESULT_CATEGORY_MAP: Record<string, string> = {
     MESSAGE_SENT: "OTHER",
     REPLIED: "OTHER",
     NOT_INTERESTED: "OTHER",
+    REFUS: "DISQUALIFIED",
+    REFUS_ARGU: "DISQUALIFIED",
+    REFUS_CATEGORIQUE: "DISQUALIFIED",
+    RELANCE: "CALLBACK_REQUESTED",
+    RAPPEL: "CALLBACK_REQUESTED",
+    GERE_PAR_SIEGE: "OTHER",
+    FAUX_NUMERO: "OTHER",
+    PROJET_A_SUIVRE: "INTERESTED",
+    MAUVAIS_INTERLOCUTEUR: "OTHER",
+    MAIL_UNIQUEMENT: "OTHER",
+    BARRAGE_SECRETAIRE: "OTHER",
+    MAIL_DOC: "OTHER",
+    HORS_CIBLE: "DISQUALIFIED",
 };
 
 const GLOBAL_STATUS_DEFINITIONS = [
@@ -243,6 +256,19 @@ const GLOBAL_STATUS_DEFINITIONS = [
     { code: "INVALIDE", label: "Invalide", sortOrder: 9, requiresNote: false, priorityLabel: "RETRY" as const, priorityOrder: 4, triggersOpportunity: false, triggersCallback: false },
     { code: "DISQUALIFIED", label: "Disqualifié", sortOrder: 10, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
     { code: "ENVOIE_MAIL", label: "Envoie mail", sortOrder: 11, requiresNote: true, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "REFUS", label: "Refus", sortOrder: 12, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "REFUS_ARGU", label: "Refus argu", sortOrder: 13, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "REFUS_CATEGORIQUE", label: "Refus catégorique", sortOrder: 14, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "RELANCE", label: "Relance", sortOrder: 15, requiresNote: true, priorityLabel: "CALLBACK" as const, priorityOrder: 1, triggersOpportunity: false, triggersCallback: true },
+    { code: "RAPPEL", label: "Rappel", sortOrder: 16, requiresNote: true, priorityLabel: "CALLBACK" as const, priorityOrder: 1, triggersOpportunity: false, triggersCallback: true },
+    { code: "GERE_PAR_SIEGE", label: "Géré par le siège", sortOrder: 17, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "FAUX_NUMERO", label: "Faux numéro", sortOrder: 18, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "PROJET_A_SUIVRE", label: "Projet à suivre", sortOrder: 19, requiresNote: true, priorityLabel: "FOLLOW_UP" as const, priorityOrder: 2, triggersOpportunity: true, triggersCallback: false },
+    { code: "MAUVAIS_INTERLOCUTEUR", label: "Mauvais interlocuteur", sortOrder: 20, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "MAIL_UNIQUEMENT", label: "Mail uniquement", sortOrder: 21, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "BARRAGE_SECRETAIRE", label: "Barrage secrétaire", sortOrder: 22, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "MAIL_DOC", label: "Mail doc", sortOrder: 23, requiresNote: true, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
+    { code: "HORS_CIBLE", label: "Hors cible", sortOrder: 24, requiresNote: false, priorityLabel: "SKIP" as const, priorityOrder: 999, triggersOpportunity: false, triggersCallback: false },
 ];
 
 async function seedResultCategories() {

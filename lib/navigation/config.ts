@@ -210,6 +210,12 @@ export const SDR_NAV: NavSection[] = [
         permission: "pages.action",
       },
       {
+        href: "/sdr/calendar",
+        icon: Calendar,
+        label: "Calendrier",
+        permission: "pages.action",
+      },
+      {
         href: "/sdr/history",
         icon: History,
         label: "Historique",

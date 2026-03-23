@@ -232,24 +232,21 @@ export function GlobalSidebar({ navigation }: GlobalSidebarProps) {
         let cancelled = false;
         (async () => {
             try {
-                const res = await fetch("/api/sdr/callbacks?limit=200");
+                // For SDRs: show only callbacks from their assigned mission in the badge
+                // For BDs: show all callbacks from their assigned missions
+                const endpoint = userRole === "SDR" 
+                    ? "/api/sdr/callbacks/count?assignedOnly=true"
+                    : "/api/sdr/callbacks/count";
+                const res = await fetch(endpoint);
                 const json = await res.json();
                 if (cancelled || !json.success) return;
-                const list = json.data as Array<{
-                    callbackDate?: string | null;
-                }>;
-                setCallbacksCount(list.length);
-                const now = new Date();
-                const futureWithDate = list
-                    .filter(
-                        (c) => c.callbackDate && new Date(c.callbackDate) >= now
-                    )
-                    .map((c) => new Date(c.callbackDate!))
-                    .sort((a, b) => a.getTime() - b.getTime());
-                const next = futureWithDate[0] ?? null;
-                setNextCallbackDate(
-                    next ? `Proch. ${formatCallbackDate(next)}` : null
-                );
+                setCallbacksCount(json.count ?? 0);
+                if (json.nextCallbackDate) {
+                    const next = new Date(json.nextCallbackDate);
+                    setNextCallbackDate(`Proch. ${formatCallbackDate(next)}`);
+                } else {
+                    setNextCallbackDate(null);
+                }
             } catch {
                 if (!cancelled) {
                     setCallbacksCount(0);
