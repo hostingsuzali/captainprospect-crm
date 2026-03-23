@@ -80,32 +80,13 @@ export async function GET(request: Request) {
                 whereClause.campaign = { missionId: { in: assignedMissionIds } };
             }
         } else if (!isBooker) {
-            // SDR: own callbacks for assigned missions + all callbacks for missions where they are team lead
-            // If SDR has no assignments, show all their callbacks (no mission filter)
-            const allMissionIds = [...new Set([...assignedMissionIds, ...teamLeadMissionIds])];
-            
+            // SDR: When mission is selected, show ALL callbacks for that mission
+            // When no mission selected, show all callbacks created by this SDR
             if (missionIdParam) {
-                // Specific mission requested
-                if (allMissionIds.length > 0 && !allMissionIds.includes(missionIdParam)) {
-                    return NextResponse.json({ success: true, data: [] });
-                }
-                // Show callbacks for this mission only
-                whereClause.sdrId = session.user.id;
+                // Show ALL callbacks for this specific mission (no assignment check)
                 whereClause.campaign = { missionId: missionIdParam };
-            } else if (allMissionIds.length > 0) {
-                // Has assignments: filter by those missions
-                const missionFilter = { missionId: { in: allMissionIds } };
-                const orParts: Array<{ sdrId: string; campaign: { missionId: string | { in: string[] } } } | { campaign: { missionId: string | { in: string[] } } }> = [
-                    { sdrId: session.user.id, campaign: missionFilter },
-                ];
-                if (teamLeadMissionIds.length > 0) {
-                    orParts.push({
-                        campaign: { missionId: { in: teamLeadMissionIds } },
-                    });
-                }
-                whereClause.OR = orParts;
             } else {
-                // No assignments: show all callbacks for this SDR (no mission filter)
+                // No mission filter: show all callbacks created by this SDR
                 whereClause.sdrId = session.user.id;
             }
         } else {
