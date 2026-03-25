@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireRole } from "@/lib/api-utils";
 import { prisma } from "@/lib/prisma";
 import { pauseSession, updateLastActivity } from "@/lib/activity/session-manager";
 import { shouldAutoPause } from "@/lib/activity/status-resolver";
@@ -13,21 +12,7 @@ import { ACTIVITY_LIMITS } from "@/lib/activity/constants";
 
 export async function POST(request: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.id) {
-            return NextResponse.json(
-                { success: false, error: "Non autorisé" },
-                { status: 401 }
-            );
-        }
-
-        // Only SDRs, BOOKERs and BUSINESS_DEVELOPERs can send heartbeat
-        if (!["SDR", "BUSINESS_DEVELOPER", "BOOKER"].includes(session.user.role)) {
-            return NextResponse.json(
-                { success: false, error: "Non autorisé" },
-                { status: 403 }
-            );
-        }
+        const session = await requireRole(["SDR", "BUSINESS_DEVELOPER", "BOOKER"], request);
 
         const userId = session.user.id;
         const today = new Date();

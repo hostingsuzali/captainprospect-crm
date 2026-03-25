@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import {
     Calendar, Download, RefreshCw, Target, User, Briefcase, TrendingUp, X, Phone, Clock, Search,
     Activity, BrainCircuit, Zap, Flame, Trophy, Play, CheckCircle2, LayoutDashboard, Sparkles, FileText, Loader2, List,
-    BarChart3, GitCompare
+    BarChart3, GitCompare, ChevronDown, ChevronUp, AlertTriangle, ThumbsUp, ThumbsDown, PhoneOff, PhoneMissed, UserX, Mail, ArrowRight
 } from "lucide-react";
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -52,6 +52,11 @@ export default function AnalyticsPage() {
     const [aiRecapExtras, setAiRecapExtras] = useState<Array<{ id: string; label: string; answer: string }>>([]);
     const [isLoadingAiRecap, setIsLoadingAiRecap] = useState(false);
     const [isLoadingFollowUp, setIsLoadingFollowUp] = useState<string | null>(null);
+
+    // Phase-by-phase AI analysis
+    const [aiPhase, setAiPhase] = useState<number>(0); // 0=idle, 1=collecting, 2=statuses, 3=notes, 4=recommendations, 5=done
+    const [showFullRecap, setShowFullRecap] = useState(false);
+    const [expandedStatusCode, setExpandedStatusCode] = useState<string | null>(null);
 
     // Status labels from mission config (or global fallback)
     const defaultColors: Record<string, string> = {
@@ -320,13 +325,22 @@ export default function AnalyticsPage() {
         }));
     }, [stats]);
 
-    // AI Recap - fetch from API
+    // AI Recap - fetch from API with phase-by-phase animation
     const fetchAiRecap = useCallback(async () => {
         setIsLoadingAiRecap(true);
         setAiRecap(null);
         setAiRecapExtras([]);
+        setShowFullRecap(false);
+        setAiPhase(1);
+
+        await new Promise(r => setTimeout(r, 800));
+        setAiPhase(2);
+
+        await new Promise(r => setTimeout(r, 1000));
+        setAiPhase(3);
+
         try {
-            const res = await fetch("/api/analytics/ai-recap", {
+            const fetchPromise = fetch("/api/analytics/ai-recap", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -338,6 +352,11 @@ export default function AnalyticsPage() {
                     listIds: selectedLists,
                 }),
             });
+
+            await new Promise(r => setTimeout(r, 900));
+            setAiPhase(4);
+
+            const res = await fetchPromise;
             const json = await res.json();
             if (json.success && json.data?.recap) {
                 setAiRecap(json.data.recap);
@@ -345,6 +364,7 @@ export default function AnalyticsPage() {
         } catch (err) {
             console.error("AI recap fetch error:", err);
         } finally {
+            setAiPhase(5);
             setIsLoadingAiRecap(false);
         }
     }, [dateRange, selectedMissions, selectedSdrs, selectedClients, selectedLists]);
@@ -620,11 +640,11 @@ export default function AnalyticsPage() {
                 <div className="absolute -bottom-32 -left-32 w-72 h-72 rounded-full blur-3xl opacity-20 pointer-events-none" style={{ background: "radial-gradient(circle, #A78BFA, transparent 70%)" }} />
 
                 <button
-                    className="absolute top-6 right-6 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all text-[11px] font-semibold backdrop-blur-sm z-20 disabled:opacity-60"
+                    className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600/80 to-indigo-600/80 hover:from-violet-500/90 hover:to-indigo-500/90 border border-violet-400/30 text-white transition-all text-[12px] font-bold backdrop-blur-sm z-20 disabled:opacity-60 shadow-lg shadow-violet-900/30"
                     onClick={() => fetchAiRecap()}
                     disabled={isLoadingAiRecap}
                 >
-                    <RefreshCw className={cn("w-3.5 h-3.5", isLoadingAiRecap && "animate-spin")} /> Ré-analyser
+                    {isLoadingAiRecap ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BrainCircuit className="w-3.5 h-3.5" />} Ré-analyser
                 </button>
 
                 <div className="relative z-10 flex items-center gap-3 mb-5">
@@ -635,24 +655,104 @@ export default function AnalyticsPage() {
                     <span className="text-[13px] font-medium text-white/50">Analyse des notes et statuts</span>
                 </div>
 
-                {isLoadingAiRecap ? (
-                    <div className="relative z-10 flex items-center gap-3 py-8">
-                        <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
-                        <span className="text-white/70 font-medium">Analyse des notes en cours...</span>
-                    </div>
-                ) : aiRecap ? (
-                    <div className="relative z-10 space-y-6">
-                        <div className="text-[14.5px] leading-relaxed text-white/90 max-w-4xl prose prose-invert prose-sm max-w-none [&_strong]:text-white [&_ul]:my-2 [&_li]:my-0.5" dangerouslySetInnerHTML={{ __html: aiRecap.replace(/\n/g, "<br />").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />
+                {/* Phase-by-phase analysis progress */}
+                {isLoadingAiRecap && aiPhase > 0 && (
+                    <div className="relative z-10 py-4 space-y-3">
+                        {[
+                            { phase: 1, icon: <Activity className="w-4 h-4" />, label: "Collecte des données...", sub: "Récupération des appels et notes" },
+                            { phase: 2, icon: <Phone className="w-4 h-4" />, label: "Analyse des statuts d'appels...", sub: `${statusItems.length} statuts différents détectés` },
+                            { phase: 3, icon: <FileText className="w-4 h-4" />, label: "Analyse des notes d'appels...", sub: "Extraction des objections et patterns" },
+                            { phase: 4, icon: <Sparkles className="w-4 h-4" />, label: "Génération des recommandations...", sub: "Synthèse IA en cours" },
+                        ].map(({ phase, icon, label, sub }) => (
+                            <div
+                                key={phase}
+                                className={cn(
+                                    "flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-500",
+                                    aiPhase > phase ? "bg-emerald-500/10 border border-emerald-500/20" :
+                                    aiPhase === phase ? "bg-violet-500/15 border border-violet-400/30 animate-pulse" :
+                                    "bg-white/5 border border-white/5 opacity-40"
+                                )}
+                            >
+                                <div className={cn(
+                                    "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-500",
+                                    aiPhase > phase ? "bg-emerald-500/20 text-emerald-400" :
+                                    aiPhase === phase ? "bg-violet-500/30 text-violet-300" :
+                                    "bg-white/10 text-white/30"
+                                )}>
+                                    {aiPhase > phase ? <CheckCircle2 className="w-4 h-4" /> : aiPhase === phase ? <Loader2 className="w-4 h-4 animate-spin" /> : icon}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className={cn(
+                                        "text-[13px] font-bold transition-colors duration-500",
+                                        aiPhase > phase ? "text-emerald-300" :
+                                        aiPhase === phase ? "text-white" :
+                                        "text-white/30"
+                                    )}>{label}</div>
+                                    <div className={cn(
+                                        "text-[11px] transition-colors duration-500",
+                                        aiPhase >= phase ? "text-white/50" : "text-white/20"
+                                    )}>{sub}</div>
+                                </div>
+                                {aiPhase === phase && (
+                                    <div className="w-16 h-1.5 rounded-full bg-white/10 overflow-hidden shrink-0">
+                                        <div className="h-full bg-violet-400 rounded-full animate-[progressPulse_1.5s_ease-in-out_infinite]" style={{ width: '70%' }} />
+                                    </div>
+                                )}
+                                {aiPhase > phase && (
+                                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider shrink-0">OK</span>
+                                )}
+                            </div>
+                        ))}
 
-                        <div className="flex flex-wrap gap-2">
-                            <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider self-center mr-1">Voir plus :</span>
+                        {/* Live status mini-cards during phase 2 */}
+                        {aiPhase >= 2 && statusItems.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2 pl-12 animate-in fade-in duration-500">
+                                {statusItems.slice(0, 5).map((item) => (
+                                    <div key={item.code} className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5">
+                                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                        <span className="text-[10px] font-bold text-white/70">{item.label}</span>
+                                        <span className="text-[10px] font-black text-white/90">{item.count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* AI Recap Result */}
+                {!isLoadingAiRecap && aiRecap ? (
+                    <div className="relative z-10 space-y-5">
+                        {/* Collapsible recap text */}
+                        <div className="relative">
+                            <div
+                                className={cn(
+                                    "text-[14px] leading-relaxed text-white/90 max-w-4xl prose prose-invert prose-sm max-w-none [&_strong]:text-white [&_ul]:my-2 [&_li]:my-0.5 transition-all duration-300",
+                                    !showFullRecap && "max-h-[120px] overflow-hidden"
+                                )}
+                                dangerouslySetInnerHTML={{ __html: aiRecap.replace(/\n/g, "<br />").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }}
+                            />
+                            {!showFullRecap && (
+                                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#16103A] to-transparent pointer-events-none" />
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setShowFullRecap(!showFullRecap)}
+                            className="flex items-center gap-1.5 text-[12px] font-bold text-violet-300 hover:text-violet-200 transition-colors"
+                        >
+                            {showFullRecap ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            {showFullRecap ? "Réduire" : "Voir l'analyse complète"}
+                        </button>
+
+                        {/* Follow-up buttons */}
+                        <div className="flex flex-wrap gap-2 pt-2">
+                            <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider self-center mr-1">Approfondir :</span>
                             {[
-                                { id: "objections", label: "Objections détaillées", prompt: "Liste et analyse en détail toutes les objections récurrentes dans les notes (budget, timing, prestataire actuel, etc.). Donne des exemples concrets et des pistes de réponse." },
-                                { id: "causes", label: "Causes des disqualifications", prompt: "Quelles sont les causes racines des disqualifications ? Analyse les notes des contacts disqualifiés et synthétise les motifs récurrents." },
-                                { id: "recommandations", label: "Recommandations", prompt: "Donne des recommandations actionnables et concrètes pour améliorer les résultats (pitch, qualification, timing, etc.)." },
-                                { id: "meetings", label: "Facteurs de succès RDV", prompt: "Quels facteurs ou patterns ressortent dans les notes des contacts qui ont booké un RDV ? Que faire pour reproduire ce succès ?" },
-                                { id: "non_reponse", label: "Réduire la non-réponse", prompt: "Quelles stratégies proposer pour réduire le taux de non-réponse ? Analyse les notes et le contexte pour identifier des leviers." },
-                            ].map(({ id, label, prompt }) => {
+                                { id: "objections", label: "Objections détaillées", icon: <AlertTriangle className="w-3 h-3" />, prompt: "Liste et analyse en détail toutes les objections récurrentes dans les notes (budget, timing, prestataire actuel, etc.). Donne des exemples concrets et des pistes de réponse." },
+                                { id: "causes", label: "Causes disqualifications", icon: <UserX className="w-3 h-3" />, prompt: "Quelles sont les causes racines des disqualifications ? Analyse les notes des contacts disqualifiés et synthétise les motifs récurrents." },
+                                { id: "recommandations", label: "Recommandations", icon: <ThumbsUp className="w-3 h-3" />, prompt: "Donne des recommandations actionnables et concrètes pour améliorer les résultats (pitch, qualification, timing, etc.)." },
+                                { id: "meetings", label: "Facteurs de succès RDV", icon: <Trophy className="w-3 h-3" />, prompt: "Quels facteurs ou patterns ressortent dans les notes des contacts qui ont booké un RDV ? Que faire pour reproduire ce succès ?" },
+                                { id: "non_reponse", label: "Réduire la non-réponse", icon: <PhoneOff className="w-3 h-3" />, prompt: "Quelles stratégies proposer pour réduire le taux de non-réponse ? Analyse les notes et le contexte pour identifier des leviers." },
+                            ].map(({ id, label, icon, prompt }) => {
                                 const extra = aiRecapExtras.find((e) => e.id === id);
                                 const loading = isLoadingFollowUp === id;
                                 return (
@@ -661,33 +761,43 @@ export default function AnalyticsPage() {
                                         onClick={() => !extra && !loading && fetchAiFollowUp(id, prompt, label)}
                                         disabled={!!extra || loading}
                                         className={cn(
-                                            "px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border backdrop-blur-sm",
-                                            extra ? "bg-emerald-500/20 border-emerald-400/40 text-emerald-200 cursor-default" : "bg-white/10 hover:bg-white/20 border-white/20 text-white/90"
+                                            "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border backdrop-blur-sm",
+                                            extra ? "bg-emerald-500/20 border-emerald-400/40 text-emerald-200 cursor-default" : "bg-white/10 hover:bg-white/20 border-white/20 text-white/90 hover:border-violet-400/40"
                                         )}
                                     >
-                                        {loading ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null}
-                                        {extra ? `✓ ${label}` : label}
+                                        {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : extra ? <CheckCircle2 className="w-3 h-3" /> : icon}
+                                        {extra ? `${label}` : label}
                                     </button>
                                 );
                             })}
                         </div>
 
+                        {/* Follow-up expanded answers */}
                         {aiRecapExtras.length > 0 && (
-                            <div className="space-y-4 pt-4 border-t border-white/10">
+                            <div className="space-y-3 pt-3 border-t border-white/10">
                                 {aiRecapExtras.map((ex) => (
-                                    <div key={ex.id} className="rounded-xl bg-white/5 border border-white/10 p-4">
-                                        <div className="text-[11px] font-bold text-violet-300 uppercase tracking-wider mb-2">{ex.label}</div>
-                                        <div className="text-[13px] leading-relaxed text-white/85 [&_strong]:text-white [&_ul]:my-2 [&_li]:my-0.5" dangerouslySetInnerHTML={{ __html: ex.answer.replace(/\n/g, "<br />").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />
-                                    </div>
+                                    <details key={ex.id} className="group rounded-xl bg-white/5 border border-white/10 overflow-hidden" open>
+                                        <summary className="flex items-center gap-2 cursor-pointer px-4 py-3 hover:bg-white/5 transition-colors list-none">
+                                            <ChevronDown className="w-3.5 h-3.5 text-violet-400 group-open:rotate-180 transition-transform duration-200" />
+                                            <span className="text-[12px] font-bold text-violet-300 uppercase tracking-wider">{ex.label}</span>
+                                        </summary>
+                                        <div className="px-4 pb-4">
+                                            <div className="text-[13px] leading-relaxed text-white/85 [&_strong]:text-white [&_ul]:my-2 [&_li]:my-0.5" dangerouslySetInnerHTML={{ __html: ex.answer.replace(/\n/g, "<br />").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }} />
+                                        </div>
+                                    </details>
                                 ))}
                             </div>
                         )}
                     </div>
-                ) : (
-                    <div className="relative z-10 text-[14px] text-white/50 py-4">
-                        Aucune donnée pour générer l&apos;analyse. Vérifiez les filtres et la période.
+                ) : !isLoadingAiRecap ? (
+                    <div className="relative z-10 flex flex-col items-center justify-center py-8 gap-3">
+                        <div className="w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+                            <BrainCircuit className="w-7 h-7 text-violet-400/60" />
+                        </div>
+                        <p className="text-[14px] text-white/40 font-medium text-center">Cliquez sur <span className="text-violet-300 font-bold">Ré-analyser</span> pour lancer l&apos;analyse IA</p>
+                        <p className="text-[11px] text-white/25 text-center max-w-md">L&apos;IA analysera les statuts, les notes d&apos;appels et générera des recommandations actionnables phase par phase.</p>
                     </div>
-                )}
+                ) : null}
 
                 <div className="relative z-10 flex flex-wrap gap-4 mt-7">
                     <div className="flex items-center gap-3 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl px-5 py-3 hover:bg-white/10 transition-colors">
@@ -880,14 +990,16 @@ export default function AnalyticsPage() {
                 </div>
 
                 <div className="flex-[2] bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center justify-between mb-4">
                         <h3 className="text-[15px] font-bold text-slate-800">Résultats des appels</h3>
                         <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded">{totalCalls} total</span>
                     </div>
-                    <div className="flex items-center gap-6">
-                        <div className="w-28 h-28 relative shrink-0">
+
+                    {/* Donut + Legend */}
+                    <div className="flex items-center gap-5 mb-5">
+                        <div className="w-24 h-24 relative shrink-0">
                             <svg viewBox="0 0 52 52" className="w-full h-full -rotate-90 drop-shadow-sm">
-                                <circle cx="26" cy="26" r="20" fill="none" stroke="#f1f5f9" strokeWidth="6" />
+                                <circle cx="26" cy="26" r="20" fill="none" stroke="#f1f5f9" strokeWidth="5" />
                                 {(() => {
                                     let offset = 0;
                                     return statusItems.map((item) => {
@@ -895,30 +1007,142 @@ export default function AnalyticsPage() {
                                         const dashOffset = -offset;
                                         offset += len;
                                         return (
-                                            <circle key={item.code} cx="26" cy="26" r="20" fill="none" stroke={item.color} strokeWidth="6" strokeDasharray={`${len} 125`} strokeDashoffset={dashOffset} strokeLinecap="round" />
+                                            <circle key={item.code} cx="26" cy="26" r="20" fill="none" stroke={item.color} strokeWidth="5" strokeDasharray={`${len} 125`} strokeDashoffset={dashOffset} strokeLinecap="round" className="transition-all duration-500 hover:opacity-80 cursor-pointer" />
                                         );
                                     });
                                 })()}
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <span className="text-[17px] font-black text-slate-800 mt-1">{totalCalls}</span>
+                                <span className="text-[15px] font-black text-slate-800">{totalCalls}</span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase">appels</span>
                             </div>
                         </div>
-                        <div className="flex-1 flex flex-col gap-3 max-h-[140px] overflow-y-auto">
-                            {statusItems.map((item) => (
-                                <div key={item.code} className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2 text-[11.5px] font-bold text-slate-600">
-                                        <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: item.color }} />
-                                        <span className="truncate">{item.label}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                        <span className="text-[11.5px] font-black text-slate-800">{item.count}</span>
-                                        <span className="text-[10px] font-bold text-slate-400 w-7 text-right">{Math.round((item.count / totalCalls) * 100)}%</span>
-                                    </div>
-                                </div>
-                            ))}
+
+                        {/* Category summary chips */}
+                        <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50/80 border border-emerald-100/50">
+                                <ThumbsUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                <span className="text-[11px] font-bold text-emerald-700 flex-1">Positifs</span>
+                                <span className="text-[12px] font-black text-emerald-600">{segments?.success || 0}</span>
+                                <span className="text-[10px] font-bold text-emerald-500/70">{totalCalls > 0 ? Math.round(((segments?.success || 0) / totalCalls) * 100) : 0}%</span>
+                            </div>
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50/80 border border-slate-100/50">
+                                <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="text-[11px] font-bold text-slate-600 flex-1">Neutres</span>
+                                <span className="text-[12px] font-black text-slate-700">{segments?.neutral || 0}</span>
+                                <span className="text-[10px] font-bold text-slate-400">{totalCalls > 0 ? Math.round(((segments?.neutral || 0) / totalCalls) * 100) : 0}%</span>
+                            </div>
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50/80 border border-red-100/50">
+                                <ThumbsDown className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                                <span className="text-[11px] font-bold text-red-600 flex-1">Négatifs</span>
+                                <span className="text-[12px] font-black text-red-600">{segments?.failure || 0}</span>
+                                <span className="text-[10px] font-bold text-red-400">{totalCalls > 0 ? Math.round(((segments?.failure || 0) / totalCalls) * 100) : 0}%</span>
+                            </div>
                         </div>
                     </div>
+
+                    {/* Detailed expandable status list */}
+                    <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                        {statusItems.map((item) => {
+                            const pct = Math.round((item.count / totalCalls) * 100);
+                            const isExpanded = expandedStatusCode === item.code;
+                            return (
+                                <div key={item.code}>
+                                    <button
+                                        onClick={() => setExpandedStatusCode(isExpanded ? null : item.code)}
+                                        className={cn(
+                                            "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left group",
+                                            isExpanded ? "bg-slate-50 border border-slate-200" : "hover:bg-slate-50/80 border border-transparent"
+                                        )}
+                                    >
+                                        <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: item.color }} />
+                                        <span className="text-[11.5px] font-bold text-slate-600 flex-1 truncate">{item.label}</span>
+                                        <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden shrink-0">
+                                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: item.color }} />
+                                        </div>
+                                        <span className="text-[11.5px] font-black text-slate-800 w-8 text-right shrink-0">{item.count}</span>
+                                        <span className="text-[10px] font-bold text-slate-400 w-8 text-right shrink-0">{pct}%</span>
+                                        <ChevronDown className={cn("w-3 h-3 text-slate-300 transition-transform duration-200 shrink-0", isExpanded && "rotate-180")} />
+                                    </button>
+                                    {isExpanded && (
+                                        <div className="ml-5 pl-3 border-l-2 py-2 mb-1 space-y-1.5 animate-in slide-in-from-top-1 duration-200" style={{ borderColor: item.color }}>
+                                            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                                <span className="font-semibold">Part du total :</span>
+                                                <span className="font-black text-slate-700">{pct}%</span>
+                                                <span className="text-slate-300">|</span>
+                                                <span className="font-semibold">Volume :</span>
+                                                <span className="font-black text-slate-700">{item.count} appels</span>
+                                            </div>
+                                            <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                                                <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${pct}%`, backgroundColor: item.color }} />
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 leading-relaxed">
+                                                {item.code === 'NO_RESPONSE' && 'Prospects non joignables. Envisager des créneaux horaires alternatifs.'}
+                                                {item.code === 'MEETING_BOOKED' && 'RDV confirmés avec les prospects. Taux de succès optimal.'}
+                                                {item.code === 'CALLBACK_REQUESTED' && 'Rappels planifiés. Opportunités actives à convertir.'}
+                                                {item.code === 'INTERESTED' && 'Intérêt exprimé. Suivi prioritaire recommandé.'}
+                                                {item.code === 'DISQUALIFIED' && 'Contacts hors cible. Revoir les critères de qualification.'}
+                                                {item.code === 'BAD_CONTACT' && 'Coordonnées erronées. Vérifier la qualité des données.'}
+                                                {item.code === 'NOT_INTERESTED' && 'Refus explicite. Analyser les objections pour ajuster le pitch.'}
+                                                {item.code === 'MEETING_CANCELLED' && 'RDV annulés. Identifier les causes pour réduire le taux.'}
+                                                {item.code === 'ENVOIE_MAIL' && 'En attente d\'envoi de documentation. Suivi email à planifier.'}
+                                                {item.code === 'MAIL_ENVOYE' && 'Documentation envoyée. Relance à prévoir.'}
+                                                {item.code === 'INVALIDE' && 'Entrées invalides. Nettoyer la base de données.'}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+
+            {/* Call Status Funnel */}
+            <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm mb-6 hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-2 mb-5">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                        <ArrowRight className="w-5 h-5 text-indigo-500" />
+                    </div>
+                    <div>
+                        <h3 className="text-[15px] font-bold text-slate-800">Entonnoir de conversion</h3>
+                        <p className="text-[11px] text-slate-400">Du premier appel au RDV confirmé</p>
+                    </div>
+                </div>
+                <div className="flex items-end gap-1 justify-center">
+                    {[
+                        { label: 'Appels', value: funnel?.totalCalls || 0, color: '#6366f1', bg: 'bg-indigo-50' },
+                        { label: 'Contacts', value: funnel?.contacts || 0, color: '#8b5cf6', bg: 'bg-violet-50' },
+                        { label: 'Opportunités', value: funnel?.opportunities || 0, color: '#f59e0b', bg: 'bg-amber-50' },
+                        { label: 'RDV', value: funnel?.meetings || 0, color: '#10b981', bg: 'bg-emerald-50' },
+                    ].map((step, i, arr) => {
+                        const maxVal = arr[0].value || 1;
+                        const widthPct = Math.max(15, (step.value / maxVal) * 100);
+                        const convFromPrev = i > 0 && arr[i - 1].value > 0 ? Math.round((step.value / arr[i - 1].value) * 100) : null;
+                        return (
+                            <div key={step.label} className="flex flex-col items-center flex-1 gap-1.5">
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{step.label}</div>
+                                <div
+                                    className="w-full rounded-xl flex items-center justify-center transition-all duration-700 relative group cursor-default"
+                                    style={{
+                                        height: `${Math.max(48, (step.value / maxVal) * 140)}px`,
+                                        backgroundColor: step.color,
+                                        maxWidth: `${widthPct}%`,
+                                        minWidth: '60px',
+                                        opacity: 0.85 + (i * 0.05)
+                                    }}
+                                >
+                                    <span className="text-white font-black text-[16px]">{step.value}</span>
+                                </div>
+                                {convFromPrev !== null && (
+                                    <div className="flex items-center gap-1 text-[10px] font-bold" style={{ color: step.color }}>
+                                        <ArrowRight className="w-3 h-3" />
+                                        {convFromPrev}%
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 

@@ -4628,6 +4628,13 @@ textarea::placeholder {
     border: 1px solid rgba(91,79,232,0.12);
 }
 
+/* Analytics AI phase progress pulse */
+@keyframes progressPulse {
+    0% { width: 20%; opacity: 0.6; }
+    50% { width: 80%; opacity: 1; }
+    100% { width: 20%; opacity: 0.6; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .sdr-drawer * { animation: none !important; transition: none !important; }
 }

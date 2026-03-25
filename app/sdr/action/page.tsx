@@ -1507,72 +1507,7 @@ export default function SDRActionPage() {
         ? SCRIPT_TABS.filter(tab => scriptSections && scriptSections[tab.id])
         : [];
 
-    // ========== NO BLOCKS TODAY - EMPTY STATE ==========
-    if (!todayBlocksLoading && todayBlocksData && !todayBlocksData.hasBlocksToday) {
-        const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven'];
-        const weekBlocksByDay: Record<string, typeof todayBlocksData.weekBlocks> = {};
-        for (const wb of todayBlocksData.weekBlocks) {
-            const d = new Date(wb.date).toISOString().slice(0, 10);
-            if (!weekBlocksByDay[d]) weekBlocksByDay[d] = [];
-            weekBlocksByDay[d].push(wb);
-        }
-        const today = new Date();
-        const dow = today.getDay();
-        const monday = new Date(today);
-        monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
-
-        return (
-            <div className="flex items-center justify-center min-h-[70vh]">
-                <div className="max-w-md w-full mx-auto text-center px-6">
-                    <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6">
-                        <svg className="w-10 h-10 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                        </svg>
-                    </div>
-                    <h2 className="text-xl font-bold text-slate-800 mb-2">Aucune mission planifiée aujourd&apos;hui</h2>
-                    <p className="text-sm text-slate-500 mb-6">
-                        Votre manager n&apos;a pas encore planifié de créneaux pour aujourd&apos;hui.
-                        Contactez-le pour qu&apos;il organise vos journées via le hub de planification.
-                    </p>
-
-                    {/* Week preview */}
-                    {todayBlocksData.weekBlocks.length > 0 && (
-                        <div className="bg-white border border-slate-200 rounded-xl p-4 text-left">
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Vos créneaux cette semaine</p>
-                            <div className="space-y-2">
-                                {Array.from({ length: 5 }, (_, i) => {
-                                    const date = new Date(monday);
-                                    date.setDate(date.getDate() + i);
-                                    const dateStr = date.toISOString().slice(0, 10);
-                                    const dayBlocks = weekBlocksByDay[dateStr] ?? [];
-                                    const isToday = date.toDateString() === today.toDateString();
-                                    return (
-                                        <div key={i} className={`flex items-center gap-3 py-1.5 px-2 rounded-lg ${isToday ? 'bg-red-50' : ''}`}>
-                                            <span className={`text-xs font-bold w-8 ${isToday ? 'text-red-600' : 'text-slate-500'}`}>{weekDays[i]}</span>
-                                            <span className="text-xs text-slate-400 w-12">{date.getDate()}/{date.getMonth() + 1}</span>
-                                            {dayBlocks.length > 0 ? (
-                                                <div className="flex flex-wrap gap-1">
-                                                    {dayBlocks.map((b) => (
-                                                        <span key={b.id} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
-                                                            {b.mission.name} {b.startTime}–{b.endTime}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <span className={`text-xs italic ${isToday ? 'text-red-400' : 'text-slate-300'}`}>
-                                                    {isToday ? 'Aucun créneau' : '—'}
-                                                </span>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    }
+    // NOTE: Planning blocks are informational only — SDRs can prospect even without scheduled blocks today.
 
     // ========== TABLE VIEW ==========
     if (viewMode === "table") {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireAuth } from "@/lib/api-utils";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
@@ -26,16 +25,9 @@ const connectEmailSchema = z.object({
 // Get email connection status
 // ============================================
 
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
-
-        if (!session?.user?.id) {
-            return NextResponse.json(
-                { success: false, error: "Non autorisé" },
-                { status: 401 }
-            );
-        }
+        const session = await requireAuth(request);
 
         const user = await prisma.user.findUnique({
             where: { id: session.user.id },
@@ -79,14 +71,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
-
-        if (!session?.user?.id) {
-            return NextResponse.json(
-                { success: false, error: "Non autorisé" },
-                { status: 401 }
-            );
-        }
+        const session = await requireAuth(request);
 
         const body = await request.json();
         const parsed = connectEmailSchema.safeParse(body);
