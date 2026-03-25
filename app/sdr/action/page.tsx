@@ -1392,8 +1392,8 @@ export default function SDRActionPage() {
             return;
         }
 
-        // For MEETING_BOOKED with booking URLs, open booking drawer instead of submitting
-        if (selectedResult === "MEETING_BOOKED" && (currentAction.clientBookingUrl || currentAction.clientInterlocuteurs?.some((i: Record<string, unknown>) => (((i.bookingLinks as unknown[]) ?? []).length ?? 0) > 0))) {
+        // For MEETING_BOOKED, always open booking drawer so SDR can pick date/type/category
+        if (selectedResult === "MEETING_BOOKED") {
             setShowBookingDrawer(true);
             return;
         }
