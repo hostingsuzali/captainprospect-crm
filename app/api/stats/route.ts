@@ -5,6 +5,7 @@ import {
     requireRole,
     withErrorHandler,
 } from '@/lib/api-utils';
+import { Prisma } from '@prisma/client';
 
 // ============================================
 // GET /api/stats - Dashboard statistics
@@ -14,6 +15,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const session = await requireRole(['MANAGER', 'SDR', 'CLIENT'], request);
     const { searchParams } = new URL(request.url);
 
+    const fromParam = searchParams.get('from');
+    const toParam = searchParams.get('to');
     const missionId = searchParams.get('missionId');
     const startDateParam = searchParams.get('startDate');
     const endDateParam = searchParams.get('endDate');
@@ -22,7 +25,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     let dateFrom: Date;
     let dateTo: Date;
 
-    if (startDateParam && endDateParam) {
+    // Supports:
+    // - from/to (preferred for skills)
+    // - startDate/endDate (dashboard)
+    // - period (fallback)
+    if (fromParam && toParam) {
+        dateFrom = new Date(fromParam);
+        dateFrom.setHours(0, 0, 0, 0);
+        dateTo = new Date(toParam);
+        dateTo.setHours(23, 59, 59, 999);
+    } else if (startDateParam && endDateParam) {
         dateFrom = new Date(startDateParam);
         dateFrom.setHours(0, 0, 0, 0);
         dateTo = new Date(endDateParam);
@@ -49,7 +61,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         }
     }
 
+    // Daily stats need VOIP-call KPIs (talk time, interest rate, etc.)
+    // so we scope all call KPIs to CALL actions.
     const actionWhere: Record<string, unknown> = {
+        channel: 'CALL',
         createdAt: { gte: dateFrom, lte: dateTo },
     };
 
@@ -78,6 +93,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         opportunities,
         activeMissions,
         topSDRs,
+        totalTalkTimeAgg,
+        uniqueContactsById,
     ] = await Promise.all([
         // Total actions
         prisma.action.count({ where: actionWhere }),
@@ -127,26 +144,41 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
         // Top SDRs by total actions (only for managers)
         session.user.role === 'MANAGER'
-            ? prisma.action.groupBy({
-                by: ['sdrId'],
-                where: actionWhere,
-                _count: true,
-                orderBy: { _count: { sdrId: 'desc' } },
-                take: 10,
-            })
+            ? prisma.action
+                .groupBy({
+                    by: ['sdrId'],
+                    where: actionWhere as Prisma.ActionWhereInput,
+                    _count: true,
+                })
+                .then(rows => rows.sort((a, b) => b._count - a._count).slice(0, 10))
             : [],
+
+        // Talk time (seconds)
+        prisma.action.aggregate({
+            where: actionWhere as Prisma.ActionWhereInput,
+            _sum: { duration: true },
+        }),
+
+        // Unique contacts (distinct contactId values)
+        prisma.action.groupBy({
+            by: ['contactId'],
+            where: {
+                ...(actionWhere as Prisma.ActionWhereInput),
+                contactId: { not: null },
+            },
+            _count: true,
+        }),
     ]);
 
     // RDV leaderboard: rank SDRs by MEETING_BOOKED count (only for managers)
     let rdvBySdr: { sdrId: string; _count: number }[] = [];
     if (session.user.role === 'MANAGER') {
-        rdvBySdr = await prisma.action.groupBy({
+        const rows = await prisma.action.groupBy({
             by: ['sdrId'],
-            where: { ...actionWhere, result: 'MEETING_BOOKED' },
+            where: { ...(actionWhere as Prisma.ActionWhereInput), result: 'MEETING_BOOKED' },
             _count: true,
-            orderBy: { _count: { sdrId: 'desc' } },
-            take: 10,
         });
+        rdvBySdr = rows.sort((a, b) => b._count - a._count).slice(0, 10);
     }
 
     // Format results by type
@@ -157,7 +189,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         CALLBACK_REQUESTED: 0,
         MEETING_BOOKED: 0,
         DISQUALIFIED: 0,
-    };
+    } as Record<string, number>;
 
     actionsByResult.forEach((item) => {
         resultBreakdown[item.result] = item._count;
@@ -167,6 +199,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const conversionRate = totalActions > 0
         ? ((meetingsBooked / totalActions) * 100).toFixed(2)
         : '0.00';
+
+    const interestedCount = resultBreakdown.INTERESTED ?? 0;
+    const interestRate = totalActions > 0
+        ? Number(((meetingsBooked + interestedCount) / totalActions) * 100).toFixed(2)
+        : 0;
+
+    const uniqueContacts = uniqueContactsById.length;
+    const talkTimeSeconds = totalTalkTimeAgg._sum.duration ?? 0;
 
     // Get SDR names for leaderboard
     let leaderboard: { id: string; name: string; actions: number }[] = [];
@@ -205,13 +245,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             select: { createdAt: true },
         });
         lastActivityDate = lastAction?.createdAt?.toISOString() ?? null;
-
-        const distinctContacts = await prisma.action.findMany({
-            where: { ...actionWhere, contactId: { not: null } },
-            select: { contactId: true },
-            distinct: ['contactId'],
-        });
-        contactsReached = distinctContacts.length;
+        // We already computed unique contacts for the call KPIs above.
+        contactsReached = uniqueContacts;
 
         const mission = await prisma.mission.findFirst({
             where: {
@@ -227,10 +262,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     return successResponse({
         period,
         totalActions,
+        totalCalls: totalActions, // alias for skills
         meetingsBooked,
         opportunities,
         activeMissions,
         conversionRate: parseFloat(conversionRate),
+        interestRate,
+        uniqueContacts,
+        talkTimeSeconds,
         resultBreakdown,
         leaderboard,
         rdvLeaderboard,
