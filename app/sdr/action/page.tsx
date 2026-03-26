@@ -198,6 +198,26 @@ const RESULT_ICON_MAP: Record<string, React.ReactNode> = {
     DISQUALIFIED: <XCircle className="w-4 h-4" />,
     ENVOIE_MAIL: <Mail className="w-4 h-4" />,
     MAIL_ENVOYE: <Send className="w-4 h-4" />,
+    BARRAGE_STANDARD: <PhoneOff className="w-4 h-4" />,
+    BARRAGE_SECRETAIRE: <PhoneOff className="w-4 h-4" />,
+    NUMERO_KO: <PhoneOff className="w-4 h-4" />,
+    FAUX_NUMERO: <PhoneOff className="w-4 h-4" />,
+    INVALIDE: <Ban className="w-4 h-4" />,
+    REFUS: <XCircle className="w-4 h-4" />,
+    REFUS_ARGU: <XCircle className="w-4 h-4" />,
+    REFUS_CATEGORIQUE: <XCircle className="w-4 h-4" />,
+    RELANCE: <RotateCcw className="w-4 h-4" />,
+    RAPPEL: <Clock className="w-4 h-4" />,
+    PROJET_A_SUIVRE: <Sparkles className="w-4 h-4" />,
+    MAUVAIS_INTERLOCUTEUR: <Ban className="w-4 h-4" />,
+    MAIL_UNIQUEMENT: <Mail className="w-4 h-4" />,
+    MAIL_DOC: <Mail className="w-4 h-4" />,
+    HORS_CIBLE: <Ban className="w-4 h-4" />,
+    GERE_PAR_SIEGE: <Building2 className="w-4 h-4" />,
+    NOT_INTERESTED: <XCircle className="w-4 h-4" />,
+    CONNECTION_SENT: <Linkedin className="w-4 h-4" />,
+    MESSAGE_SENT: <Send className="w-4 h-4" />,
+    REPLIED: <MessageSquare className="w-4 h-4" />,
 };
 const TABLE_QUEUE_LIMIT = 120;
 const STATS_QUEUE_LIMIT = 250;
@@ -540,7 +560,7 @@ export default function SDRActionPage() {
     const [mailToSendChoiceNote, setMailToSendChoiceNote] = useState("");
 
     // Config-driven status options (from API)
-    const [statusConfig, setStatusConfig] = useState<{ statuses: Array<{ code: string; label: string; requiresNote: boolean }> } | null>(null);
+    const [statusConfig, setStatusConfig] = useState<{ statuses: Array<{ code: string; label: string; color: string | null; requiresNote: boolean }> } | null>(null);
 
     // Load filters + today-blocks
     useEffect(() => {
@@ -599,31 +619,27 @@ export default function SDRActionPage() {
         return () => controller.abort();
     }, [showError]);
 
-    // Fetch status config when mission is selected
+    // Fetch status config: global on mount, mission-specific when mission selected
     useEffect(() => {
-        if (!selectedMissionId) {
-            setStatusConfig(null);
-            return;
-        }
         const controller = new AbortController();
         const signal = controller.signal;
-        fetch(`/api/config/action-statuses?missionId=${selectedMissionId}`, { signal })
+        const url = selectedMissionId
+            ? `/api/config/action-statuses?missionId=${selectedMissionId}`
+            : `/api/config/action-statuses`;
+        fetch(url, { signal })
             .then((res) => res.json())
             .then((json) => {
                 if (signal.aborted) return;
-                if (json.success && json.data?.statuses) {
+                if (json.success && json.data?.statuses?.length) {
                     setStatusConfig({ statuses: json.data.statuses });
-                } else {
-                    setStatusConfig(null);
                 }
             })
             .catch((err) => {
                 if ((err as Error).name === "AbortError") return;
-                setStatusConfig(null);
-                showError("Impossible de charger la configuration des statuts");
+                console.error("Failed to load status config:", err);
             });
         return () => controller.abort();
-    }, [selectedMissionId, showError]);
+    }, [selectedMissionId]);
 
     const resultOptions = statusConfig?.statuses?.length
         ? statusConfig.statuses.map((s, i) => ({

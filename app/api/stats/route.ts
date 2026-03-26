@@ -4,14 +4,50 @@ import {
     successResponse,
     requireRole,
     withErrorHandler,
+    errorResponse,
 } from '@/lib/api-utils';
+import { validateApiKey, extractApiKey, logApiKeyUsage } from '@/lib/api-keys';
 
 // ============================================
 // GET /api/stats - Dashboard statistics
+// Supports both session auth and API key auth
 // ============================================
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    const session = await requireRole(['MANAGER', 'SDR', 'CLIENT'], request);
+    const startTime = Date.now();
+    const endpoint = '/api/stats';
+    
+    // Try API key auth first
+    const apiKey = extractApiKey(request);
+    let session;
+    let authType: 'session' | 'apikey' = 'session';
+    let apiKeyId: string | undefined;
+
+    if (apiKey) {
+        const validation = await validateApiKey(apiKey, endpoint, 'GET');
+        if (!validation.valid) {
+            if (validation.statusCode) {
+                return errorResponse(validation.error || 'Unauthorized', validation.statusCode);
+            }
+            return errorResponse(validation.error || 'Unauthorized', 401);
+        }
+        
+        // Build session from API key data
+        session = {
+            user: {
+                id: `apikey:${validation.key!.id}`,
+                role: validation.key!.role,
+                clientId: validation.key!.clientId,
+                missionId: validation.key!.missionId,
+            }
+        };
+        authType = 'apikey';
+        apiKeyId = validation.key!.id;
+    } else {
+        // Fall back to session auth
+        session = await requireRole(['MANAGER', 'SDR', 'CLIENT'], request);
+    }
+
     const { searchParams } = new URL(request.url);
 
     const missionId = searchParams.get('missionId');
@@ -55,14 +91,29 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
     // Role-based filtering
     if (session.user.role === 'SDR') {
-        actionWhere.sdrId = session.user.id;
-    } else if (session.user.role === 'CLIENT') {
-        actionWhere.campaign = {
-            mission: {
-                client: {
-                    users: { some: { id: session.user.id } },
+        actionWhere.sdrId = session.user.id.replace('apikey:', ''); // Handle API key prefix
+    } else if (session.user.role === 'CLIENT' || (authType === 'apikey' && session.user.clientId)) {
+        // Support both session-based CLIENT and API key with client scope
+        const clientId = session.user.role === 'CLIENT' 
+            ? await getClientIdFromSession(session.user.id)
+            : session.user.clientId;
+            
+        if (clientId) {
+            actionWhere.campaign = {
+                mission: {
+                    client: {
+                        id: clientId,
+                    },
                 },
-            },
+            };
+        }
+    }
+
+    // Apply mission scope from API key if present
+    if (session.user.missionId) {
+        actionWhere.campaign = {
+            ...actionWhere.campaign,
+            missionId: session.user.missionId,
         };
     }
 
@@ -224,7 +275,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         if (!isNaN(parsed) && parsed > 0) monthlyObjective = parsed;
     }
 
-    return successResponse({
+    const response = successResponse({
         period,
         totalActions,
         meetingsBooked,
@@ -238,4 +289,26 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         contactsReached,
         monthlyObjective,
     });
+
+    // Log API key usage if applicable
+    if (authType === 'apikey' && apiKeyId) {
+        const responseTimeMs = Date.now() - startTime;
+        const statusCode = 200;
+        logApiKeyUsage(apiKeyId, endpoint, 'GET', statusCode, responseTimeMs, request).catch(console.error);
+    }
+
+    return response;
 });
+
+// Helper function to get client ID from session user ID
+async function getClientIdFromSession(userId: string): Promise<string | null> {
+    // Remove apikey: prefix if present
+    const cleanId = userId.replace('apikey:', '');
+    
+    const user = await prisma.user.findUnique({
+        where: { id: cleanId },
+        select: { clientId: true },
+    });
+    
+    return user?.clientId || null;
+}

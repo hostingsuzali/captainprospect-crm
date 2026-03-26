@@ -206,28 +206,21 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
  });
 
     // Use service layer with transaction
-    try {
-        const action = await actionService.createAction({
-            contactId: data.contactId,
-            companyId: data.companyId,
-            sdrId: session.user.id,
-            campaignId: data.campaignId,
-            channel: data.channel,
-            result: data.result,
-            note: improvedNote ?? data.note,
-            callbackDate: data.callbackDate,
-            duration: data.duration,
-            meetingType: data.meetingType,
-            meetingCategory: data.meetingCategory,
-            meetingAddress: data.meetingAddress,
-            meetingJoinUrl: data.meetingJoinUrl,
-            meetingPhone: data.meetingPhone,
-        }, statusDef);
-        return successResponse(action, 201);
-    } catch (err) {
-        if (err instanceof Error && err.message === 'DUPLICATE_CALLBACK') {
-            return errorResponse('Un rappel est déjà en attente pour ce contact/campagne. Traitez-le ou reprogrammez-le avant d\'en créer un nouveau.', 409);
-        }
-        throw err;
-    }
+    const action = await actionService.createAction({
+        contactId: data.contactId,
+        companyId: data.companyId,
+        sdrId: session.user.id,
+        campaignId: data.campaignId,
+        channel: data.channel,
+        result: data.result,
+        note: improvedNote ?? data.note,
+        callbackDate: data.callbackDate,
+        duration: data.duration,
+        meetingType: data.meetingType,
+        meetingCategory: data.meetingCategory,
+        meetingAddress: data.meetingAddress,
+        meetingJoinUrl: data.meetingJoinUrl,
+        meetingPhone: data.meetingPhone,
+    }, statusDef);
+    return successResponse(action, 201);
 });

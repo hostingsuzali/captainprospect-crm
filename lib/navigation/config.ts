@@ -25,6 +25,7 @@ import {
   Database,
   FileDown,
   Activity,
+  Key,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
 
@@ -160,6 +161,12 @@ export const MANAGER_NAV: NavSection[] = [
         href: "/manager/settings",
         icon: Mail,
         label: "Notifications email",
+        permission: "pages.sdrs",
+      },
+      {
+        href: "/manager/api",
+        icon: Key,
+        label: "API & Intégrations",
         permission: "pages.sdrs",
       },
       {

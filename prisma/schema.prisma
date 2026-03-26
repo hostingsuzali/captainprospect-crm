@@ -433,6 +433,9 @@ model User {
   // Leexi imports
   leexiImports  LeexiCallImport[] @relation("LeexiImporter")
   
+  // API Keys created by this user
+  createdApiKeys ApiKey[] @relation("ApiKeyCreator")
+  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   
@@ -552,6 +555,9 @@ model Client {
   // Interlocuteurs (client's own sales team / commercials)
   interlocuteurs ClientInterlocuteur[]
 
+  // API Keys scoped to this client
+  apiKeys       ApiKey[]
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -652,6 +658,9 @@ model Mission {
 
   // Webhook call records (WithAllo, etc.)
   callRecords   CallRecord[]
+
+  // API Keys scoped to this mission
+  apiKeys       ApiKey[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -3189,4 +3198,104 @@ enum SessionTaskPriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+// ============================================
+// EXTERNAL API ACCESS - API Keys & Exposed Endpoints
+// ============================================
+
+model ApiKey {
+  id            String    @id @default(cuid())
+  name          String    // e.g., "OpenClaw Integration"
+  keyHash       String    @unique // SHA-256 hash of the key (key itself is shown only once)
+  keyPrefix     String    // First 8 chars for display (e.g., "cp_live_")
+  
+  // Scoping - what this key can access
+  role          UserRole  @default(MANAGER) // Effective role for permissions
+  clientId      String?   // If set, key is scoped to specific client
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  missionId     String?   // If set, key is scoped to specific mission
+  mission       Mission?  @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  
+  // Allowed endpoints (JSON array of endpoint patterns)
+  // e.g., ["/api/stats", "/api/stats/missions-summary"]
+  allowedEndpoints Json   @default("[\"/api/stats\",\"/api/stats/missions-summary\"]")
+  
+  // Rate limiting
+  rateLimitPerMinute Int   @default(60)
+  rateLimitPerHour   Int   @default(1000)
+  
+  // Status & metadata
+  isActive      Boolean   @default(true)
+  lastUsedAt    DateTime?
+  expiresAt     DateTime? // Optional expiration
+  
+  // Audit
+  createdById   String
+  createdBy     User      @relation("ApiKeyCreator", fields: [createdById], references: [id])
+  
+  // Usage tracking
+  usageLogs     ApiKeyUsageLog[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([keyHash])
+  @@index([isActive])
+  @@index([clientId])
+  @@index([createdById])
+}
+
+model ApiKeyUsageLog {
+  id            String    @id @default(cuid())
+  apiKeyId      String
+  apiKey        ApiKey    @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  
+  endpoint      String    // Full path accessed
+  method        String    // GET, POST, etc.
+  statusCode    Int       // HTTP response status
+  responseTimeMs Int       // Response time in milliseconds
+  
+  // Request context
+  ipAddress     String?
+  userAgent     String?
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([apiKeyId])
+  @@index([createdAt])
+  @@index([endpoint])
+}
+
+// ============================================
+// AVAILABLE EXTERNAL ENDPOINTS CONFIGURATION
+// ============================================
+
+model ExternalEndpoint {
+  id            String    @id @default(cuid())
+  path          String    @unique // e.g., "/api/stats"
+  name          String    // Display name: "Dashboard Statistics"
+  description   String?   @db.Text
+  
+  // HTTP methods allowed
+  methods       String[]  @default(["GET"]) // ["GET", "POST"]
+  
+  // Required role to access
+  minRole       UserRole  @default(MANAGER)
+  
+  // Scoping options
+  supportsClientScope Boolean @default(true)  // Can be scoped to client
+  supportsMissionScope Boolean @default(true) // Can be scoped to mission
+  
+  // Is this endpoint enabled for external access?
+  isEnabled     Boolean   @default(false)
+  
+  // Rate limiting defaults
+  defaultRateLimitPerMinute Int @default(60)
+  defaultRateLimitPerHour   Int @default(1000)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([isEnabled])
 }
