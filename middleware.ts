@@ -5,18 +5,24 @@ export default withAuth(
     function middleware(req) {
         const token = req.nextauth.token;
         const path = req.nextUrl.pathname;
+        const apiKey = req.headers.get("x-api-key");
 
-        // Check if user account is active
-        // Note: isActive is stored in the JWT token during login
-        // If a user is deactivated after login, they'll still have access until token expires
-        // For immediate deactivation, you'd need to implement token blacklisting
+        // 1. Autoriser l'accès si une API Key est présente
+        // On laisse la route API finale valider si la clé est correcte dans Supabase
+        if (apiKey) {
+            return NextResponse.next();
+        }
+
+        // 2. Vérification du compte actif pour les sessions normales
         if (token?.isActive === false) {
             return NextResponse.redirect(new URL("/blocked", req.url));
         }
 
-        // Role-based route protection
-        // SDR routes are accessible by SDR, BUSINESS_DEVELOPER and BOOKER (shared Sales execution)
-        if (path.startsWith("/sdr") && token?.role !== "SDR" && token?.role !== "BUSINESS_DEVELOPER" && token?.role !== "BOOKER") {
+        // 3. Protection des routes par rôle (Sessions uniquement)
+        if (path.startsWith("/sdr") && 
+            token?.role !== "SDR" && 
+            token?.role !== "BUSINESS_DEVELOPER" && 
+            token?.role !== "BOOKER") {
             return NextResponse.redirect(new URL("/unauthorized", req.url));
         }
 
@@ -44,11 +50,24 @@ export default withAuth(
     },
     {
         callbacks: {
-            authorized: ({ token }) => !!token,
+            // Autorise l'accès si un token de session existe OU si une API Key est fournie
+            authorized: ({ token, req }) => {
+                const apiKey = req.headers.get("x-api-key");
+                return !!token || !!apiKey;
+            },
         },
     }
 );
 
 export const config = {
-    matcher: ["/sdr/:path*", "/manager/:path*", "/client/:path*", "/developer/:path*", "/bd/:path*", "/commercial/:path*"],
+    // Liste des routes protégées par ce middleware
+    matcher: [
+        "/sdr/:path*", 
+        "/manager/:path*", 
+        "/client/:path*", 
+        "/developer/:path*", 
+        "/bd/:path*", 
+        "/commercial/:path*",
+        "/api/:path*" // Assure-toi que tes routes API sont bien incluses ici
+    ],
 };

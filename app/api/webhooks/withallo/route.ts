@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature } from "@/lib/webhooks/withallo/signature";
 import { scheduleVoipEvent } from "@/lib/voip/queue";
+import { parseCallEvent, processCallEvent } from "@/lib/webhooks/withallo/processCallEvent";
 
 function log(event: string, data: Record<string, unknown>): void {
   console.log(
@@ -51,6 +52,22 @@ export async function POST(request: NextRequest) {
     log("withallo_webhook_queue_error", {
       error: err instanceof Error ? err.message : String(err),
     });
+    // Fail-safe: persist call directly when queue infra is unavailable.
+    try {
+      const parsed = parseCallEvent(body as Record<string, unknown>);
+      if (parsed) {
+        await processCallEvent(parsed);
+        log("withallo_webhook_direct_processed", {
+          externalCallId: parsed.externalCallId,
+        });
+      } else {
+        log("withallo_webhook_direct_skipped_unparseable", {});
+      }
+    } catch (directErr) {
+      log("withallo_webhook_direct_error", {
+        error: directErr instanceof Error ? directErr.message : String(directErr),
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });
