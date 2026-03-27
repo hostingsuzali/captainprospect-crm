@@ -16,14 +16,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const missionId = searchParams.get("missionId") || undefined;
     const clientId = searchParams.get("clientId") || undefined;
 
-    if (!campaignId && !missionId && !clientId) {
-        return successResponse({
-            statuses: [],
-            nextSteps: [],
-            message: "Provide campaignId, missionId, or clientId",
-        });
-    }
-
+    // When no scope is provided, return GLOBAL statuses so SDRs always get
+    // the config-driven statuses defined in the manager settings page.
     const config = await statusConfigService.getEffectiveStatusConfig({
         campaignId,
         missionId,

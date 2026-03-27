@@ -4,15 +4,48 @@ import {
     successResponse,
     requireRole,
     withErrorHandler,
+    errorResponse,
 } from '@/lib/api-utils';
+import { validateApiKey, extractApiKey, logApiKeyUsage } from '@/lib/api-keys';
 
 // ============================================
 // GET /api/stats/missions-summary
 // Returns active missions with actionsThisWeek, meetingsThisWeek, lastActionAt for dashboard
+// Supports both session auth and API key auth
 // ============================================
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER'], request);
+    const startTime = Date.now();
+    const endpoint = '/api/stats/missions-summary';
+    
+    // Try API key auth first
+    const apiKey = extractApiKey(request);
+    let session;
+    let authType: 'session' | 'apikey' = 'session';
+    let apiKeyId: string | undefined;
+
+    if (apiKey) {
+        const validation = await validateApiKey(apiKey, endpoint, 'GET');
+        if (!validation.valid) {
+            return errorResponse(validation.error || 'Unauthorized', validation.statusCode || 401);
+        }
+        
+        // Build session from API key data
+        session = {
+            user: {
+                id: `apikey:${validation.key!.id}`,
+                role: validation.key!.role,
+                clientId: validation.key!.clientId,
+                missionId: validation.key!.missionId,
+            }
+        };
+        authType = 'apikey';
+        apiKeyId = validation.key!.id;
+    } else {
+        // Fall back to session auth
+        await requireRole(['MANAGER'], request);
+    }
+
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'month';
     const startDateParam = searchParams.get('startDate');
@@ -102,5 +135,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         lastActionAt: byMission[m.id]?.lastActionAt?.toISOString() ?? null,
     }));
 
-    return successResponse({ missions: data, period });
+    const response = successResponse({ missions: data, period });
+
+    // Log API key usage if applicable
+    if (authType === 'apikey' && apiKeyId) {
+        const responseTimeMs = Date.now() - startTime;
+        logApiKeyUsage(apiKeyId, endpoint, 'GET', 200, responseTimeMs, request).catch(console.error);
+    }
+
+    return response;
 });
