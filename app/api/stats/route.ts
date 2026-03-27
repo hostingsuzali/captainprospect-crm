@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import {
     successResponse,
     requireRole,
@@ -22,6 +23,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     let session;
     let authType: 'session' | 'apikey' = 'session';
     let apiKeyId: string | undefined;
+    let apiKeyClientId: string | null = null;
+    let apiKeyMissionId: string | null = null;
 
     if (apiKey) {
         const validation = await validateApiKey(apiKey, endpoint, 'GET');
@@ -43,10 +46,15 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         };
         authType = 'apikey';
         apiKeyId = validation.key!.id;
+        apiKeyClientId = validation.key!.clientId;
+        apiKeyMissionId = validation.key!.missionId;
     } else {
         // Fall back to session auth
         session = await requireRole(['MANAGER', 'SDR', 'CLIENT'], request);
     }
+
+    const userRole = session.user.role;
+    const userId = session.user.id;
 
     const { searchParams } = new URL(request.url);
 
@@ -85,22 +93,23 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         }
     }
 
-    const actionWhere: Record<string, unknown> = {
+    const actionWhere: Prisma.ActionWhereInput = {
         createdAt: { gte: dateFrom, lte: dateTo },
     };
+    const campaignWhere: Prisma.CampaignWhereInput = {};
 
     // Role-based filtering
-    if (session.user.role === 'SDR') {
-        actionWhere.sdrId = session.user.id.replace('apikey:', ''); // Handle API key prefix
-    } else if (session.user.role === 'CLIENT' || (authType === 'apikey' && session.user.clientId)) {
+    if (userRole === 'SDR') {
+        actionWhere.sdrId = userId.replace('apikey:', ''); // Handle API key prefix
+    } else if (userRole === 'CLIENT' || (authType === 'apikey' && apiKeyClientId)) {
         // Support both session-based CLIENT and API key with client scope
-        const clientId = session.user.role === 'CLIENT' 
-            ? await getClientIdFromSession(session.user.id)
-            : session.user.clientId;
+        const clientId = userRole === 'CLIENT'
+            ? await getClientIdFromSession(userId)
+            : apiKeyClientId;
             
         if (clientId) {
-            actionWhere.campaign = {
-                mission: {
+            campaignWhere.mission = {
+                is: {
                     client: {
                         id: clientId,
                     },
@@ -110,15 +119,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     }
 
     // Apply mission scope from API key if present
-    if (session.user.missionId) {
-        actionWhere.campaign = {
-            ...actionWhere.campaign,
-            missionId: session.user.missionId,
-        };
+    if (authType === 'apikey' && apiKeyMissionId) {
+        campaignWhere.missionId = apiKeyMissionId;
     }
 
     if (missionId) {
-        actionWhere.campaign = { missionId };
+        campaignWhere.missionId = missionId;
+    }
+
+    if (Object.keys(campaignWhere).length > 0) {
+        actionWhere.campaign = { is: campaignWhere };
     }
 
     // Get stats
@@ -149,12 +159,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         prisma.opportunity.count({
             where: {
                 createdAt: { gte: dateFrom, lte: dateTo },
-                ...(session.user.role === 'CLIENT' && {
+                ...(userRole === 'CLIENT' && {
                     contact: {
                         company: {
                             list: {
                                 mission: {
-                                    client: { users: { some: { id: session.user.id } } },
+                                    client: { users: { some: { id: userId } } },
                                 },
                             },
                         },
@@ -167,21 +177,21 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         prisma.mission.count({
             where: {
                 isActive: true,
-                ...(session.user.role === 'CLIENT' && {
-                    client: { users: { some: { id: session.user.id } } },
+                ...(userRole === 'CLIENT' && {
+                    client: { users: { some: { id: userId } } },
                 }),
-                ...(session.user.role === 'SDR' && {
-                    sdrAssignments: { some: { sdrId: session.user.id } },
+                ...(userRole === 'SDR' && {
+                    sdrAssignments: { some: { sdrId: userId } },
                 }),
             },
         }),
 
         // Top SDRs by total actions (only for managers)
-        session.user.role === 'MANAGER'
+        userRole === 'MANAGER'
             ? prisma.action.groupBy({
                 by: ['sdrId'],
                 where: actionWhere,
-                _count: true,
+                _count: { _all: true },
                 orderBy: { _count: { sdrId: 'desc' } },
                 take: 10,
             })
@@ -189,19 +199,30 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     ]);
 
     // RDV leaderboard: rank SDRs by MEETING_BOOKED count (only for managers)
-    let rdvBySdr: { sdrId: string; _count: number }[] = [];
-    if (session.user.role === 'MANAGER') {
-        rdvBySdr = await prisma.action.groupBy({
-            by: ['sdrId'],
-            where: { ...actionWhere, result: 'MEETING_BOOKED' },
-            _count: true,
-            orderBy: { _count: { sdrId: 'desc' } },
-            take: 10,
+    let rdvBySdr: { sdrId: string; _count: { _all: number } }[] = [];
+    if (userRole === 'MANAGER') {
+        const rdvRows = await prisma.action.findMany({
+            where: {
+                ...actionWhere,
+                result: 'MEETING_BOOKED',
+            },
+            select: { sdrId: true },
         });
+
+        const rdvCounts = new Map<string, number>();
+        rdvRows.forEach((row) => {
+            if (!row.sdrId) return;
+            rdvCounts.set(row.sdrId, (rdvCounts.get(row.sdrId) ?? 0) + 1);
+        });
+
+        rdvBySdr = [...rdvCounts.entries()]
+            .map(([sdrId, count]) => ({ sdrId, _count: { _all: count } }))
+            .sort((a, b) => b._count._all - a._count._all)
+            .slice(0, 10);
     }
 
     // Format results by type
-    const resultBreakdown = {
+    const resultBreakdown: Record<string, number> = {
         NO_RESPONSE: 0,
         BAD_CONTACT: 0,
         INTERESTED: 0,
@@ -229,18 +250,18 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             select: { id: true, name: true },
         });
         const nameMap = new Map(sdrs.map(u => [u.id, u.name]));
-        const actionMap = new Map(topSDRs.map(s => [s.sdrId, s._count]));
+        const actionMap = new Map(topSDRs.map(s => [s.sdrId, s._count._all]));
 
         leaderboard = topSDRs.map((s) => ({
             id: s.sdrId,
             name: nameMap.get(s.sdrId) || 'Unknown',
-            actions: s._count,
+            actions: s._count._all,
         }));
 
         rdvLeaderboard = rdvBySdr.map((s) => ({
             id: s.sdrId,
             name: nameMap.get(s.sdrId) || 'Unknown',
-            rdv: s._count,
+            rdv: s._count._all,
             actions: actionMap.get(s.sdrId) || 0,
         }));
     }
@@ -249,7 +270,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     let lastActivityDate: string | null = null;
     let contactsReached = 0;
     let monthlyObjective = 10;
-    if (session.user.role === 'CLIENT') {
+    if (userRole === 'CLIENT') {
         const lastAction = await prisma.action.findFirst({
             where: actionWhere,
             orderBy: { createdAt: 'desc' },
@@ -267,7 +288,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         const mission = await prisma.mission.findFirst({
             where: {
                 isActive: true,
-                client: { users: { some: { id: session.user.id } } },
+                client: { users: { some: { id: userId } } },
             },
             select: { objective: true },
         });

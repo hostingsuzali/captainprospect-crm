@@ -94,7 +94,7 @@ export default function ApiManagementPage() {
     missionId: "",
     selectedEndpoints: [] as string[],
     rateLimitPerMinute: 60,
-    rateLimitPerHour: 1000,
+    rateLimitPerHour: 3600,
     expiresAt: "",
   });
 
@@ -176,6 +176,10 @@ export default function ApiManagementPage() {
       toast.error("Please select at least one endpoint");
       return;
     }
+    if (formData.rateLimitPerMinute * 60 > formData.rateLimitPerHour) {
+      toast.error("Rate limit per hour must be at least per-minute × 60");
+      return;
+    }
 
     try {
       setCreating(true);
@@ -206,7 +210,7 @@ export default function ApiManagementPage() {
           missionId: "",
           selectedEndpoints: [],
           rateLimitPerMinute: 60,
-          rateLimitPerHour: 1000,
+          rateLimitPerHour: 3600,
           expiresAt: "",
         });
         loadData();
@@ -501,9 +505,15 @@ export default function ApiManagementPage() {
                   min={1}
                   max={1000}
                   value={formData.rateLimitPerMinute}
-                  onChange={(e) =>
-                    setFormData({ ...formData, rateLimitPerMinute: parseInt(e.target.value) || 60 })
-                  }
+                  onChange={(e) => {
+                    const minute = parseInt(e.target.value) || 60;
+                    const minHour = minute * 60;
+                    setFormData({
+                      ...formData,
+                      rateLimitPerMinute: minute,
+                      rateLimitPerHour: Math.max(formData.rateLimitPerHour, minHour),
+                    });
+                  }}
                 />
                 <p className="text-xs text-gray-500">Maximum requests per minute (1-1000)</p>
               </div>
@@ -511,14 +521,22 @@ export default function ApiManagementPage() {
                 <label className="text-sm font-medium text-gray-900">Rate Limit (per hour)</label>
                 <Input
                   type="number"
-                  min={1}
+                  min={formData.rateLimitPerMinute * 60}
                   max={10000}
                   value={formData.rateLimitPerHour}
                   onChange={(e) =>
-                    setFormData({ ...formData, rateLimitPerHour: parseInt(e.target.value) || 1000 })
+                    setFormData({
+                      ...formData,
+                      rateLimitPerHour: Math.max(
+                        formData.rateLimitPerMinute * 60,
+                        parseInt(e.target.value) || 3600
+                      ),
+                    })
                   }
                 />
-                <p className="text-xs text-gray-500">Maximum requests per hour (1-10000)</p>
+                <p className="text-xs text-gray-500">
+                  Maximum requests per hour ({formData.rateLimitPerMinute * 60}-10000)
+                </p>
               </div>
             </div>
 

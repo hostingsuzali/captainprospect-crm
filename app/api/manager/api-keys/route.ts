@@ -18,7 +18,7 @@ const createApiKeySchema = z.object({
   missionId: z.string().cuid().optional().nullable(),
   allowedEndpoints: z.array(z.string().min(1).max(500)).min(1, 'At least one endpoint required').max(50, 'Too many endpoints'),
   rateLimitPerMinute: z.number().int().min(1).max(1000).default(60),
-  rateLimitPerHour: z.number().int().min(1).max(10000).default(1000),
+  rateLimitPerHour: z.number().int().min(1).max(10000).default(3600),
   expiresAt: z.string().datetime().optional().nullable(),
 });
 
