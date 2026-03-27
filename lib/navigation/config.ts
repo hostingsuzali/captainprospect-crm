@@ -526,6 +526,12 @@ export const CLIENT_NAV: NavSection[] = [
         permission: "pages.dashboard",
       },
       {
+        href: "/client/portal/sales-playbook",
+        icon: Target,
+        label: "Sales Playbook",
+        permission: "pages.dashboard",
+      },
+      {
         href: "/client/portal/aide",
         icon: HelpCircle,
         label: "Aide",

@@ -89,6 +89,8 @@ export interface RdvImportMappings {
     meetingPhoneColumn?: string;
 }
 
+type MissingEntityHandling = "skip" | "create_company" | "create_contact_and_company";
+
 export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await requireRole(["MANAGER"], request);
 
@@ -97,6 +99,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const missionId = (formData.get("missionId") as string)?.trim();
     const listIdParam = (formData.get("listId") as string)?.trim() || null;
     const mappingsStr = (formData.get("mappings") as string)?.trim();
+    const missingEntityHandlingRaw = ((formData.get("missingEntityHandling") as string) || "skip").trim();
+    const missingEntityHandling: MissingEntityHandling =
+        missingEntityHandlingRaw === "create_company" || missingEntityHandlingRaw === "create_contact_and_company"
+            ? missingEntityHandlingRaw
+            : "skip";
 
     if (!file || !missionId || !mappingsStr) {
         return NextResponse.json(
@@ -173,6 +180,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     let created = 0;
     const errors: { row: number; message: string }[] = [];
+    let skippedInvalidDate = 0;
+    let skippedMissingEntity = 0;
+    let createdCompanies = 0;
+    let createdContacts = 0;
+    const fallbackListId = listIdParam || mission.lists[0]?.id || null;
 
     for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i], delimiter).map((v) => v.replace(/^"|"$/g, ""));
@@ -185,7 +197,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         const dateRaw = getVal(row, mappings.dateColumn);
         const callbackDate = dateRaw ? parseCsvDate(dateRaw) : undefined;
         if (!callbackDate) {
-            errors.push({ row: rowNum, message: "Date invalide ou manquante" });
+            skippedInvalidDate++;
             continue;
         }
 
@@ -220,13 +232,64 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         }
 
         if (!companyId) {
-            errors.push({
-                row: rowNum,
-                message: contactEmail
-                    ? `Contact ou société non trouvé (email: ${contactEmail})`
-                    : `Société non trouvée (nom: ${companyName || "—"})`,
+            if (missingEntityHandling === "skip") {
+                skippedMissingEntity++;
+                continue;
+            }
+            if (!fallbackListId) {
+                skippedMissingEntity++;
+                continue;
+            }
+
+            const defaultCompanyName = companyName
+                || (contactEmail.includes("@") ? contactEmail.split("@")[1].split(".")[0] : "")
+                || "Société importée";
+            const normalizedCompanyName = defaultCompanyName.trim() || "Société importée";
+
+            const existingCompany = await prisma.company.findFirst({
+                where: {
+                    listId: fallbackListId,
+                    name: { equals: normalizedCompanyName, mode: "insensitive" },
+                },
+                select: { id: true },
             });
-            continue;
+
+            if (existingCompany) {
+                companyId = existingCompany.id;
+            } else {
+                const newCompany = await prisma.company.create({
+                    data: {
+                        listId: fallbackListId,
+                        name: normalizedCompanyName,
+                    },
+                    select: { id: true },
+                });
+                companyId = newCompany.id;
+                createdCompanies++;
+            }
+        }
+
+        if (missingEntityHandling === "create_contact_and_company" && contactEmail && !contactId && companyId) {
+            const existingContact = await prisma.contact.findFirst({
+                where: {
+                    companyId,
+                    email: { equals: contactEmail, mode: "insensitive" },
+                },
+                select: { id: true },
+            });
+            if (existingContact) {
+                contactId = existingContact.id;
+            } else {
+                const newContact = await prisma.contact.create({
+                    data: {
+                        companyId,
+                        email: contactEmail,
+                    },
+                    select: { id: true },
+                });
+                contactId = newContact.id;
+                createdContacts++;
+            }
         }
 
         const meetingTypeRaw = getVal(row, mappings.meetingTypeColumn);
@@ -270,6 +333,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     return NextResponse.json({
         success: true,
-        data: { created, totalRows: lines.length - 1, errors },
+        data: {
+            created,
+            totalRows: lines.length - 1,
+            errors,
+            skippedInvalidDate,
+            skippedMissingEntity,
+            createdCompanies,
+            createdContacts,
+        },
     });
 });

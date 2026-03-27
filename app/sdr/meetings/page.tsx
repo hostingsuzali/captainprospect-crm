@@ -23,12 +23,14 @@ import {
     Circle,
     MapPin,
     Search,
+    Upload,
 } from "lucide-react";
 import {
     MEETING_CANCELLATION_REASONS,
     getMeetingCancellationLabel,
 } from "@/lib/constants/meetingCancellationReasons";
 import { cn } from "@/lib/utils";
+import { SdrImportRdvModal } from "./_components/ImportRdvModal";
 
 // ============================================
 // TYPES
@@ -224,6 +226,9 @@ export default function SDRMeetingsPage() {
     // Context menu (right-click)
     const { position: contextMenuPosition, contextData: contextMenuMeeting, handleContextMenu, close: closeContextMenu } = useContextMenu();
     const { success: showSuccess, error: showError } = useToast();
+
+    // Import modal
+    const [importModalOpen, setImportModalOpen] = useState(false);
 
     function formatScheduledDate(meeting: Meeting): string {
         if (!meeting.callbackDate) return "Date à confirmer";
@@ -480,6 +485,15 @@ export default function SDRMeetingsPage() {
                                 className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                             />
                         </div>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-10 gap-2 rounded-xl border-slate-200 bg-white px-4 shadow-sm shrink-0"
+                            onClick={() => setImportModalOpen(true)}
+                        >
+                            <Upload className="w-4 h-4" />
+                            Importer
+                        </Button>
                         <Button variant="outline" size="sm" className="h-10 gap-2 rounded-xl border-slate-200 bg-white px-4 shadow-sm shrink-0">
                             <Download className="w-4 h-4" />
                             Exporter
@@ -1078,6 +1092,36 @@ export default function SDRMeetingsPage() {
                 items={contextMenuMeeting ? getContextMenuItems(contextMenuMeeting) : []}
                 position={contextMenuPosition}
                 onClose={closeContextMenu}
+            />
+
+            {/* Import RDV Modal */}
+            <SdrImportRdvModal
+                isOpen={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
+                onSuccess={() => {
+                    // Refresh meetings list after successful import
+                    const fetchMeetings = async () => {
+                        setIsLoading(true);
+                        try {
+                            const { start, end } = getPresetRange("last12months");
+                            const params = new URLSearchParams({
+                                startDate: toISO(start),
+                                endDate: toISO(end),
+                            });
+                            const res = await fetch(`/api/sdr/meetings?${params.toString()}`);
+                            const json = await res.json();
+                            if (json.success) {
+                                setMeetings(json.data);
+                                showSuccess("RDV importés avec succès");
+                            }
+                        } catch (err) {
+                            console.error("Failed to fetch meetings:", err);
+                        } finally {
+                            setIsLoading(false);
+                        }
+                    };
+                    fetchMeetings();
+                }}
             />
         </div>
     );

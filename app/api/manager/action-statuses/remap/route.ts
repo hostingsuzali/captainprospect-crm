@@ -6,7 +6,6 @@ import {
     requireRole,
     withErrorHandler,
 } from "@/lib/api-utils";
-import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 /**
@@ -36,6 +35,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         select: { code: true, label: true, isActive: true },
     });
 
+    // Get valid ActionResult enum values from PostgreSQL
+    const enumRows = await prisma.$queryRaw<{ enumlabel: string }[]>`
+        SELECT enumlabel FROM pg_enum
+        WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'ActionResult')
+        ORDER BY enumsortorder
+    `;
+    const validEnumValues = enumRows.map((r) => r.enumlabel);
+
     const definedCodes = new Set(globalStatuses.map((s) => s.code));
 
     // Identify orphan codes (in use but not defined in global config)
@@ -46,6 +53,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     return successResponse({
         resultCodes: resultCodes.sort((a, b) => b.count - a.count),
         globalStatuses,
+        validEnumValues,
         orphanCodes,
         totalActions: counts.reduce((sum, c) => sum + c._count.id, 0),
     });
@@ -76,35 +84,79 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
     const { mappings } = parsed.data;
 
-    // Validate that target codes exist as valid ActionResult enum values
-    // We use raw SQL to handle the enum cast properly
-    const results: Array<{ fromCode: string; toCode: string; updated: number }> = [];
+    // Fetch valid enum values from PostgreSQL to validate before executing
+    const enumRows = await prisma.$queryRaw<{ enumlabel: string }[]>`
+        SELECT enumlabel FROM pg_enum
+        WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'ActionResult')
+        ORDER BY enumsortorder
+    `;
+    const validEnumValues = new Set(enumRows.map((r) => r.enumlabel));
 
-    for (const { fromCode, toCode } of mappings) {
-        if (fromCode === toCode) continue;
+    const activeGlobalStatuses = await prisma.actionStatusDefinition.findMany({
+        where: { scopeType: "GLOBAL", scopeId: "", isActive: true },
+        select: { code: true },
+    });
+    const activeGlobalCodes = new Set(activeGlobalStatuses.map((s) => s.code));
 
-        try {
-            const updated = await prisma.$executeRaw`
-                UPDATE "Action"
-                SET "result" = ${toCode}::"ActionResult",
-                    "updatedAt" = NOW()
-                WHERE "result" = ${fromCode}::"ActionResult"
-            `;
-            results.push({ fromCode, toCode, updated: Number(updated) });
-        } catch (err) {
-            // If the enum cast fails, return a clear error
-            if (err instanceof Prisma.PrismaClientKnownRequestError || String(err).includes("invalid input value")) {
-                return errorResponse(
-                    `Code "${toCode}" n'est pas un ActionResult valide dans le schéma Prisma. Ajoutez-le d'abord au enum ActionResult.`,
-                    400
-                );
-            }
-            throw err;
+    // Pre-validate all target codes
+    for (const { toCode } of mappings) {
+        if (!validEnumValues.has(toCode)) {
+            return errorResponse(
+                `Code "${toCode}" n'est pas un ActionResult valide dans le schéma Prisma. Valeurs possibles : ${[...validEnumValues].join(", ")}`,
+                400
+            );
+        }
+        if (!activeGlobalCodes.has(toCode)) {
+            return errorResponse(
+                `Code cible "${toCode}" non autorisé: il doit être un statut GLOBAL actif.`,
+                400
+            );
         }
     }
 
+    const normalizedMappings = mappings.filter((m) => m.fromCode !== m.toCode);
+    if (normalizedMappings.length === 0) {
+        return successResponse({
+            mappings: [],
+            totalUpdated: 0,
+            deactivatedMissionStatuses: 0,
+        });
+    }
+
+    const txResults = await prisma.$transaction(async (tx) => {
+        const results: Array<{ fromCode: string; toCode: string; updated: number }> = [];
+
+        for (const { fromCode, toCode } of normalizedMappings) {
+            // Use text cast for fromCode to safely handle any edge cases
+            const updated = await tx.$executeRaw`
+                UPDATE "Action"
+                SET "result" = ${toCode}::"ActionResult"
+                WHERE "result"::text = ${fromCode}
+            `;
+            results.push({ fromCode, toCode, updated: Number(updated) });
+        }
+
+        // Deprecate legacy mission statuses that were mapped away.
+        const mappedFromCodes = [...new Set(normalizedMappings.map((m) => m.fromCode))];
+        const deactivated = await tx.actionStatusDefinition.updateMany({
+            where: {
+                scopeType: "MISSION",
+                code: { in: mappedFromCodes },
+                isActive: true,
+            },
+            data: { isActive: false },
+        });
+
+        return {
+            mappings: results,
+            totalUpdated: results.reduce((sum, r) => sum + r.updated, 0),
+            deactivatedMissionStatuses: deactivated.count,
+        };
+    });
+
     return successResponse({
-        mappings: results,
-        totalUpdated: results.reduce((sum, r) => sum + r.updated, 0),
+        mappings: txResults.mappings,
+        totalUpdated: txResults.totalUpdated,
+        deactivatedMissionStatuses: txResults.deactivatedMissionStatuses,
     });
 });

@@ -21,6 +21,8 @@ interface Mission {
   lists: { id: string; name: string }[];
 }
 
+type MissingEntityHandling = "skip" | "create_company" | "create_contact_and_company";
+
 interface ImportRdvModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -72,7 +74,16 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
   const [mappings, setMappings] = useState<RdvImportMappings>({ dateColumn: "" });
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<{ created: number; totalRows: number; errors: { row: number; message: string }[] } | null>(null);
+  const [missingEntityHandling, setMissingEntityHandling] = useState<MissingEntityHandling>("skip");
+  const [result, setResult] = useState<{
+    created: number;
+    totalRows: number;
+    errors: { row: number; message: string }[];
+    skippedInvalidDate?: number;
+    skippedMissingEntity?: number;
+    createdCompanies?: number;
+    createdContacts?: number;
+  } | null>(null);
 
   const fetchMissions = useCallback(async () => {
     const res = await fetch("/api/missions?limit=200");
@@ -92,6 +103,7 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
       setCsvHeaders([]);
       setPreviewRows([]);
       setMappings({ dateColumn: "" });
+      setMissingEntityHandling("skip");
       setResult(null);
     }
   }, [isOpen, fetchMissions]);
@@ -155,6 +167,7 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
       formData.append("missionId", missionId);
       if (listId) formData.append("listId", listId);
       formData.append("mappings", JSON.stringify(mappings));
+      formData.append("missingEntityHandling", missingEntityHandling);
       const res = await fetch("/api/manager/rdv/import", {
         method: "POST",
         body: formData,
@@ -183,6 +196,18 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
             <p style={{ fontSize: 14, color: "var(--ink2)" }}>
               <strong>{result.created}</strong> RDV créé(s) sur <strong>{result.totalRows}</strong> ligne(s).
             </p>
+            <p style={{ fontSize: 12, color: "var(--ink3)", marginTop: -6 }}>
+              Lignes ignorées: <strong>{result.skippedInvalidDate ?? 0}</strong> date(s) invalide(s),
+              {" "}
+              <strong>{result.skippedMissingEntity ?? 0}</strong> contact/société introuvable(s).
+            </p>
+            {(result.createdCompanies || result.createdContacts) ? (
+              <p style={{ fontSize: 12, color: "var(--ink3)", marginTop: -8 }}>
+                Créations automatiques: <strong>{result.createdCompanies ?? 0}</strong> société(s),
+                {" "}
+                <strong>{result.createdContacts ?? 0}</strong> contact(s).
+              </p>
+            ) : null}
             {result.errors.length > 0 && (
               <div style={{ maxHeight: 200, overflowY: "auto", fontSize: 12, color: "var(--red)" }}>
                 {result.errors.slice(0, 20).map((e, i) => (
@@ -260,7 +285,7 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
             {step === 2 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <p style={{ fontSize: 13, color: "var(--ink2)" }}>
-                  Associez les colonnes du CSV aux champs RDV. Les contacts/sociétés doivent exister dans la mission (et la liste si choisie).
+                  Associez les colonnes du CSV aux champs RDV.
                 </p>
                 {[
                   { key: "dateColumn" as const, label: "Date du RDV *", required: true },
@@ -291,6 +316,24 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
                 <p style={{ fontSize: 11, color: "var(--ink3)" }}>
                   * Au moins un des deux : Email du contact ou Nom de la société.
                 </p>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>
+                    Contacts / sociétés introuvables
+                  </label>
+                  <select
+                    className="rdv-input"
+                    style={{ width: "100%" }}
+                    value={missingEntityHandling}
+                    onChange={(e) => setMissingEntityHandling(e.target.value as MissingEntityHandling)}
+                  >
+                    <option value="skip">Ignorer la ligne</option>
+                    <option value="create_company">Créer la société si absente</option>
+                    <option value="create_contact_and_company">Créer contact + société si absents</option>
+                  </select>
+                  <p style={{ fontSize: 11, color: "var(--ink3)", marginTop: 6 }}>
+                    Les dates invalides/manquantes sont ignorées automatiquement.
+                  </p>
+                </div>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                   <button className="rdv-btn rdv-btn-ghost" onClick={() => setStep(1)}>
                     ← Retour

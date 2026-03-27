@@ -33,6 +33,7 @@ export async function GET() {
             lists: {
                 select: {
                     id: true,
+                    name: true,
                     _count: { select: { companies: true } },
                 },
             },
@@ -105,6 +106,7 @@ export async function GET() {
                 progress,
                 contactsRemaining: totalContacts - actionedContacts,
                 _count: mission._count,
+                lists: mission.lists.map((l) => ({ id: l.id, name: l.name })), // Include lists for import modal
             };
         });
 

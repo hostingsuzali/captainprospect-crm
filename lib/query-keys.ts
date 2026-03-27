@@ -42,3 +42,9 @@ export function sdrUnifiedDrawerMailboxesKey(missionId: string | null) {
 export function sdrUnifiedDrawerTemplatesKey(missionId: string | null) {
     return ["sdr", "unified-drawer", "templates", missionId] as const;
 }
+export function sdrScriptCompanionCampaignsKey(missionId: string | null) {
+    return ["sdr", "script-companion", "campaigns", missionId] as const;
+}
+export function sdrScriptCompanionDataKey(campaignId: string | null) {
+    return ["sdr", "script-companion", "data", campaignId] as const;
+}

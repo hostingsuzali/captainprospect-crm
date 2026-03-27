@@ -60,6 +60,7 @@ interface GlobalStatus {
 interface RemapData {
     resultCodes: Array<{ code: string; count: number }>;
     globalStatuses: Array<{ code: string; label: string | null; isActive: boolean }>;
+    validEnumValues: string[];
     orphanCodes: string[];
     totalActions: number;
 }
@@ -355,9 +356,19 @@ export default function ManagerSettingsStatusesPage() {
     // ============================================
 
     async function handleApplyMappings() {
-        const entries = Object.entries(mappings).filter(([from, to]) => from !== to && to);
+        const entries = selectedMappings;
         if (entries.length === 0) return;
-        if (!window.confirm(`Remapper ${entries.length} statut(s) ? Cette action modifiera les actions existantes.`)) return;
+        const activeTargetCodes = new Set(activeGlobalStatuses.map((s) => s.code));
+        const invalidEntry = entries.find(([, to]) => !activeTargetCodes.has(to));
+        if (invalidEntry) {
+            showMsg("error", `Code cible invalide ou inactif: ${invalidEntry[1]}`);
+            return;
+        }
+        if (
+            !window.confirm(
+                `Remapper ${entries.length} statut(s) pour ${selectedImpactCount.toLocaleString()} action(s) ? Les statuts MISSION hérités correspondants seront désactivés.`
+            )
+        ) return;
 
         setRemapping(true);
         setMessage(null);
@@ -406,6 +417,21 @@ export default function ManagerSettingsStatusesPage() {
         if (!remapData) return new Map<string, number>();
         return new Map(remapData.resultCodes.map((r) => [r.code, r.count]));
     }, [remapData]);
+
+    const activeGlobalStatuses = useMemo(
+        () => remapData?.globalStatuses.filter((gs) => gs.isActive) ?? [],
+        [remapData]
+    );
+
+    const selectedMappings = useMemo(
+        () => Object.entries(mappings).filter(([from, to]) => from !== to && !!to),
+        [mappings]
+    );
+
+    const selectedImpactCount = useMemo(
+        () => selectedMappings.reduce((sum, [from]) => sum + (actionCountMap.get(from) ?? 0), 0),
+        [selectedMappings, actionCountMap]
+    );
 
     const activeCount = statuses.filter((s) => s.isActive).length;
     const inactiveCount = statuses.filter((s) => !s.isActive).length;
@@ -1079,7 +1105,7 @@ export default function ManagerSettingsStatusesPage() {
                                         </div>
                                         <span className="font-semibold text-slate-800">Actions par statut</span>
                                     </div>
-                                    {Object.keys(mappings).filter((k) => mappings[k] && mappings[k] !== k).length > 0 && (
+                                    {selectedMappings.length > 0 && (
                                         <button
                                             type="button"
                                             onClick={handleApplyMappings}
@@ -1087,10 +1113,18 @@ export default function ManagerSettingsStatusesPage() {
                                             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50"
                                         >
                                             {remapping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                                            Appliquer {Object.keys(mappings).filter((k) => mappings[k] && mappings[k] !== k).length} mapping(s)
+                                            Appliquer {selectedMappings.length} mapping(s)
                                         </button>
                                     )}
                                 </div>
+                                {selectedMappings.length > 0 && (
+                                    <div className="px-6 py-3 border-b border-violet-100 bg-violet-50/60">
+                                        <p className="text-xs text-violet-700">
+                                            {selectedMappings.length} mapping(s) sélectionné(s), impact estimé:{" "}
+                                            <strong>{selectedImpactCount.toLocaleString()} action(s)</strong>.
+                                        </p>
+                                    </div>
+                                )}
                                 <div className="overflow-x-auto">
                                     <table className="w-full">
                                         <thead>
@@ -1150,12 +1184,11 @@ export default function ManagerSettingsStatusesPage() {
                                                                 }`}
                                                             >
                                                                 <option value="">— Ne pas remapper —</option>
-                                                                {remapData.globalStatuses
-                                                                    .filter((gs) => gs.code !== rc.code)
+                                                                {activeGlobalStatuses
+                                                                    .filter((gs) => gs.code !== rc.code && (remapData.validEnumValues?.includes(gs.code) ?? true))
                                                                     .map((gs) => (
                                                                         <option key={gs.code} value={gs.code}>
                                                                             {gs.label ?? gs.code} ({gs.code})
-                                                                            {!gs.isActive ? " [inactif]" : ""}
                                                                         </option>
                                                                     ))}
                                                             </select>
@@ -1169,7 +1202,7 @@ export default function ManagerSettingsStatusesPage() {
                                 <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50">
                                     <p className="text-xs text-slate-400">
                                         Les remappages modifient le champ <code className="bg-slate-200 px-1 rounded">result</code> de toutes les actions concernées.
-                                        Cette opération est irréversible — assurez-vous de votre sélection avant d&apos;appliquer.
+                                        Cette opération est irréversible et désactive les statuts <code className="bg-slate-200 px-1 rounded">MISSION</code> remappés.
                                     </p>
                                 </div>
                             </div>
