@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef } from "react";
 
 export interface VoipCallCompletedEvent {
   actionId: string;
@@ -25,90 +25,61 @@ export interface UseVoipListenerOptions {
   onCallCompleted?: (data: VoipCallCompletedEvent) => void;
   onEnrichmentReady?: (data: VoipEnrichmentEvent) => void;
   enabled?: boolean;
-  intervalMs?: number;
 }
 
 /**
- * REPLACED: SSE → polling
- * Polls /api/comms/events for VoIP enrichment events every 15s.
- * Fixes Vercel serverless timeout issues (SSE held connections for 300s).
+ * Listens for voip:call-completed and voip:enrichment-ready via SSE (/api/comms/events).
+ * Same stream as comms; events are published by the VoIP processor.
  */
 export function useVoipListener({
   userId,
   onCallCompleted,
   onEnrichmentReady,
   enabled = true,
-  intervalMs = 15_000,
 }: UseVoipListenerOptions) {
   const onCallCompletedRef = useRef(onCallCompleted);
   const onEnrichmentReadyRef = useRef(onEnrichmentReady);
-  const lastTimestampRef = useRef<string>(new Date().toISOString());
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-
   onCallCompletedRef.current = onCallCompleted;
   onEnrichmentReadyRef.current = onEnrichmentReady;
 
-  const poll = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/comms/events?since=${encodeURIComponent(lastTimestampRef.current)}`
-      );
-      if (!res.ok) {
-        setIsConnected(false);
-        return;
-      }
-      const json = await res.json();
-      if (!json.success) {
-        setIsConnected(false);
-        return;
-      }
-
-      const { events, timestamp } = json.data;
-
-      if (timestamp) lastTimestampRef.current = timestamp;
-      if (Array.isArray(events)) {
-        events.forEach((event: VoipCallCompletedEvent & VoipEnrichmentEvent & { type?: string }) => {
-          if (event.type === "voip:call-completed") {
-            onCallCompletedRef.current?.({
-              actionId: event.actionId,
-              provider: event.provider,
-              duration: event.duration,
-              summary: event.summary,
-              hasTranscript: event.hasTranscript,
-              contactName: event.contactName,
-              enrichmentPending: event.enrichmentPending,
-              recordingUrl: event.recordingUrl,
-              autoValidated: event.autoValidated,
-            });
-          } else if (event.type === "voip:enrichment-ready") {
-            onEnrichmentReadyRef.current?.({
-              actionId: event.actionId,
-              summary: event.summary,
-            });
-          }
-        });
-      }
-      setIsConnected(true);
-    } catch {
-      setIsConnected(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (!enabled || !userId) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      setIsConnected(false);
-      return;
-    }
+    if (!enabled || !userId) return;
 
-    poll();
-    intervalRef.current = setInterval(poll, intervalMs);
+    const url = "/api/comms/events";
+    const es = new EventSource(url);
+
+    es.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data) as { type?: string; [k: string]: unknown };
+        if (payload.type === "voip:call-completed") {
+          onCallCompletedRef.current?.({
+            actionId: String(payload.actionId ?? ""),
+            provider: String(payload.provider ?? ""),
+            duration: Number(payload.duration ?? 0),
+            summary: payload.summary as string | undefined,
+            hasTranscript: Boolean(payload.hasTranscript),
+            contactName: String(payload.contactName ?? ""),
+            enrichmentPending: Boolean(payload.enrichmentPending),
+            recordingUrl: payload.recordingUrl as string | undefined,
+            autoValidated: Boolean(payload.autoValidated),
+          });
+        } else if (payload.type === "voip:enrichment-ready") {
+          onEnrichmentReadyRef.current?.({
+            actionId: String(payload.actionId ?? ""),
+            summary: payload.summary as string | undefined,
+          });
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+    };
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      es.close();
     };
-  }, [enabled, userId, poll, intervalMs]);
-
-  return { isConnected };
+  }, [userId, enabled]);
 }

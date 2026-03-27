@@ -2339,90 +2339,17 @@ export function UnifiedActionDrawer({
                                         <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3.5 space-y-3">
                                             {/* Calendar button — only when a booking URL or at least one interlocuteur calendar exists */}
                                             {(clientBookingUrl || clientInterlocuteurs?.some(i => (i.bookingLinks?.length ?? 0) > 0)) && (contactId && contact || companyId && company) && (
-                                                <Button
-                                                    type="button"
-                                                    variant="secondary"
-                                                    onClick={() => setShowBookingDrawer(true)}
-                                                    className="gap-2 w-full"
-                                                >
-                                                    <Calendar className="w-4 h-4" aria-hidden="true" />
-                                                    Ouvrir le calendrier client
-                                                </Button>
-                                            )}
-
-                                            <DateTimePicker
-                                                label="Date et heure du RDV"
-                                                value={rdvDate}
-                                                onChange={setRdvDate}
-                                                placeholder="Choisir date et heure…"
-                                                triggerClassName="border-slate-200 focus:ring-indigo-400/30 focus:border-indigo-400 bg-white"
-                                            />
-
-                                            <div className="space-y-1.5 text-xs text-slate-600">
-                                                <p className="font-semibold">Type de réunion</p>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {(["VISIO", "PHYSIQUE", "TELEPHONIQUE"] as const).map((type) => (
-                                                        <button
-                                                            key={type}
-                                                            type="button"
-                                                            onClick={() => setMeetingType(meetingType === type ? "" : type)}
-                                                            className={cn(
-                                                                "px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors",
-                                                                meetingType === type
-                                                                    ? "bg-indigo-50 border-indigo-400 text-indigo-700"
-                                                                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                                                            )}
-                                                        >
-                                                            {type === "VISIO" ? "Visio" : type === "PHYSIQUE" ? "Physique" : "Téléphonique"}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-1.5 text-xs text-slate-600">
-                                                <p className="font-semibold">Catégorie</p>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {(["EXPLORATOIRE", "BESOIN"] as const).map((cat) => (
-                                                        <button
-                                                            key={cat}
-                                                            type="button"
-                                                            onClick={() => setMeetingCat(meetingCat === cat ? "" : cat)}
-                                                            className={cn(
-                                                                "px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors",
-                                                                meetingCat === cat
-                                                                    ? "bg-indigo-50 border-indigo-400 text-indigo-700"
-                                                                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                                                            )}
-                                                        >
-                                                            {cat === "EXPLORATOIRE" ? "Exploratoire" : "Analyse de besoin"}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            {meetingType === "PHYSIQUE" && (
-                                                <input
-                                                    value={meetingAddress}
-                                                    onChange={(e) => setMeetingAddress(e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400"
-                                                    placeholder="Adresse du lieu"
-                                                />
-                                            )}
-                                            {meetingType === "VISIO" && (
-                                                <input
-                                                    value={meetingJoinUrl}
-                                                    onChange={(e) => setMeetingJoinUrl(e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400"
-                                                    placeholder="Lien de connexion (optionnel)"
-                                                />
-                                            )}
-                                            {meetingType === "TELEPHONIQUE" && (
-                                                <input
-                                                    value={meetingPhone}
-                                                    onChange={(e) => setMeetingPhone(e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400"
-                                                    placeholder={contact?.phone || company?.phone || "Numéro à appeler (optionnel)"}
-                                                />
+                                                <>
+                                                    <Button
+                                                        type="button"
+                                                        variant="secondary"
+                                                        onClick={() => setShowBookingDrawer(true)}
+                                                        className="gap-2 w-full"
+                                                    >
+                                                        <Calendar className="w-4 h-4" aria-hidden="true" />
+                                                        Ouvrir le calendrier client
+                                                    </Button>
+                                                </>
                                             )}
                                         </div>
                                     )}
@@ -2816,7 +2743,7 @@ export function UnifiedActionDrawer({
                 />
             )}
 
-            {(contactId && contact || companyId && company) && (
+            {(contactId && contact || companyId && company) && (clientBookingUrl || clientInterlocuteurs?.some(i => (i.bookingLinks?.length ?? 0) > 0)) && (
                 <BookingDrawer
                     isOpen={showBookingDrawer}
                     onClose={() => setShowBookingDrawer(false)}

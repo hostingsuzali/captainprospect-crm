@@ -429,6 +429,8 @@ model User {
   
   // VoIP (unified layer: one provider per SDR)
   userVoipConfig      UserVoipConfig?
+  callSessions        CallSession[]   @relation("SdrCallSessions")
+  callRecords         CallRecord[]    @relation("SdrCallRecords")
   
   // Leexi imports
   leexiImports  LeexiCallImport[] @relation("LeexiImporter")
@@ -658,6 +660,7 @@ model Mission {
 
   // Webhook call records (WithAllo, etc.)
   callRecords   CallRecord[]
+  callSessions  CallSession[]
 
   // API Keys scoped to this mission
   apiKeys       ApiKey[]
@@ -739,6 +742,7 @@ model Company {
   opportunities Opportunity[]
   actions       Action[]  // Actions can be on companies too
   callRecords   CallRecord[]
+  callSessions  CallSession[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -769,6 +773,7 @@ model Contact {
   unsubscribed          Boolean   @default(false)
 
   callRecords   CallRecord[]
+  callSessions  CallSession[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -841,21 +846,69 @@ model CallRecord {
   contact        Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
   companyId      String?
   company        Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  sessionId      String?
+  session        CallSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  sdrId          String?
+  sdr            User?     @relation("SdrCallRecords", fields: [sdrId], references: [id], onDelete: SetNull)
   externalCallId String    // WithAllo call id (idempotency)
   source         String    @default("withallo")
   provider       String?   // Kept in sync with existing DB column to avoid data loss
   fromNumber     String?
   toNumber       String?
   duration       Int?      // seconds
+  durationSeconds Int?
   direction      String?   // INBOUND | OUTBOUND
   summary        String?   @db.Text
   recordingUrl   String?
   timestamp      DateTime
+  startedAt      DateTime?
+  endedAt        DateTime?
+  rawPayload     Json?
+  transcripts    CallTranscript[]
   createdAt      DateTime  @default(now())
 
   @@unique([source, externalCallId])
+  @@index([provider, externalCallId])
+  @@index([sessionId])
+  @@index([sdrId])
   @@index([missionId])
   @@index([timestamp])
+}
+
+model CallSession {
+  id          String    @id @default(cuid())
+  missionId   String
+  mission     Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  companyId   String?
+  company     Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  sdrId       String
+  sdr         User      @relation("SdrCallSessions", fields: [sdrId], references: [id], onDelete: Cascade)
+  phoneNumber String
+  status      String    @default("pending")
+  callRecords CallRecord[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([missionId])
+  @@index([sdrId])
+  @@index([phoneNumber])
+  @@index([status, createdAt])
+}
+
+model CallTranscript {
+  id           String    @id @default(cuid())
+  callRecordId String
+  callRecord   CallRecord @relation(fields: [callRecordId], references: [id], onDelete: Cascade)
+  source       String
+  text         String    @db.Text
+  startSeconds Int?
+  endSeconds   Int?
+  speaker      String?
+  createdAt    DateTime  @default(now())
+
+  @@index([callRecordId])
 }
 
 // VoIP: one provider per SDR; provider-specific ids/numbers stored here

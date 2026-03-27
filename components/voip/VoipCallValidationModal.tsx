@@ -5,6 +5,7 @@ import { Button, useToast } from "@/components/ui";
 import { ACTION_RESULT_LABELS } from "@/lib/types";
 import { Loader2, Phone } from "lucide-react";
 import type { VoipCallCompletedEvent } from "@/hooks/useVoipListener";
+import { proxyRecordingUrl } from "@/lib/voip/recording";
 
 const PROVIDER_LABELS: Record<string, string> = {
   allo: "Allo",
@@ -141,7 +142,7 @@ export function VoipCallValidationModal({
             <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">
               Enregistrement
             </label>
-            <audio controls src={callData.recordingUrl} className="w-full h-9">
+            <audio controls src={proxyRecordingUrl(callData.recordingUrl) ?? undefined} className="w-full h-9">
               <track kind="captions" />
             </audio>
           </div>

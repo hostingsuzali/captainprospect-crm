@@ -68,6 +68,40 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       missionId,
       campaignId: effectiveCampaignId,
     });
+
+    // Create CallSession so the webhook processor can link CallRecord to it
+    let resolvedMissionId = missionId;
+    if (!resolvedMissionId && contactId) {
+      const c = await prisma.contact.findUnique({
+        where: { id: contactId },
+        select: { company: { select: { list: { select: { missionId: true } } } } },
+      });
+      resolvedMissionId = c?.company?.list?.missionId ?? undefined;
+    }
+    if (!resolvedMissionId && companyId) {
+      const co = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: { list: { select: { missionId: true } } },
+      });
+      resolvedMissionId = co?.list?.missionId ?? undefined;
+    }
+    if (resolvedMissionId) {
+      try {
+        await prisma.callSession.create({
+          data: {
+            missionId: resolvedMissionId,
+            contactId: contactId ?? undefined,
+            companyId: companyId ?? undefined,
+            sdrId: session.user.id,
+            phoneNumber: phone.trim(),
+            status: "pending",
+          },
+        });
+      } catch {
+        // Non-blocking: session creation failure shouldn't prevent the call
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: { ...result, provider },
