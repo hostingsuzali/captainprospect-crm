@@ -1,21 +1,17 @@
 // ============================================
 // POST /api/webhooks/withallo
-// WithAllo webhook: accepts CALL_RECEIVED, verifies signature (placeholder),
-// returns 200 OK immediately, processes async.
+// WithAllo webhook: verify signature, publish to QStash, return 200 immediately.
+// QStash calls /api/voip/process for async processing.
 // ============================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import { verifyWebhookSignature } from "@/lib/webhooks/withallo/signature";
-import {
-  parseCallEvent,
-  processCallEvent,
-} from "@/lib/webhooks/withallo/processCallEvent";
-import type { WithAlloWebhookPayload } from "@/lib/webhooks/withallo/types";
+import { scheduleVoipEvent } from "@/lib/voip/queue";
+import { parseCallEvent, processCallEvent } from "@/lib/webhooks/withallo/processCallEvent";
 
 function log(event: string, data: Record<string, unknown>): void {
   console.log(
-    JSON.stringify({ event, ...data, timestamp: new Date().toISOString() })
+    JSON.stringify({ event, ...data, timestamp: new Date().toISOString() }),
   );
 }
 
@@ -30,8 +26,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  const secret =
-    (process.env.WITHALLO_WEBHOOK_SECRET ?? "").trim();
+  const secret = (process.env.WITHALLO_WEBHOOK_SECRET ?? "").trim();
   const signatureHeader =
     request.headers.get("X-Webhook-Signature") ??
     request.headers.get("x-allo-signature");
@@ -41,21 +36,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  const payload = body as WithAlloWebhookPayload;
+  log("withallo_webhook_received", {
+    topic: (body as Record<string, unknown>)?.topic,
+    event: (body as Record<string, unknown>)?.event,
+  });
 
-  after(async () => {
+  try {
+    await scheduleVoipEvent({
+      provider: "allo",
+      rawPayload: body,
+      receivedAt: new Date().toISOString(),
+    });
+    log("withallo_webhook_queued", {});
+  } catch (err) {
+    log("withallo_webhook_queue_error", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    // Fail-safe: persist call directly when queue infra is unavailable.
     try {
-      const event = parseCallEvent(payload);
-      if (!event) return;
-
-      await processCallEvent(event);
-    } catch (err) {
-      log("withallo_webhook_error", {
-        error: err instanceof Error ? err.message : String(err),
-        externalCallId: (body as { call?: { id?: string }; data?: { id?: string } })?.call?.id ?? (body as { data?: { id?: string } })?.data?.id,
+      const parsed = parseCallEvent(body as Record<string, unknown>);
+      if (parsed) {
+        await processCallEvent(parsed);
+        log("withallo_webhook_direct_processed", {
+          externalCallId: parsed.externalCallId,
+        });
+      } else {
+        log("withallo_webhook_direct_skipped_unparseable", {});
+      }
+    } catch (directErr) {
+      log("withallo_webhook_direct_error", {
+        error: directErr instanceof Error ? directErr.message : String(directErr),
       });
     }
-  });
+  }
 
   return NextResponse.json({ ok: true });
 }

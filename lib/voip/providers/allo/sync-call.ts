@@ -108,7 +108,8 @@ export async function syncAlloCallForAction(
   if (!match) return { ok: true, updated: false };
 
   const durationSeconds = Math.round((match.length_in_minutes ?? 0) * 60);
-  const voipTranscript = (match.transcript ?? []).map(transcriptToSegment) as object;
+  const transcriptSegments = (match.transcript ?? []).map(transcriptToSegment);
+  const voipTranscript = transcriptSegments as unknown as object;
 
   await prisma.action.update({
     where: { id: actionId },
@@ -119,9 +120,69 @@ export async function syncAlloCallForAction(
       voipRecordingUrl: match.recording_url ?? undefined,
       duration: durationSeconds,
       note: match.summary ?? action.note,
-      actionStatus: null, // Allo auto-validation: treat as done
+      actionStatus: null,
     },
   });
+
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: action.campaignId },
+    select: { missionId: true },
+  });
+  const missionId = campaign?.missionId;
+
+  if (missionId) {
+    const existingRecord = await prisma.callRecord.findFirst({
+      where: { provider: "allo", externalCallId: match.id },
+    });
+
+    const callRecordId =
+      existingRecord?.id ??
+      (
+        await prisma.callRecord.create({
+          data: {
+            missionId,
+            contactId: action.contactId ?? undefined,
+            companyId: action.companyId ?? undefined,
+            externalCallId: match.id,
+            source: "allo",
+            provider: "allo",
+            fromNumber: normalizePhone(match.from_number),
+            toNumber: match.to_number
+              ? normalizePhone(match.to_number)
+              : undefined,
+            duration: durationSeconds,
+            durationSeconds,
+            direction: match.type ?? "OUTBOUND",
+            summary: match.summary ?? undefined,
+            recordingUrl: match.recording_url ?? undefined,
+            timestamp: new Date(match.start_date),
+            startedAt: new Date(match.start_date),
+            sdrId: action.sdrId,
+          },
+        })
+      ).id;
+
+    const existingTranscripts = await prisma.callTranscript.count({
+      where: { callRecordId },
+    });
+
+    if (existingTranscripts === 0 && transcriptSegments.length > 0) {
+      const validSegments = transcriptSegments.filter((t) => t.text.trim());
+      if (validSegments.length > 0) {
+        await prisma.callTranscript.createMany({
+          data: validSegments.map((t) => ({
+            callRecordId,
+            source: "allo",
+            text: t.text,
+            startSeconds: t.startSeconds,
+            endSeconds: t.endSeconds,
+            speaker: t.speaker,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+  }
 
   return { ok: true, updated: true };
 }

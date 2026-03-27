@@ -17,7 +17,7 @@ import { validateApiKey, extractApiKey, logApiKeyUsage } from '@/lib/api-keys';
 export const GET = withErrorHandler(async (request: NextRequest) => {
     const startTime = Date.now();
     const endpoint = '/api/stats';
-    
+
     // Try API key auth first
     const apiKey = extractApiKey(request);
     let session;
@@ -34,22 +34,20 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             }
             return errorResponse(validation.error || 'Unauthorized', 401);
         }
-        
-        // Build session from API key data
+
         session = {
             user: {
                 id: `apikey:${validation.key!.id}`,
                 role: validation.key!.role,
                 clientId: validation.key!.clientId,
                 missionId: validation.key!.missionId,
-            }
+            },
         };
         authType = 'apikey';
         apiKeyId = validation.key!.id;
         apiKeyClientId = validation.key!.clientId;
         apiKeyMissionId = validation.key!.missionId;
     } else {
-        // Fall back to session auth
         session = await requireRole(['MANAGER', 'SDR', 'CLIENT'], request);
     }
 
@@ -57,7 +55,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const userId = session.user.id;
 
     const { searchParams } = new URL(request.url);
-
+    const fromParam = searchParams.get('from');
+    const toParam = searchParams.get('to');
     const missionId = searchParams.get('missionId');
     const startDateParam = searchParams.get('startDate');
     const endDateParam = searchParams.get('endDate');
@@ -66,7 +65,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     let dateFrom: Date;
     let dateTo: Date;
 
-    if (startDateParam && endDateParam) {
+    if (fromParam && toParam) {
+        dateFrom = new Date(fromParam);
+        dateFrom.setHours(0, 0, 0, 0);
+        dateTo = new Date(toParam);
+        dateTo.setHours(23, 59, 59, 999);
+    } else if (startDateParam && endDateParam) {
         dateFrom = new Date(startDateParam);
         dateFrom.setHours(0, 0, 0, 0);
         dateTo = new Date(endDateParam);
@@ -98,15 +102,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     };
     const campaignWhere: Prisma.CampaignWhereInput = {};
 
-    // Role-based filtering
     if (userRole === 'SDR') {
-        actionWhere.sdrId = userId.replace('apikey:', ''); // Handle API key prefix
+        actionWhere.sdrId = userId.replace('apikey:', '');
     } else if (userRole === 'CLIENT' || (authType === 'apikey' && apiKeyClientId)) {
-        // Support both session-based CLIENT and API key with client scope
         const clientId = userRole === 'CLIENT'
             ? await getClientIdFromSession(userId)
             : apiKeyClientId;
-            
+
         if (clientId) {
             campaignWhere.mission = {
                 is: {
@@ -118,7 +120,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         }
     }
 
-    // Apply mission scope from API key if present
     if (authType === 'apikey' && apiKeyMissionId) {
         campaignWhere.missionId = apiKeyMissionId;
     }
@@ -131,7 +132,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         actionWhere.campaign = { is: campaignWhere };
     }
 
-    // Get stats
     const [
         totalActions,
         actionsByResult,
@@ -139,23 +139,18 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         opportunities,
         activeMissions,
         topSDRs,
+        totalTalkTimeAgg,
+        uniqueContactsById,
     ] = await Promise.all([
-        // Total actions
         prisma.action.count({ where: actionWhere }),
-
-        // Actions by result
         prisma.action.groupBy({
             by: ['result'],
             where: actionWhere,
             _count: true,
         }),
-
-        // Meetings booked
         prisma.action.count({
             where: { ...actionWhere, result: 'MEETING_BOOKED' },
         }),
-
-        // Opportunities
         prisma.opportunity.count({
             where: {
                 createdAt: { gte: dateFrom, lte: dateTo },
@@ -172,8 +167,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 }),
             },
         }),
-
-        // Active missions count
         prisma.mission.count({
             where: {
                 isActive: true,
@@ -185,8 +178,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 }),
             },
         }),
-
-        // Top SDRs by total actions (only for managers)
         userRole === 'MANAGER'
             ? prisma.action.groupBy({
                 by: ['sdrId'],
@@ -196,9 +187,20 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 take: 10,
             })
             : [],
+        prisma.action.aggregate({
+            where: actionWhere,
+            _sum: { duration: true },
+        }),
+        prisma.action.groupBy({
+            by: ['contactId'],
+            where: {
+                ...actionWhere,
+                contactId: { not: null },
+            },
+            _count: true,
+        }),
     ]);
 
-    // RDV leaderboard: rank SDRs by MEETING_BOOKED count (only for managers)
     let rdvBySdr: { sdrId: string; _count: { _all: number } }[] = [];
     if (userRole === 'MANAGER') {
         const rdvRows = await prisma.action.findMany({
@@ -221,7 +223,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             .slice(0, 10);
     }
 
-    // Format results by type
     const resultBreakdown: Record<string, number> = {
         NO_RESPONSE: 0,
         BAD_CONTACT: 0,
@@ -235,12 +236,18 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         resultBreakdown[item.result] = item._count;
     });
 
-    // Calculate conversion rate
     const conversionRate = totalActions > 0
         ? ((meetingsBooked / totalActions) * 100).toFixed(2)
         : '0.00';
 
-    // Get SDR names for leaderboard
+    const interestedCount = resultBreakdown.INTERESTED ?? 0;
+    const interestRate = totalActions > 0
+        ? Number((((meetingsBooked + interestedCount) / totalActions) * 100).toFixed(2))
+        : 0;
+
+    const uniqueContacts = uniqueContactsById.length;
+    const talkTimeSeconds = totalTalkTimeAgg._sum.duration ?? 0;
+
     let leaderboard: { id: string; name: string; actions: number }[] = [];
     let rdvLeaderboard: { id: string; name: string; rdv: number; actions: number }[] = [];
     const allSdrIds = [...new Set([...topSDRs.map((s) => s.sdrId), ...rdvBySdr.map((s) => s.sdrId)])];
@@ -249,8 +256,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             where: { id: { in: allSdrIds } },
             select: { id: true, name: true },
         });
-        const nameMap = new Map(sdrs.map(u => [u.id, u.name]));
-        const actionMap = new Map(topSDRs.map(s => [s.sdrId, s._count._all]));
+        const nameMap = new Map(sdrs.map((u) => [u.id, u.name]));
+        const actionMap = new Map(topSDRs.map((s) => [s.sdrId, s._count._all]));
 
         leaderboard = topSDRs.map((s) => ({
             id: s.sdrId,
@@ -266,7 +273,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         }));
     }
 
-    // Client Portal extras: lastActivityDate, contactsReached, monthlyObjective
     let lastActivityDate: string | null = null;
     let contactsReached = 0;
     let monthlyObjective = 10;
@@ -277,13 +283,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             select: { createdAt: true },
         });
         lastActivityDate = lastAction?.createdAt?.toISOString() ?? null;
-
-        const distinctContacts = await prisma.action.findMany({
-            where: { ...actionWhere, contactId: { not: null } },
-            select: { contactId: true },
-            distinct: ['contactId'],
-        });
-        contactsReached = distinctContacts.length;
+        contactsReached = uniqueContacts;
 
         const mission = await prisma.mission.findFirst({
             where: {
@@ -299,10 +299,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const response = successResponse({
         period,
         totalActions,
+        totalCalls: totalActions,
         meetingsBooked,
         opportunities,
         activeMissions,
         conversionRate: parseFloat(conversionRate),
+        interestRate,
+        uniqueContacts,
+        talkTimeSeconds,
         resultBreakdown,
         leaderboard,
         rdvLeaderboard,
@@ -311,7 +315,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         monthlyObjective,
     });
 
-    // Log API key usage if applicable
     if (authType === 'apikey' && apiKeyId) {
         const responseTimeMs = Date.now() - startTime;
         const statusCode = 200;
@@ -321,15 +324,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     return response;
 });
 
-// Helper function to get client ID from session user ID
 async function getClientIdFromSession(userId: string): Promise<string | null> {
-    // Remove apikey: prefix if present
     const cleanId = userId.replace('apikey:', '');
-    
     const user = await prisma.user.findUnique({
         where: { id: cleanId },
         select: { clientId: true },
     });
-    
     return user?.clientId || null;
 }

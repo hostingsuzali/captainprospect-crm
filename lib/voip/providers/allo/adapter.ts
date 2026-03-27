@@ -34,6 +34,42 @@ import type {
 interface AlloWebhookPayload {
   topic?: string;
   event?: string;
+  data?: {
+    id?: string;
+    callId?: string;
+    direction?: string;
+    status?: string;
+    from?: string;
+    fromNumber?: string;
+    fromName?: string;
+    to?: string;
+    toNumber?: string;
+    duration?: number;
+    started_at?: string;
+    startedAt?: string;
+    ended_at?: string;
+    endedAt?: string;
+    recording_url?: string;
+    recordingUrl?: string;
+    summary?: string;
+    oneSentenceSummary?: string;
+    transcript?: Array<{
+      source?: string;
+      text?: string;
+      start_seconds?: number;
+      startSeconds?: number;
+      end_seconds?: number;
+      endSeconds?: number;
+    }>;
+    transcriptions?: Array<{
+      source?: string;
+      text?: string;
+      start_seconds?: number;
+      startSeconds?: number;
+      end_seconds?: number;
+      endSeconds?: number;
+    }>;
+  };
   call?: {
     id?: string;
     callId?: string;
@@ -108,9 +144,11 @@ export class AlloAdapter implements VoipAdapter {
     const topicOrEvent = (raw?.topic ?? raw?.event ?? "").toUpperCase();
     const isCallReceived =
       topicOrEvent === "CALL_RECEIVED" ||
-      raw?.event === "call.received";
-    if (!isCallReceived || !raw?.call) return null;
-    const call = raw.call;
+      raw?.event === "call.received" ||
+      raw?.event === "call.completed";
+    if (!isCallReceived) return null;
+    const call = raw.call ?? raw.data;
+    if (!call) return null;
     const fromNumber =
       call.fromNumber ?? call.from ?? "";
     const toNumber =
@@ -127,7 +165,11 @@ export class AlloAdapter implements VoipAdapter {
     return {
       provider: "allo",
       providerCallId: call.id ?? call.callId ?? "",
-      direction: call.direction === "outbound" ? "outbound" : "inbound",
+      direction:
+        String(call.direction ?? "").toUpperCase() === "OUTBOUND" ||
+        call.direction === "outbound"
+          ? "outbound"
+          : "inbound",
       status:
         call.status === "completed" ? "completed" : "missed",
       fromNumber,
