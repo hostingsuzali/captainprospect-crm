@@ -72,6 +72,27 @@ async function processVoipEvent(data: VoipEventJobData): Promise<void> {
 
   normalizedCall.fromNumber = normalizePhone(normalizedCall.fromNumber);
   normalizedCall.toNumber = normalizePhone(normalizedCall.toNumber);
+  const rawFallback = extractFallbackFromRawPayload(rawPayload as Record<string, unknown>);
+  const resolvedFromNumber =
+    normalizedCall.fromNumber || normalizePhone(rawFallback.fromNumber ?? "");
+  const resolvedToNumber =
+    normalizedCall.toNumber || normalizePhone(rawFallback.toNumber ?? "");
+  const resolvedSummary =
+    normalizedCall.aiSummary?.trim() || rawFallback.summary?.trim() || undefined;
+  const resolvedDurationSeconds =
+    normalizedCall.durationSeconds && normalizedCall.durationSeconds > 0
+      ? normalizedCall.durationSeconds
+      : rawFallback.durationSeconds && rawFallback.durationSeconds > 0
+        ? rawFallback.durationSeconds
+        : normalizedCall.startedAt && normalizedCall.endedAt
+          ? Math.max(
+              0,
+              Math.round(
+                (normalizedCall.endedAt.getTime() - normalizedCall.startedAt.getTime()) /
+                  1000,
+              ),
+            )
+          : 0;
 
   // Idempotency: check if this call already exists
   const existingRecord = await prisma.callRecord.findFirst({
@@ -92,19 +113,19 @@ async function processVoipEvent(data: VoipEventJobData): Promise<void> {
   // Resolve SDR
   const isInbound = normalizedCall.direction === "inbound";
   const sdrId = isInbound
-    ? await getSdrIdByVoipNumber(provider, normalizedCall.toNumber)
+    ? await getSdrIdByVoipNumber(provider, resolvedToNumber)
     : await adapter.matchSdr(normalizedCall);
 
   // Match contact/company
   const prospectNumber = isInbound
-    ? normalizedCall.fromNumber
-    : normalizedCall.toNumber;
+    ? resolvedFromNumber
+    : resolvedToNumber;
   const { contact, company } = await matchContactByPhone(prospectNumber);
 
   // Find mission via phone number fallback
   const missionMatch =
-    (await findMissionByPhone(normalizedCall.fromNumber)) ??
-    (await findMissionByPhone(normalizedCall.toNumber));
+    (await findMissionByPhone(resolvedFromNumber)) ??
+    (await findMissionByPhone(resolvedToNumber));
 
   const missionId = missionMatch?.missionId;
 
@@ -112,8 +133,8 @@ async function processVoipEvent(data: VoipEventJobData): Promise<void> {
     log("voip_process_no_mission", {
       provider,
       externalCallId: normalizedCall.providerCallId,
-      fromNumber: normalizedCall.fromNumber,
-      toNumber: normalizedCall.toNumber,
+      fromNumber: resolvedFromNumber,
+      toNumber: resolvedToNumber,
     });
     return;
   }
@@ -142,16 +163,6 @@ async function processVoipEvent(data: VoipEventJobData): Promise<void> {
     }
   }
 
-  const durationSeconds =
-    normalizedCall.durationSeconds ??
-    (normalizedCall.startedAt && normalizedCall.endedAt
-      ? Math.round(
-          (normalizedCall.endedAt.getTime() -
-            normalizedCall.startedAt.getTime()) /
-            1000,
-        )
-      : 0);
-
   const callRecord = await prisma.callRecord.create({
     data: {
       missionId,
@@ -161,12 +172,12 @@ async function processVoipEvent(data: VoipEventJobData): Promise<void> {
       externalCallId: normalizedCall.providerCallId,
       source: provider,
       provider,
-      fromNumber: normalizedCall.fromNumber || undefined,
-      toNumber: normalizedCall.toNumber || undefined,
-      duration: durationSeconds,
-      durationSeconds,
+      fromNumber: resolvedFromNumber || undefined,
+      toNumber: resolvedToNumber || undefined,
+      duration: resolvedDurationSeconds,
+      durationSeconds: resolvedDurationSeconds,
       direction: normalizedCall.direction?.toUpperCase(),
-      summary: normalizedCall.aiSummary,
+      summary: resolvedSummary,
       recordingUrl: normalizedCall.recordingUrl,
       timestamp: normalizedCall.startedAt ?? new Date(),
       startedAt: normalizedCall.startedAt,
@@ -219,13 +230,13 @@ async function processVoipEvent(data: VoipEventJobData): Promise<void> {
       threadId: "",
       actionId: callRecord.id,
       provider,
-      duration: durationSeconds,
-      summary: normalizedCall.aiSummary,
+      duration: resolvedDurationSeconds,
+      summary: resolvedSummary,
       hasTranscript: !!(normalizedCall.aiTranscript?.length),
       contactName: contact
         ? `${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim() ||
-          normalizedCall.toNumber
-        : normalizedCall.toNumber,
+          resolvedToNumber
+        : resolvedToNumber,
       enrichmentPending: normalizedCall.enrichmentPending,
       recordingUrl: normalizedCall.recordingUrl ?? undefined,
     } as Parameters<typeof publishToUser>[1]);
@@ -279,6 +290,63 @@ async function processVoipEvent(data: VoipEventJobData): Promise<void> {
       });
     }
   }
+}
+
+function extractFallbackFromRawPayload(raw: Record<string, unknown>): {
+  fromNumber?: string;
+  toNumber?: string;
+  durationSeconds?: number;
+  summary?: string;
+} {
+  const call = isRecord(raw.call) ? raw.call : null;
+
+  const fromNumber = firstString(
+    call?.fromNumber,
+    call?.from,
+    raw["caller_number"],
+    raw["from_number"],
+    raw["from"],
+  );
+  const toNumber = firstString(
+    call?.toNumber,
+    call?.to,
+    raw["receiver_number"],
+    raw["to_number"],
+    raw["to"],
+    (isRecord(raw.data) ? (raw.data["raw_digits"] as unknown) : undefined),
+  );
+  const summary = firstString(
+    call?.oneSentenceSummary,
+    call?.summary,
+    raw["summary"],
+    (isRecord(raw.data) ? (raw.data["summary"] as unknown) : undefined),
+  );
+
+  const durationSeconds = firstPositiveNumber(
+    call?.duration,
+    raw["duration"],
+    (isRecord(raw.data) ? (raw.data["duration"] as unknown) : undefined),
+  );
+
+  return { fromNumber, toNumber, durationSeconds, summary };
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function firstPositiveNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  }
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 async function backfillCallRecordSummaryFromAction(
