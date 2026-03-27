@@ -242,6 +242,10 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [aiActiveTab, setAiActiveTab] = useState<ScriptSectionKey>("intro");
     const [aiSuggestions, setAiSuggestions] = useState<Partial<Record<ScriptSectionKey, string[]>>>({});
     const [aiSelectedIndex, setAiSelectedIndex] = useState<Record<ScriptSectionKey, number>>({ intro: 0, discovery: 0, objection: 0, closing: 0 });
+    const [additionalScriptDraft, setAdditionalScriptDraft] = useState("");
+    const [additionalScriptShared, setAdditionalScriptShared] = useState("");
+    const [isSavingAdditionalScript, setIsSavingAdditionalScript] = useState(false);
+    const [isSharingAdditionalScript, setIsSharingAdditionalScript] = useState(false);
     const [mailboxes, setMailboxes] = useState<Array<{ id: string; email: string; displayName: string | null }>>([]);
     const [isLoadingMailboxes, setIsLoadingMailboxes] = useState(false);
     const [showMailboxModal, setShowMailboxModal] = useState(false);
@@ -336,6 +340,20 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                     } catch {
                         setScriptSections({ intro: c.script, discovery: "", objection: "", closing: "" });
                     }
+                }
+                try {
+                    const companionRes = await fetch(`/api/campaigns/${c.id}/script-companion`);
+                    const companionJson = await companionRes.json();
+                    if (companionJson.success) {
+                        setAdditionalScriptDraft(companionJson.data?.additionalDraft || "");
+                        setAdditionalScriptShared(companionJson.data?.additionalShared || "");
+                    } else {
+                        setAdditionalScriptDraft("");
+                        setAdditionalScriptShared("");
+                    }
+                } catch {
+                    setAdditionalScriptDraft("");
+                    setAdditionalScriptShared("");
                 }
             }
         } catch (err) {
@@ -450,6 +468,52 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
             .join("\n\n");
         navigator.clipboard.writeText(full);
         success("Script copié", "Copié dans le presse-papier");
+    };
+
+    const handleSaveAdditionalScript = async () => {
+        if (!campaignData) return;
+        setIsSavingAdditionalScript(true);
+        try {
+            const res = await fetch(`/api/campaigns/${campaignData.id}/script-companion`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ draft: additionalScriptDraft }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible de sauvegarder le script additionel");
+                return;
+            }
+            success("Brouillon sauvegardé", "Le script additionel a été enregistré.");
+            await fetchCampaignStrategy();
+        } catch {
+            showError("Erreur", "Impossible de sauvegarder le script additionel");
+        } finally {
+            setIsSavingAdditionalScript(false);
+        }
+    };
+
+    const handleShareAdditionalScript = async () => {
+        if (!campaignData) return;
+        setIsSharingAdditionalScript(true);
+        try {
+            const res = await fetch(`/api/campaigns/${campaignData.id}/script-companion`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: additionalScriptDraft }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible de partager le script additionel");
+                return;
+            }
+            success("Script partagé", "Le script additionel est maintenant partagé à l'équipe.");
+            await fetchCampaignStrategy();
+        } catch {
+            showError("Erreur", "Impossible de partager le script additionel");
+        } finally {
+            setIsSharingAdditionalScript(false);
+        }
     };
 
     // ============================================
@@ -1310,6 +1374,63 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                                     <Sparkles className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                                                     Aucun script pour cette section
                                                 </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
+                                                <FileText className="w-5 h-5 text-violet-600" />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-semibold text-slate-900">Script additionel</h2>
+                                                <p className="text-sm text-slate-500">Variante éditable et partageable à l'équipe</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {additionalScriptShared && !isStrategyEditing && (
+                                        <div className="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                                            <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-1">Version partagée</p>
+                                            <p className="text-sm text-indigo-900 whitespace-pre-wrap">{additionalScriptShared}</p>
+                                        </div>
+                                    )}
+                                    {isStrategyEditing ? (
+                                        <div className="space-y-3">
+                                            <textarea
+                                                value={additionalScriptDraft}
+                                                onChange={(e) => setAdditionalScriptDraft(e.target.value)}
+                                                rows={9}
+                                                placeholder="Ajoutez un script additionel partagé avec l'équipe..."
+                                                className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent resize-none text-sm"
+                                            />
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={handleSaveAdditionalScript}
+                                                    disabled={isSavingAdditionalScript || isSharingAdditionalScript}
+                                                    className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 rounded-lg transition-colors"
+                                                >
+                                                    {isSavingAdditionalScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                                    Sauvegarder brouillon
+                                                </button>
+                                                <button
+                                                    onClick={handleShareAdditionalScript}
+                                                    disabled={isSavingAdditionalScript || isSharingAdditionalScript || !additionalScriptDraft.trim()}
+                                                    className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 rounded-lg transition-colors"
+                                                >
+                                                    {isSharingAdditionalScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+                                                    Partager avec l'équipe
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 min-h-[140px]">
+                                            {additionalScriptShared ? (
+                                                <p className="text-sm text-slate-700 whitespace-pre-wrap">{additionalScriptShared}</p>
+                                            ) : (
+                                                <p className="text-sm text-slate-400 italic">Aucun script additionel partagé</p>
                                             )}
                                         </div>
                                     )}

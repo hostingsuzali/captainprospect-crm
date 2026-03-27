@@ -25,6 +25,8 @@ interface DrawerProps {
     footerHelperLink?: { href: string; label: string };
     /** Center title in header (reference style) */
     headerCentered?: boolean;
+    /** If false, drawer behaves as non-modal side panel (no full-screen blocking layer). */
+    modal?: boolean;
 }
 
 const SIZES = {
@@ -50,6 +52,7 @@ export function Drawer({
     footer,
     footerHelperLink,
     headerCentered = false,
+    modal = true,
 }: DrawerProps) {
     const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -65,7 +68,7 @@ export function Drawer({
 
     // Lock body scroll when drawer is open
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && modal) {
             document.body.style.overflow = "hidden";
             document.addEventListener("keydown", handleKeyDown);
         } else {
@@ -92,13 +95,15 @@ export function Drawer({
     };
 
     return (
-        <div className="fixed inset-0 z-40 flex">
+        <div className={cn("fixed inset-0 z-[80] flex", modal ? "pointer-events-auto" : "pointer-events-none")}>
             {/* Overlay */}
-            <div
-                className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-fade-in cursor-pointer transition-opacity duration-300"
-                onClick={handleOverlayClickClose}
-                aria-hidden="true"
-            />
+            {modal && (
+                <div
+                    className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-fade-in cursor-pointer transition-opacity duration-300"
+                    onClick={handleOverlayClickClose}
+                    aria-hidden="true"
+                />
+            )}
 
             {/* Drawer panel */}
             <div
@@ -107,10 +112,11 @@ export function Drawer({
                 role="dialog"
                 aria-modal="true"
                 className={cn(
-                    "fixed top-0 bottom-0 w-full flex flex-col bg-white shadow-2xl shadow-black/10 z-[41]",
+                    "fixed top-0 bottom-0 w-full flex flex-col bg-white shadow-2xl shadow-black/10 z-[81]",
                     side === "right"
                         ? "right-0 animate-slide-in-right"
                         : "left-0 animate-slide-in-left",
+                    !modal && "pointer-events-auto",
                     SIZES[size],
                     className
                 )}

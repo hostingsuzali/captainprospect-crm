@@ -42,6 +42,8 @@ import type { Column } from "@/components/ui/DataTable";
 import dynamic from "next/dynamic";
 import { CompanyDrawer, ContactDrawer } from "@/components/drawers";
 import { BookingDrawer } from "@/components/sdr/BookingDrawer";
+import { ScriptCompanionDrawer } from "@/components/sdr/ScriptCompanionDrawer";
+import { useSidebar } from "@/components/layout/SidebarProvider";
 
 const UnifiedActionDrawer = dynamic(
     () => import("@/components/drawers/UnifiedActionDrawer").then((m) => ({ default: m.UnifiedActionDrawer })),
@@ -358,6 +360,7 @@ function ActionStatsModalBody({
 }
 
 export default function SDRActionPage() {
+    const { setCollapsed } = useSidebar();
     const { data: session } = useSession();
     const { success, error: showError } = useToast();
     const [currentAction, setCurrentAction] = useState<NextActionData | null>(null);
@@ -1023,6 +1026,13 @@ export default function SDRActionPage() {
             return () => clearTimeout(id);
         }
     }, [unifiedDrawerOpen, viewMode, refreshQueue]);
+
+    // Improve workspace when both drawers open in table flow.
+    useEffect(() => {
+        if (viewMode === "table" && unifiedDrawerOpen) {
+            setCollapsed(true);
+        }
+    }, [viewMode, unifiedDrawerOpen, setCollapsed]);
 
     const openDrawerForRow = (row: QueueItem) => {
         setDrawerRow(row);
@@ -2099,6 +2109,16 @@ export default function SDRActionPage() {
                         />
                     )
                 }
+
+                {/* Script companion drawer (table view only), synchronized with unified drawer */}
+                {unifiedDrawerOpen && unifiedDrawerMissionId && (
+                    <ScriptCompanionDrawer
+                        isOpen={unifiedDrawerOpen}
+                        onClose={closeUnifiedDrawer}
+                        missionId={unifiedDrawerMissionId}
+                        missionName={unifiedDrawerMissionName}
+                    />
+                )}
 
                 <QuickEmailModal
                     isOpen={showQuickEmailModal}
