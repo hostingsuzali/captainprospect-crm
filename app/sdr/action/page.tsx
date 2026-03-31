@@ -566,7 +566,15 @@ export default function SDRActionPage() {
     const [mailToSendChoiceNote, setMailToSendChoiceNote] = useState("");
 
     // Config-driven status options (from API)
-    const [statusConfig, setStatusConfig] = useState<{ statuses: Array<{ code: string; label: string; color: string | null; requiresNote: boolean }> } | null>(null);
+    const [statusConfig, setStatusConfig] = useState<{
+        statuses: Array<{
+            code: string;
+            label: string;
+            color: string | null;
+            requiresNote: boolean;
+            triggersCallback?: boolean;
+        }>;
+    } | null>(null);
 
     // Load filters + today-blocks
     useEffect(() => {
@@ -660,6 +668,21 @@ export default function SDRActionPage() {
     const statusLabels: Record<string, string> = statusConfig?.statuses?.length
         ? Object.fromEntries(statusConfig.statuses.map((s) => [s.code, s.label]))
         : ACTION_RESULT_LABELS;
+
+    const callbackResultCodes = useMemo(() => {
+        if (!statusConfig?.statuses?.length) {
+            return new Set<string>(["CALLBACK_REQUESTED", "RAPPEL", "RELANCE"]);
+        }
+        const configured = statusConfig.statuses
+            .filter((s) => s.triggersCallback === true)
+            .map((s) => s.code);
+        return new Set<string>(configured);
+    }, [statusConfig]);
+
+    const isCallbackResult = useCallback((code: string | null | undefined) => {
+        if (!code) return false;
+        return callbackResultCodes.has(code);
+    }, [callbackResultCodes]);
 
     const getRequiresNote = useCallback((code: string) =>
         statusConfig?.statuses?.find((s) => s.code === code)?.requiresNote ??
@@ -1150,7 +1173,7 @@ export default function SDRActionPage() {
         setSubmittingRowKey(key);
         const noteRequired = getRequiresNote(result);
         const note = noteRequired
-            ? (result === "CALLBACK_REQUESTED" ? "Rappel demandé" : statusLabels[result] ?? "Note")
+            ? (isCallbackResult(result) ? "Rappel demandé" : statusLabels[result] ?? "Note")
             : undefined;
         try {
             const res = await fetch("/api/actions", {
@@ -1163,7 +1186,7 @@ export default function SDRActionPage() {
                     channel: row.channel,
                     result,
                     note: note ?? undefined,
-                    callbackDate: result === "CALLBACK_REQUESTED" ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : undefined,
+                    callbackDate: isCallbackResult(result) ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : undefined,
                 }),
             });
             const json = await res.json();
@@ -1447,7 +1470,7 @@ export default function SDRActionPage() {
                     channel: currentAction.channel,
                     result: selectedResult,
                     note: note || undefined,
-                    callbackDate: selectedResult === "CALLBACK_REQUESTED" && callbackDateValue ? new Date(callbackDateValue).toISOString() : undefined,
+                    callbackDate: isCallbackResult(selectedResult) && callbackDateValue ? new Date(callbackDateValue).toISOString() : undefined,
                     duration: elapsedTime,
                     ...(selectedResult === "MEETING_BOOKED" && meetingCat && { meetingCategory: meetingCat }),
                 }),
@@ -1466,7 +1489,7 @@ export default function SDRActionPage() {
         } finally {
             setIsSubmitting(false);
         }
-    }, [selectedResult, currentAction, note, callbackDateValue, selectedMissionId, elapsedTime, loadNextAction, getRequiresNote]);
+    }, [selectedResult, currentAction, note, callbackDateValue, selectedMissionId, elapsedTime, loadNextAction, getRequiresNote, isCallbackResult]);
 
     // Improve note with Mistral (orthography + rephrase)
     const handleImproveNote = async () => {
@@ -2960,8 +2983,8 @@ export default function SDRActionPage() {
                 </div>
             </div>
 
-            {/* Callback date (Rappel) - calendar when "Rappel demandé" */}
-            {selectedResult === "CALLBACK_REQUESTED" && (
+            {/* Callback date (Rappel) - calendar when status triggers callback */}
+            {isCallbackResult(selectedResult) && (
                 <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
                     <div className="p-5 border-b border-amber-100 bg-gradient-to-r from-amber-100/50 to-transparent">
                         <div className="flex items-center gap-3">
