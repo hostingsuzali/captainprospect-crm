@@ -92,6 +92,34 @@ interface PreviewRow {
     [key: string]: string;
 }
 
+function splitMultiActionCell(raw: string): string[] {
+    if (!raw) return [];
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+
+    return trimmed
+        .split(/(?:\r?\n|;|\||=>|->|→|»)+/)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+}
+
+function inferDataType(samples: string[]): ColumnStats["dataType"] {
+    const nonEmpty = samples.filter((v) => v.trim().length > 0);
+    if (nonEmpty.length === 0) return "text";
+    const emailCount = nonEmpty.filter((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())).length;
+    const urlCount = nonEmpty.filter((v) => /^https?:\/\//i.test(v.trim()) || /^www\./i.test(v.trim())).length;
+    const phoneCount = nonEmpty.filter((v) => /^[+()\d\s.-]{8,}$/.test(v.trim())).length;
+    const numberCount = nonEmpty.filter((v) => /^-?\d+([.,]\d+)?$/.test(v.trim())).length;
+    const dateCount = nonEmpty.filter((v) => /^(\d{1,2}[\/-]\d{1,2}[\/-](\d{2}|\d{4})|\d{4}-\d{1,2}-\d{1,2})/.test(v.trim())).length;
+    const n = nonEmpty.length;
+    if (emailCount / n > 0.6) return "email";
+    if (urlCount / n > 0.6) return "url";
+    if (phoneCount / n > 0.6) return "phone";
+    if (dateCount / n > 0.6) return "date";
+    if (numberCount / n > 0.7) return "number";
+    return "text";
+}
+
 // ============================================
 // FIELD OPTIONS
 // ============================================
@@ -214,6 +242,113 @@ export default function ImportListPage() {
         type: "company" | "contact";
     } | null>(null);
     const [customFieldValue, setCustomFieldValue] = useState("");
+
+    const mappedCount = mappings.filter(m => m.targetField && m.targetField !== "").length;
+    const requiredMapped = mappings.some(m => m.targetField === "company.name");
+    const canGoToType = !!file && !!missionId && (importMode === "new" ? !!listName?.trim() : !!listId);
+    const mappingCompletion = csvHeaders.length > 0 ? Math.round((mappedCount / csvHeaders.length) * 100) : 0;
+
+    const autoMapStatusValues = () => {
+        if (statusMappings.length === 0) return;
+        const next = statusMappings.map((entry) => {
+            const v = entry.csvValue.toLowerCase().trim();
+            let actionResult = entry.actionResult;
+            if (!actionResult) {
+                if (v.includes("pas de réponse") || v.includes("no answer")) actionResult = "NO_ANSWER";
+                else if (v.includes("rappel") || v.includes("callback")) actionResult = "CALLBACK_REQUESTED";
+                else if (v.includes("rdv") || v.includes("meeting") || v.includes("book")) actionResult = "MEETING_BOOKED";
+                else if (v.includes("annul")) actionResult = "MEETING_CANCELLED";
+                else if (v.includes("refus") || v.includes("not interested")) actionResult = "NOT_INTERESTED";
+                else if (v.includes("wrong") || v.includes("faux numéro")) actionResult = "WRONG_NUMBER";
+                else if (v.includes("email sent") || v.includes("email envoyé")) actionResult = "EMAIL_SENT";
+            }
+            return { ...entry, actionResult };
+        });
+        setStatusMappings(next);
+    };
+
+    const sequencePreviewRows = previewData.slice(0, 3).map((row, idx) => {
+        const statuses = actionColumnMapping.statusColumn ? splitMultiActionCell(row[actionColumnMapping.statusColumn] || "") : [];
+        const dates = actionColumnMapping.dateColumn ? splitMultiActionCell(row[actionColumnMapping.dateColumn] || "") : [];
+        const channels = actionColumnMapping.channelColumn ? splitMultiActionCell(row[actionColumnMapping.channelColumn] || "") : [];
+        const notes = actionColumnMapping.noteColumn ? splitMultiActionCell(row[actionColumnMapping.noteColumn] || "") : [];
+        const lengths = [statuses.length, dates.length, channels.length, notes.length].filter((n) => n > 0);
+        const maxLen = lengths.length > 0 ? Math.max(...lengths) : 0;
+        const minLen = lengths.length > 0 ? Math.min(...lengths) : 0;
+        return {
+            rowNumber: idx + 1,
+            statuses,
+            dates,
+            channels,
+            notes,
+            actionCount: statuses.length,
+            hasPotentialMisalignment: lengths.length > 1 && maxLen !== minLen,
+        };
+    });
+
+    const isWorkedConflictActive =
+        importMode === "existing" && whenAlreadyWorkedOn === "skip" && importActions;
+
+    const statusResultByCsv = new Map(
+        statusMappings.map((m) => [m.csvValue.trim().toLowerCase(), m.actionResult])
+    );
+    const channelByCsv = new Map(
+        channelMappings.map((m) => [m.csvValue.trim().toLowerCase(), m.channel])
+    );
+    const channelLabelByValue: Record<"CALL" | "EMAIL" | "LINKEDIN", string> = {
+        CALL: "Appel",
+        EMAIL: "Email",
+        LINKEDIN: "LinkedIn",
+    };
+    const channelEmojiByValue: Record<"CALL" | "EMAIL" | "LINKEDIN", string> = {
+        CALL: "📞",
+        EMAIL: "📧",
+        LINKEDIN: "💼",
+    };
+
+    const reconstructedActionPreview = previewData.slice(0, 3).map((row, idx) => {
+        const companyCol = mappings.find((m) => m.targetField === "company.name")?.csvColumn;
+        const companyName = (companyCol ? row[companyCol] : "")?.trim() || `Ligne ${idx + 1}`;
+        const statuses = actionColumnMapping.statusColumn
+            ? splitMultiActionCell(row[actionColumnMapping.statusColumn] || "")
+            : [];
+        const dates = actionColumnMapping.dateColumn
+            ? splitMultiActionCell(row[actionColumnMapping.dateColumn] || "")
+            : [];
+        const channels = actionColumnMapping.channelColumn
+            ? splitMultiActionCell(row[actionColumnMapping.channelColumn] || "")
+            : [];
+        const notes = actionColumnMapping.noteColumn
+            ? splitMultiActionCell(row[actionColumnMapping.noteColumn] || "")
+            : [];
+        const callbacks = actionColumnMapping.callbackDateColumn
+            ? splitMultiActionCell(row[actionColumnMapping.callbackDateColumn] || "")
+            : [];
+
+        const actions = statuses.map((status, actionIdx) => {
+            const statusKey = status.trim().toLowerCase();
+            const mappedResult = statusResultByCsv.get(statusKey) || "";
+            const resultLabel = mappedResult ? ACTION_RESULT_LABELS[mappedResult as keyof typeof ACTION_RESULT_LABELS] : undefined;
+            const rawChannel = (channels[actionIdx] ?? channels[0] ?? "").trim().toLowerCase();
+            const mappedChannel = (channelByCsv.get(rawChannel) || "CALL") as "CALL" | "EMAIL" | "LINKEDIN";
+            return {
+                channel: mappedChannel,
+                channelLabel: channelLabelByValue[mappedChannel],
+                channelEmoji: channelEmojiByValue[mappedChannel],
+                date: dates[actionIdx] ?? dates[0] ?? "",
+                callbackDate: callbacks[actionIdx] ?? callbacks[0] ?? "",
+                sourceStatus: status,
+                mappedLabel: resultLabel,
+                note: notes[actionIdx] ?? notes[0] ?? "",
+            };
+        });
+
+        return {
+            companyName,
+            actionCount: actions.length,
+            actions,
+        };
+    });
 
     // ============================================
     // FETCH MISSIONS
@@ -446,19 +581,40 @@ export default function ImportListPage() {
             for (let r = 1; r < lines.length; r++) {
                 const values = parseCSVLine(lines[r], delimiter).map(v => v.replace(/^"|"$/g, '').trim());
                 headers.forEach((header, i) => {
-                    const val = values[i] || "";
-                    if (!val) return;
-                    const existing = colUnique[header].counts[val];
-                    if (existing === undefined) {
-                        colUnique[header].values.push(val);
-                        colUnique[header].counts[val] = 1;
-                    } else {
-                        colUnique[header].counts[val]++;
+                    const rawValue = values[i] || "";
+                    if (!rawValue) return;
+                    const splitValues = splitMultiActionCell(rawValue);
+                    const valuesToCount = splitValues.length > 1 ? splitValues : [rawValue];
+
+                    for (const val of valuesToCount) {
+                        const existing = colUnique[header].counts[val];
+                        if (existing === undefined) {
+                            colUnique[header].values.push(val);
+                            colUnique[header].counts[val] = 1;
+                        } else {
+                            colUnique[header].counts[val]++;
+                        }
                     }
                 });
             }
             headers.forEach(h => { colUnique[h].values.sort(); });
             setFullColumnUniqueValues(colUnique);
+
+            const stats: ColumnStats[] = headers.map((header, idx) => {
+                const allValues = lines
+                    .slice(1)
+                    .map((line) => parseCSVLine(line, delimiter)[idx]?.replace(/^"|"$/g, "").trim() || "");
+                const nonEmpty = allValues.filter((v) => v.length > 0);
+                return {
+                    column: header,
+                    totalRows: lines.length - 1,
+                    filledRows: nonEmpty.length,
+                    uniqueValues: Object.keys(colUnique[header]?.counts ?? {}).length,
+                    dataType: inferDataType(nonEmpty.slice(0, 50)),
+                    sampleValues: nonEmpty.slice(0, 3),
+                };
+            });
+            setColumnStats(stats);
 
             // Set total row count for validation
             setTotalRows(lines.length - 1);
@@ -536,6 +692,32 @@ export default function ImportListPage() {
                 errors.push("Vous avez activé l'historique d'actions mais aucune colonne de statut n'est sélectionnée");
             } else if (statusMappings.length > 0 && statusMappings.some(m => !m.actionResult)) {
                 errors.push("Tous les statuts trouvés dans la colonne d'historique doivent être mappés à un résultat CRM");
+            }
+
+            const previewMisaligned = previewData.slice(0, 20).some((row) => {
+                const statuses = actionColumnMapping.statusColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.statusColumn] || "")
+                    : [];
+                if (statuses.length <= 1) return false;
+                const dates = actionColumnMapping.dateColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.dateColumn] || "")
+                    : [];
+                const channels = actionColumnMapping.channelColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.channelColumn] || "")
+                    : [];
+                const notes = actionColumnMapping.noteColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.noteColumn] || "")
+                    : [];
+                const lengths = [statuses.length, dates.length, channels.length, notes.length].filter((n) => n > 1);
+                return lengths.some((n) => n !== statuses.length);
+            });
+
+            if (previewMisaligned) {
+                warnings.push("Certaines lignes semblent avoir un nombre de valeurs différent entre statuts/dates/canaux/notes. Vérifiez la section 'Aperçu séquence multi-actions'.");
+            }
+
+            if (importMode === "existing" && whenAlreadyWorkedOn === "skip") {
+                warnings.push("Conflit potentiel: vous importez l'historique d'actions mais vous avez choisi d'ignorer les sociétés déjà travaillées. Une partie de l'historique peut être ignorée.");
             }
         }
 
@@ -664,7 +846,8 @@ export default function ImportListPage() {
     return (
         <div className="max-w-4xl mx-auto space-y-6">
             {/* Header */}
-            <div className="flex items-center gap-4">
+            <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-white to-indigo-50 p-5">
+                <div className="flex items-center gap-4">
                 <Link href="/manager/lists">
                     <Button variant="ghost" size="sm">
                         <ArrowLeft className="w-4 h-4" />
@@ -673,8 +856,23 @@ export default function ImportListPage() {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Importer CSV</h1>
                     <p className="text-slate-500 mt-1">
-                        Importez des sociétés et contacts depuis un fichier CSV
+                        Importez des societes, contacts, et historique d&apos;actions en 5 etapes
                     </p>
+                </div>
+            </div>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="rounded-xl bg-white/80 border border-slate-200 p-3">
+                        <p className="text-xs text-slate-500">Fichier</p>
+                        <p className="text-sm font-medium text-slate-900 truncate">{file?.name || "Aucun fichier"}</p>
+                    </div>
+                    <div className="rounded-xl bg-white/80 border border-slate-200 p-3">
+                        <p className="text-xs text-slate-500">Mission</p>
+                        <p className="text-sm font-medium text-slate-900 truncate">{missions.find(m => m.id === missionId)?.name || "Non selectionnee"}</p>
+                    </div>
+                    <div className="rounded-xl bg-white/80 border border-slate-200 p-3">
+                        <p className="text-xs text-slate-500">Mapping</p>
+                        <p className="text-sm font-medium text-slate-900">{mappedCount}/{csvHeaders.length || 0} colonnes</p>
+                    </div>
                 </div>
             </div>
 
@@ -801,11 +999,7 @@ export default function ImportListPage() {
                             <Button
                                 variant="primary"
                                 onClick={() => setStep(2)}
-                                disabled={
-                                    !file ||
-                                    !missionId ||
-                                    (importMode === "new" ? !listName?.trim() : !listId)
-                                }
+                                disabled={!canGoToType}
                                 className="gap-2"
                             >
                                 Suivant
@@ -909,7 +1103,7 @@ export default function ImportListPage() {
                                 <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                                     Mapper les colonnes
                                     <Badge variant="primary" className="text-xs">
-                                        {mappings.filter(m => m.targetField && m.targetField !== "").length}/{csvHeaders.length} mappées
+                                        {mappedCount}/{csvHeaders.length} mappees
                                     </Badge>
                                 </h2>
                                 <p className="text-sm text-slate-500 mt-1">
@@ -924,6 +1118,18 @@ export default function ImportListPage() {
                                     </div>
                                 </Tooltip>
                             </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-sm font-medium text-slate-800">Progression du mapping</p>
+                                <p className="text-xs text-slate-500">{mappingCompletion}%</p>
+                            </div>
+                            <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                                <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${mappingCompletion}%` }} />
+                            </div>
+                            {!requiredMapped && (
+                                <p className="text-xs text-rose-600 mt-2">Le champ obligatoire `Nom de société` n&apos;est pas encore mappé.</p>
+                            )}
                         </div>
 
                         {/* Bulk Actions Toolbar */}
@@ -1007,6 +1213,24 @@ export default function ImportListPage() {
                                             <p className="text-xs text-slate-500 truncate">
                                                 Exemple: {previewData[0]?.[mapping.csvColumn] || "—"}
                                             </p>
+                                            {(() => {
+                                                const stat = columnStats.find(s => s.column === mapping.csvColumn);
+                                                if (!stat) return null;
+                                                const fillRate = stat.totalRows > 0 ? Math.round((stat.filledRows / stat.totalRows) * 100) : 0;
+                                                return (
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                                                            rempli {fillRate}%
+                                                        </span>
+                                                        <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                                                            {stat.uniqueValues} uniques
+                                                        </span>
+                                                        <span className="text-[11px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-600">
+                                                            {stat.dataType}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                         <ArrowRight className="w-4 h-4 text-slate-300 flex-shrink-0" />
                                         <Select
@@ -1044,6 +1268,28 @@ export default function ImportListPage() {
                                         Configurez les colonnes pour reconstruire l&apos;historique des statuts et des notes de vos prospects.
                                     </p>
                                 </div>
+                                <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
+                                    <p className="text-xs font-medium text-indigo-800 mb-1">Format multi-appels accepte</p>
+                                    <p className="text-xs text-indigo-700">
+                                        Vous pouvez separer les sequences avec <strong>;</strong>, <strong>|</strong>, retour a la ligne, <strong>-&gt;</strong>, <strong>=&gt;</strong>, <strong>→</strong> ou <strong>»</strong>.
+                                    </p>
+                                    <p className="text-[11px] text-indigo-700 mt-1">
+                                        Exemple: <span className="font-medium">No answer ; Callback requested ; Meeting booked</span>
+                                    </p>
+                                </div>
+                                {isWorkedConflictActive && (
+                                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                        <p className="text-xs font-semibold text-amber-800">Attention: regle potentiellement contradictoire</p>
+                                        <p className="text-xs text-amber-700 mt-1">
+                                            Vous avez active l&apos;historique multi-actions, mais en destination vous avez choisi
+                                            <span className="font-medium"> &quot;Ignorer les societes deja travaillees&quot;</span>. Les actions
+                                            historiques de ces societes seront ignorees.
+                                        </p>
+                                        <p className="text-[11px] text-amber-700 mt-1">
+                                            Conseil: passez sur &quot;Ajouter quand meme&quot; si vous voulez conserver tout l&apos;historique.
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Column selectors */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1144,15 +1390,20 @@ export default function ImportListPage() {
                                 {/* Status mappings */}
                                 {detectedStatuses.length > 0 && (
                                     <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between gap-2">
                                             <p className="text-xs font-medium text-slate-700">
                                                 Mapping des statuts CSV vers les résultats CRM
                                             </p>
-                                            {statusMappings.some(m => !m.actionResult) && (
-                                                <span className="text-[11px] text-amber-600">
-                                                    Certains statuts ne sont pas encore mappés
-                                                </span>
-                                            )}
+                                            <div className="flex items-center gap-2">
+                                                <Button variant="ghost" size="sm" onClick={autoMapStatusValues} className="h-7 text-xs">
+                                                    Auto-mapper
+                                                </Button>
+                                                {statusMappings.some(m => !m.actionResult) && (
+                                                    <span className="text-[11px] text-amber-600">
+                                                        Certains statuts ne sont pas encore mappes
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
                                             <table className="w-full text-xs">
@@ -1226,6 +1477,69 @@ export default function ImportListPage() {
                                                                     }}
                                                                     className="w-40"
                                                                 />
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {!!actionColumnMapping.statusColumn && (
+                                    <div className="space-y-2">
+                                        <p className="text-xs font-medium text-slate-700">Reconstruction avant import (simulation CRM)</p>
+                                        <div className="grid grid-cols-1 gap-3">
+                                            {reconstructedActionPreview.map((row, rowIdx) => (
+                                                <div key={`reco-${rowIdx}`} className="rounded-lg border border-slate-200 bg-white p-3">
+                                                    <p className="text-sm font-semibold text-slate-900">
+                                                        {row.companyName} - {row.actionCount} action{row.actionCount > 1 ? "s" : ""} detectee{row.actionCount > 1 ? "s" : ""}
+                                                    </p>
+                                                    <div className="mt-2 space-y-1.5">
+                                                        {row.actions.length > 0 ? row.actions.map((action, actionIdx) => (
+                                                            <div key={`reco-${rowIdx}-action-${actionIdx}`} className="text-xs text-slate-700">
+                                                                <span>{action.channelEmoji} {action.channelLabel}</span>
+                                                                <span> · {action.date || "date non fournie"}</span>
+                                                                <span> · {action.mappedLabel || action.sourceStatus}</span>
+                                                                {action.callbackDate && (
+                                                                    <span> -&gt; RDV/Rappel {action.callbackDate}</span>
+                                                                )}
+                                                                {action.note && (
+                                                                    <span> · "{action.note}"</span>
+                                                                )}
+                                                            </div>
+                                                        )) : (
+                                                            <p className="text-xs text-slate-500">Aucune action detectee pour cet exemple.</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs font-medium text-slate-700">Apercu sequence multi-actions (3 premieres lignes)</p>
+                                        <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                                            <table className="w-full text-xs">
+                                                <thead className="bg-slate-50">
+                                                    <tr>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Ligne</th>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Actions detectees</th>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Exemple de sequence</th>
+                                                        <th className="px-3 py-2 text-left text-slate-700 font-medium">Qualite</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {sequencePreviewRows.map((row) => (
+                                                        <tr key={`seq-preview-${row.rowNumber}`} className="border-t border-slate-100">
+                                                            <td className="px-3 py-2 text-slate-900">#{row.rowNumber}</td>
+                                                            <td className="px-3 py-2 text-slate-700">{row.actionCount || 0}</td>
+                                                            <td className="px-3 py-2 text-slate-600 max-w-[420px] truncate">
+                                                                {row.statuses.length > 0 ? row.statuses.join(" -> ") : "Aucune sequence"}
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                {row.hasPotentialMisalignment ? (
+                                                                    <span className="text-amber-600">A verifier (tailles differentes)</span>
+                                                                ) : (
+                                                                    <span className="text-emerald-600">OK</span>
+                                                                )}
                                                             </td>
                                                         </tr>
                                                     ))}

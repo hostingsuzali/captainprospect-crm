@@ -58,6 +58,17 @@ function detectDelimiter(firstLine: string): string {
     return detected;
 }
 
+function splitMultiActionCell(raw: string | undefined): string[] {
+    if (!raw) return [];
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+
+    return trimmed
+        .split(/(?:\r?\n|;|\||=>|->|→|»)+/)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+}
+
 /** Consume a Web ReadableStream and yield lines (split by \n or \r\n). */
 async function* streamToLines(
     stream: ReadableStream<Uint8Array>
@@ -798,15 +809,17 @@ async function processBatch(
             callbackDate?: Date;
         }[] = [];
 
+        const normalizeMappingValue = (value: string): string => value.trim().toLowerCase();
+
         const statusMap = new Map<string, ActionResult>();
         for (const m of statusMappings) {
             if (m.actionResult) {
-                statusMap.set(m.csvValue, m.actionResult);
+                statusMap.set(normalizeMappingValue(m.csvValue), m.actionResult);
             }
         }
         const channelMap = new Map<string, "CALL" | "EMAIL" | "LINKEDIN">();
         for (const m of channelMappings) {
-            channelMap.set(m.csvValue, m.channel);
+            channelMap.set(normalizeMappingValue(m.csvValue), m.channel);
         }
 
         const statusColumn = actionColumnMapping.statusColumn!;
@@ -856,33 +869,22 @@ async function processBatch(
                 const company = companyMap.get(info.companyName);
                 if (!company) continue;
 
-                const splitCellValues = (raw: string | undefined): string[] => {
-                    if (!raw) return [];
-                    const trimmed = raw.trim();
-                    if (!trimmed) return [];
-                    // Allow importing multiple actions in one row: "status1; status2; status3"
-                    return trimmed
-                        .split(/[;|]/)
-                        .map((part) => part.trim())
-                        .filter((part) => part.length > 0);
-                };
-
-                const statuses = splitCellValues(info.row[statusColumn]);
+                const statuses = splitMultiActionCell(info.row[statusColumn]);
                 if (statuses.length === 0) continue;
-                const dateValues = dateColumn ? splitCellValues(info.row[dateColumn]) : [];
-                const callbackDateValues = callbackDateColumn ? splitCellValues(info.row[callbackDateColumn]) : [];
-                const noteValues = noteColumn ? splitCellValues(info.row[noteColumn]) : [];
-                const channelValues = channelColumn ? splitCellValues(info.row[channelColumn]) : [];
+                const dateValues = dateColumn ? splitMultiActionCell(info.row[dateColumn]) : [];
+                const callbackDateValues = callbackDateColumn ? splitMultiActionCell(info.row[callbackDateColumn]) : [];
+                const noteValues = noteColumn ? splitMultiActionCell(info.row[noteColumn]) : [];
+                const channelValues = channelColumn ? splitMultiActionCell(info.row[channelColumn]) : [];
                 const contactId = findContactIdForRow(company.id, info);
 
                 for (let i = 0; i < statuses.length; i++) {
-                    const result = statusMap.get(statuses[i]);
+                    const result = statusMap.get(normalizeMappingValue(statuses[i]));
                     if (!result) continue;
 
                     let channel: "CALL" | "EMAIL" | "LINKEDIN" = defaultChannel;
                     const rawChannel = channelValues[i] ?? channelValues[0];
                     if (rawChannel) {
-                        const mapped = channelMap.get(rawChannel);
+                        const mapped = channelMap.get(normalizeMappingValue(rawChannel));
                         if (mapped) channel = mapped;
                     }
 
