@@ -88,6 +88,15 @@ interface ActionColumnMapping {
     channelColumn: string;
 }
 
+interface ActionColumnGroup {
+    id: string;
+    statusColumn: string;
+    dateColumn: string;
+    noteColumn: string;
+    channelColumn: string;
+    callbackDateColumn: string;
+}
+
 interface PreviewRow {
     [key: string]: string;
 }
@@ -212,6 +221,8 @@ export default function ImportListPage() {
         noteColumn: "",
         channelColumn: "",
     });
+    const [actionColumnMode, setActionColumnMode] = useState<"single" | "multi-column">("single");
+    const [actionColumnGroups, setActionColumnGroups] = useState<ActionColumnGroup[]>([]);
     const [statusMappings, setStatusMappings] = useState<StatusMapping[]>([]);
     const [detectedStatuses, setDetectedStatuses] = useState<string[]>([]);
     const [detectedChannels, setDetectedChannels] = useState<string[]>([]);
@@ -267,11 +278,72 @@ export default function ImportListPage() {
         setStatusMappings(next);
     };
 
+    const addActionColumnGroup = () => {
+        const nextIndex = actionColumnGroups.length + 1;
+        setActionColumnGroups((prev) => [
+            ...prev,
+            {
+                id: `call-${Date.now()}-${nextIndex}`,
+                statusColumn: "",
+                dateColumn: "",
+                noteColumn: "",
+                channelColumn: "",
+                callbackDateColumn: "",
+            },
+        ]);
+    };
+
+    const updateActionColumnGroup = (
+        id: string,
+        patch: Partial<Omit<ActionColumnGroup, "id">>
+    ) => {
+        setActionColumnGroups((prev) =>
+            prev.map((g) => (g.id === id ? { ...g, ...patch } : g))
+        );
+    };
+
+    const removeActionColumnGroup = (id: string) => {
+        setActionColumnGroups((prev) => prev.filter((g) => g.id !== id));
+    };
+
     const sequencePreviewRows = previewData.slice(0, 3).map((row, idx) => {
-        const statuses = actionColumnMapping.statusColumn ? splitMultiActionCell(row[actionColumnMapping.statusColumn] || "") : [];
-        const dates = actionColumnMapping.dateColumn ? splitMultiActionCell(row[actionColumnMapping.dateColumn] || "") : [];
-        const channels = actionColumnMapping.channelColumn ? splitMultiActionCell(row[actionColumnMapping.channelColumn] || "") : [];
-        const notes = actionColumnMapping.noteColumn ? splitMultiActionCell(row[actionColumnMapping.noteColumn] || "") : [];
+        const multiStatuses = actionColumnGroups
+            .map((g) => (g.statusColumn ? row[g.statusColumn] || "" : ""))
+            .filter((v) => !!v)
+            .map((v) => v.trim());
+        const statuses =
+            actionColumnMode === "multi-column"
+                ? multiStatuses
+                : actionColumnMapping.statusColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.statusColumn] || "")
+                    : [];
+        const dates =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups
+                    .map((g) => (g.dateColumn ? row[g.dateColumn] || "" : ""))
+                    .filter((v) => !!v)
+                    .map((v) => v.trim())
+                : actionColumnMapping.dateColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.dateColumn] || "")
+                    : [];
+        const channels =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups
+                    .map((g) => (g.channelColumn ? row[g.channelColumn] || "" : ""))
+                    .filter((v) => !!v)
+                    .map((v) => v.trim())
+                : actionColumnMapping.channelColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.channelColumn] || "")
+                    : [];
+        const notes =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups
+                    .map((g) => (g.noteColumn ? row[g.noteColumn] || "" : ""))
+                    .filter((v) => !!v)
+                    .map((v) => v.trim())
+                : actionColumnMapping.noteColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.noteColumn] || "")
+                    : [];
         const lengths = [statuses.length, dates.length, channels.length, notes.length].filter((n) => n > 0);
         const maxLen = lengths.length > 0 ? Math.max(...lengths) : 0;
         const minLen = lengths.length > 0 ? Math.min(...lengths) : 0;
@@ -309,21 +381,51 @@ export default function ImportListPage() {
     const reconstructedActionPreview = previewData.slice(0, 3).map((row, idx) => {
         const companyCol = mappings.find((m) => m.targetField === "company.name")?.csvColumn;
         const companyName = (companyCol ? row[companyCol] : "")?.trim() || `Ligne ${idx + 1}`;
-        const statuses = actionColumnMapping.statusColumn
-            ? splitMultiActionCell(row[actionColumnMapping.statusColumn] || "")
-            : [];
-        const dates = actionColumnMapping.dateColumn
-            ? splitMultiActionCell(row[actionColumnMapping.dateColumn] || "")
-            : [];
-        const channels = actionColumnMapping.channelColumn
-            ? splitMultiActionCell(row[actionColumnMapping.channelColumn] || "")
-            : [];
-        const notes = actionColumnMapping.noteColumn
-            ? splitMultiActionCell(row[actionColumnMapping.noteColumn] || "")
-            : [];
-        const callbacks = actionColumnMapping.callbackDateColumn
-            ? splitMultiActionCell(row[actionColumnMapping.callbackDateColumn] || "")
-            : [];
+        const statuses =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups
+                    .map((g) => (g.statusColumn ? row[g.statusColumn] || "" : ""))
+                    .filter((v) => !!v)
+                    .map((v) => v.trim())
+                : actionColumnMapping.statusColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.statusColumn] || "")
+                    : [];
+        const dates =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups
+                    .map((g) => (g.dateColumn ? row[g.dateColumn] || "" : ""))
+                    .filter((v) => !!v)
+                    .map((v) => v.trim())
+                : actionColumnMapping.dateColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.dateColumn] || "")
+                    : [];
+        const channels =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups
+                    .map((g) => (g.channelColumn ? row[g.channelColumn] || "" : ""))
+                    .filter((v) => !!v)
+                    .map((v) => v.trim())
+                : actionColumnMapping.channelColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.channelColumn] || "")
+                    : [];
+        const notes =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups
+                    .map((g) => (g.noteColumn ? row[g.noteColumn] || "" : ""))
+                    .filter((v) => !!v)
+                    .map((v) => v.trim())
+                : actionColumnMapping.noteColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.noteColumn] || "")
+                    : [];
+        const callbacks =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups
+                    .map((g) => (g.callbackDateColumn ? row[g.callbackDateColumn] || "" : ""))
+                    .filter((v) => !!v)
+                    .map((v) => v.trim())
+                : actionColumnMapping.callbackDateColumn
+                    ? splitMultiActionCell(row[actionColumnMapping.callbackDateColumn] || "")
+                    : [];
 
         const actions = statuses.map((status, actionIdx) => {
             const statusKey = status.trim().toLowerCase();
@@ -395,49 +497,71 @@ export default function ImportListPage() {
         return () => { cancelled = true; };
     }, [importMode, missionId]);
 
-    // Detect unique status values when status column is selected (uses ALL rows, not just preview)
+    // Detect unique status values for selected action status columns (single or multi-column mode)
     useEffect(() => {
-        const col = actionColumnMapping.statusColumn;
-        if (!col) {
+        const selectedStatusColumns =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups.map((g) => g.statusColumn).filter(Boolean)
+                : actionColumnMapping.statusColumn
+                    ? [actionColumnMapping.statusColumn]
+                    : [];
+        if (selectedStatusColumns.length === 0) {
             setDetectedStatuses([]);
             setStatusMappings([]);
             return;
         }
-        const data = fullColumnUniqueValues[col];
-        if (data && data.values.length > 0) {
-            setDetectedStatuses(data.values);
-            setStatusMappings(data.values.map(csvValue => ({
-                csvValue,
-                actionResult: "",
-                count: data.counts[csvValue] || 0
-            })));
-        } else {
-            setDetectedStatuses([]);
-            setStatusMappings([]);
+        const aggregateCounts: Record<string, number> = {};
+        for (const col of selectedStatusColumns) {
+            const data = fullColumnUniqueValues[col];
+            if (!data) continue;
+            for (const csvValue of data.values) {
+                aggregateCounts[csvValue] = (aggregateCounts[csvValue] || 0) + (data.counts[csvValue] || 0);
+            }
         }
-    }, [actionColumnMapping.statusColumn, fullColumnUniqueValues]);
+        const values = Object.keys(aggregateCounts).sort();
+        setDetectedStatuses(values);
+        setStatusMappings((prev) => {
+            const prevByValue = new Map(prev.map((m) => [m.csvValue, m.actionResult]));
+            return values.map((csvValue) => ({
+                csvValue,
+                actionResult: prevByValue.get(csvValue) || "",
+                count: aggregateCounts[csvValue] || 0,
+            }));
+        });
+    }, [actionColumnMode, actionColumnGroups, actionColumnMapping.statusColumn, fullColumnUniqueValues]);
 
-    // Detect unique channel values when channel column is selected (uses ALL rows, not just preview)
+    // Detect unique channel values for selected action channel columns (single or multi-column mode)
     useEffect(() => {
-        const col = actionColumnMapping.channelColumn;
-        if (!col) {
+        const selectedChannelColumns =
+            actionColumnMode === "multi-column"
+                ? actionColumnGroups.map((g) => g.channelColumn).filter(Boolean)
+                : actionColumnMapping.channelColumn
+                    ? [actionColumnMapping.channelColumn]
+                    : [];
+        if (selectedChannelColumns.length === 0) {
             setDetectedChannels([]);
             setChannelMappings([]);
             return;
         }
-        const data = fullColumnUniqueValues[col];
-        if (data && data.values.length > 0) {
-            setDetectedChannels(data.values);
-            setChannelMappings(data.values.map(csvValue => ({
-                csvValue,
-                channel: 'CALL',
-                count: data.counts[csvValue] || 0
-            })));
-        } else {
-            setDetectedChannels([]);
-            setChannelMappings([]);
+        const aggregateCounts: Record<string, number> = {};
+        for (const col of selectedChannelColumns) {
+            const data = fullColumnUniqueValues[col];
+            if (!data) continue;
+            for (const csvValue of data.values) {
+                aggregateCounts[csvValue] = (aggregateCounts[csvValue] || 0) + (data.counts[csvValue] || 0);
+            }
         }
-    }, [actionColumnMapping.channelColumn, fullColumnUniqueValues]);
+        const values = Object.keys(aggregateCounts).sort();
+        setDetectedChannels(values);
+        setChannelMappings((prev) => {
+            const prevByValue = new Map(prev.map((m) => [m.csvValue, m.channel]));
+            return values.map((csvValue) => ({
+                csvValue,
+                channel: prevByValue.get(csvValue) || "CALL",
+                count: aggregateCounts[csvValue] || 0,
+            }));
+        });
+    }, [actionColumnMode, actionColumnGroups, actionColumnMapping.channelColumn, fullColumnUniqueValues]);
 
     // ============================================
     // ADVANCED CSV PARSING
@@ -688,26 +812,48 @@ export default function ImportListPage() {
 
         // Validation for action history import: require full mapping of detected statuses
         if (importActions) {
-            if (!actionColumnMapping.statusColumn) {
-                errors.push("Vous avez activé l'historique d'actions mais aucune colonne de statut n'est sélectionnée");
+            const hasStatusMapping =
+                actionColumnMode === "multi-column"
+                    ? actionColumnGroups.some((g) => !!g.statusColumn)
+                    : !!actionColumnMapping.statusColumn;
+            if (!hasStatusMapping) {
+                errors.push(
+                    actionColumnMode === "multi-column"
+                        ? "Vous avez activé l'historique d'actions mais aucun groupe d'appel n'a de colonne de statut"
+                        : "Vous avez activé l'historique d'actions mais aucune colonne de statut n'est sélectionnée"
+                );
             } else if (statusMappings.length > 0 && statusMappings.some(m => !m.actionResult)) {
                 errors.push("Tous les statuts trouvés dans la colonne d'historique doivent être mappés à un résultat CRM");
             }
 
             const previewMisaligned = previewData.slice(0, 20).some((row) => {
-                const statuses = actionColumnMapping.statusColumn
-                    ? splitMultiActionCell(row[actionColumnMapping.statusColumn] || "")
-                    : [];
+                const statuses =
+                    actionColumnMode === "multi-column"
+                        ? actionColumnGroups
+                            .map((g) => (g.statusColumn ? row[g.statusColumn] || "" : ""))
+                            .filter((v) => !!v)
+                        : actionColumnMapping.statusColumn
+                            ? splitMultiActionCell(row[actionColumnMapping.statusColumn] || "")
+                            : [];
                 if (statuses.length <= 1) return false;
-                const dates = actionColumnMapping.dateColumn
-                    ? splitMultiActionCell(row[actionColumnMapping.dateColumn] || "")
-                    : [];
-                const channels = actionColumnMapping.channelColumn
-                    ? splitMultiActionCell(row[actionColumnMapping.channelColumn] || "")
-                    : [];
-                const notes = actionColumnMapping.noteColumn
-                    ? splitMultiActionCell(row[actionColumnMapping.noteColumn] || "")
-                    : [];
+                const dates =
+                    actionColumnMode === "multi-column"
+                        ? actionColumnGroups.map((g) => (g.dateColumn ? row[g.dateColumn] || "" : "")).filter((v) => !!v)
+                        : actionColumnMapping.dateColumn
+                            ? splitMultiActionCell(row[actionColumnMapping.dateColumn] || "")
+                            : [];
+                const channels =
+                    actionColumnMode === "multi-column"
+                        ? actionColumnGroups.map((g) => (g.channelColumn ? row[g.channelColumn] || "" : "")).filter((v) => !!v)
+                        : actionColumnMapping.channelColumn
+                            ? splitMultiActionCell(row[actionColumnMapping.channelColumn] || "")
+                            : [];
+                const notes =
+                    actionColumnMode === "multi-column"
+                        ? actionColumnGroups.map((g) => (g.noteColumn ? row[g.noteColumn] || "" : "")).filter((v) => !!v)
+                        : actionColumnMapping.noteColumn
+                            ? splitMultiActionCell(row[actionColumnMapping.noteColumn] || "")
+                            : [];
                 const lengths = [statuses.length, dates.length, channels.length, notes.length].filter((n) => n > 1);
                 return lengths.some((n) => n !== statuses.length);
             });
@@ -757,6 +903,10 @@ export default function ImportListPage() {
             formData.append("importType", importType);
             formData.append("importActions", String(importActions));
             formData.append("actionColumnMapping", JSON.stringify(actionColumnMapping));
+            if (actionColumnMode === "multi-column") {
+                formData.append("actionColumnMode", actionColumnMode);
+                formData.append("actionColumnGroups", JSON.stringify(actionColumnGroups));
+            }
             formData.append("statusMappings", JSON.stringify(statusMappings));
             formData.append("channelMappings", JSON.stringify(channelMappings));
             if (totalRows > 0) formData.append("totalRows", String(totalRows));
@@ -1291,100 +1441,159 @@ export default function ImportListPage() {
                                     </div>
                                 )}
 
-                                {/* Column selectors */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-1">
-                                        <p className="text-xs font-medium text-slate-700">Colonne statut</p>
-                                        <Select
-                                            options={[
-                                                { value: "", label: "Ignorer" },
-                                                ...csvHeaders.map(h => ({ value: h, label: h })),
-                                            ]}
-                                            value={actionColumnMapping.statusColumn}
-                                            onChange={(value) =>
-                                                setActionColumnMapping(prev => ({ ...prev, statusColumn: value }))
-                                            }
-                                        />
-                                        <p className="text-xs text-slate-500">
-                                            Valeurs comme &quot;Tentative&quot;, &quot;Meeting booké&quot;, etc.
-                                        </p>
-                                        <p className="text-xs text-slate-400">
-                                            Plusieurs actions possibles dans une même ligne avec &quot;;&quot;.
-                                        </p>
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs font-medium text-slate-700">Mode de mapping des actions</p>
+                                        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+                                            <button
+                                                type="button"
+                                                className={`px-3 py-1.5 text-xs rounded ${actionColumnMode === "single" ? "bg-indigo-600 text-white" : "text-slate-700"}`}
+                                                onClick={() => setActionColumnMode("single")}
+                                            >
+                                                Colonne unique
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={`px-3 py-1.5 text-xs rounded ${actionColumnMode === "multi-column" ? "bg-indigo-600 text-white" : "text-slate-700"}`}
+                                                onClick={() => setActionColumnMode("multi-column")}
+                                            >
+                                                Multi-colonnes
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="space-y-1">
-                                        <p className="text-xs font-medium text-slate-700">Colonne date</p>
-                                        <Select
-                                            options={[
-                                                { value: "", label: "Ignorer" },
-                                                ...csvHeaders.map(h => ({ value: h, label: h })),
-                                            ]}
-                                            value={actionColumnMapping.dateColumn}
-                                            onChange={(value) =>
-                                                setActionColumnMapping(prev => ({ ...prev, dateColumn: value }))
-                                            }
-                                        />
-                                        <p className="text-xs text-slate-500">
-                                            Date à laquelle l&apos;action a eu lieu (optionnel).
-                                        </p>
-                                        <p className="text-xs text-slate-400">
-                                            Si besoin, séparez plusieurs dates avec &quot;;&quot;.
-                                        </p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-xs font-medium text-slate-700">Colonne date callback / RDV</p>
-                                        <Select
-                                            options={[
-                                                { value: "", label: "Ignorer" },
-                                                ...csvHeaders.map(h => ({ value: h, label: h })),
-                                            ]}
-                                            value={actionColumnMapping.callbackDateColumn}
-                                            onChange={(value) =>
-                                                setActionColumnMapping(prev => ({ ...prev, callbackDateColumn: value }))
-                                            }
-                                        />
-                                        <p className="text-xs text-slate-500">
-                                            Date planifiée du rappel / RDV (optionnel).
-                                        </p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-xs font-medium text-slate-700">Colonne note</p>
-                                        <Select
-                                            options={[
-                                                { value: "", label: "Ignorer" },
-                                                ...csvHeaders.map(h => ({ value: h, label: h })),
-                                            ]}
-                                            value={actionColumnMapping.noteColumn}
-                                            onChange={(value) =>
-                                                setActionColumnMapping(prev => ({ ...prev, noteColumn: value }))
-                                            }
-                                        />
-                                        <p className="text-xs text-slate-500">
-                                            Notes d&apos;appel ou commentaires (optionnel).
-                                        </p>
-                                        <p className="text-xs text-slate-400">
-                                            Optionnel: plusieurs notes avec &quot;;&quot;.
-                                        </p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-xs font-medium text-slate-700">Colonne canal</p>
-                                        <Select
-                                            options={[
-                                                { value: "", label: "Ignorer" },
-                                                ...csvHeaders.map(h => ({ value: h, label: h })),
-                                            ]}
-                                            value={actionColumnMapping.channelColumn}
-                                            onChange={(value) =>
-                                                setActionColumnMapping(prev => ({ ...prev, channelColumn: value }))
-                                            }
-                                        />
-                                        <p className="text-xs text-slate-500">
-                                            Canal utilisé (téléphone, email, LinkedIn). Par défaut: Appel.
-                                        </p>
-                                        <p className="text-xs text-slate-400">
-                                            Optionnel: plusieurs canaux avec &quot;;&quot;.
-                                        </p>
-                                    </div>
+
+                                    {actionColumnMode === "single" ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-medium text-slate-700">Colonne statut</p>
+                                                <Select
+                                                    options={[
+                                                        { value: "", label: "Ignorer" },
+                                                        ...csvHeaders.map(h => ({ value: h, label: h })),
+                                                    ]}
+                                                    value={actionColumnMapping.statusColumn}
+                                                    onChange={(value) =>
+                                                        setActionColumnMapping(prev => ({ ...prev, statusColumn: value }))
+                                                    }
+                                                />
+                                                <p className="text-xs text-slate-500">
+                                                    Valeurs comme &quot;Tentative&quot;, &quot;Meeting booké&quot;, etc.
+                                                </p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-medium text-slate-700">Colonne date</p>
+                                                <Select
+                                                    options={[
+                                                        { value: "", label: "Ignorer" },
+                                                        ...csvHeaders.map(h => ({ value: h, label: h })),
+                                                    ]}
+                                                    value={actionColumnMapping.dateColumn}
+                                                    onChange={(value) =>
+                                                        setActionColumnMapping(prev => ({ ...prev, dateColumn: value }))
+                                                    }
+                                                />
+                                                <p className="text-xs text-slate-500">
+                                                    Date à laquelle l&apos;action a eu lieu (optionnel).
+                                                </p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-medium text-slate-700">Colonne date callback / RDV</p>
+                                                <Select
+                                                    options={[
+                                                        { value: "", label: "Ignorer" },
+                                                        ...csvHeaders.map(h => ({ value: h, label: h })),
+                                                    ]}
+                                                    value={actionColumnMapping.callbackDateColumn}
+                                                    onChange={(value) =>
+                                                        setActionColumnMapping(prev => ({ ...prev, callbackDateColumn: value }))
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-medium text-slate-700">Colonne note</p>
+                                                <Select
+                                                    options={[
+                                                        { value: "", label: "Ignorer" },
+                                                        ...csvHeaders.map(h => ({ value: h, label: h })),
+                                                    ]}
+                                                    value={actionColumnMapping.noteColumn}
+                                                    onChange={(value) =>
+                                                        setActionColumnMapping(prev => ({ ...prev, noteColumn: value }))
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-medium text-slate-700">Colonne canal</p>
+                                                <Select
+                                                    options={[
+                                                        { value: "", label: "Ignorer" },
+                                                        ...csvHeaders.map(h => ({ value: h, label: h })),
+                                                    ]}
+                                                    value={actionColumnMapping.channelColumn}
+                                                    onChange={(value) =>
+                                                        setActionColumnMapping(prev => ({ ...prev, channelColumn: value }))
+                                                    }
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {actionColumnGroups.map((group, idx) => (
+                                                <div key={group.id} className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <p className="text-sm font-medium text-slate-900">Appel {idx + 1}</p>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => removeActionColumnGroup(group.id)}
+                                                            className="h-7 text-xs text-rose-600"
+                                                        >
+                                                            Supprimer
+                                                        </Button>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        <Select
+                                                            label="Statut"
+                                                            options={[{ value: "", label: "Ignorer" }, ...csvHeaders.map(h => ({ value: h, label: h }))]}
+                                                            value={group.statusColumn}
+                                                            onChange={(value) => updateActionColumnGroup(group.id, { statusColumn: value })}
+                                                        />
+                                                        <Select
+                                                            label="Date"
+                                                            options={[{ value: "", label: "Ignorer" }, ...csvHeaders.map(h => ({ value: h, label: h }))]}
+                                                            value={group.dateColumn}
+                                                            onChange={(value) => updateActionColumnGroup(group.id, { dateColumn: value })}
+                                                        />
+                                                        <Select
+                                                            label="Note"
+                                                            options={[{ value: "", label: "Ignorer" }, ...csvHeaders.map(h => ({ value: h, label: h }))]}
+                                                            value={group.noteColumn}
+                                                            onChange={(value) => updateActionColumnGroup(group.id, { noteColumn: value })}
+                                                        />
+                                                        <Select
+                                                            label="Canal"
+                                                            options={[{ value: "", label: "Ignorer" }, ...csvHeaders.map(h => ({ value: h, label: h }))]}
+                                                            value={group.channelColumn}
+                                                            onChange={(value) => updateActionColumnGroup(group.id, { channelColumn: value })}
+                                                        />
+                                                        <Select
+                                                            label="Date callback / RDV"
+                                                            options={[{ value: "", label: "Ignorer" }, ...csvHeaders.map(h => ({ value: h, label: h }))]}
+                                                            value={group.callbackDateColumn}
+                                                            onChange={(value) => updateActionColumnGroup(group.id, { callbackDateColumn: value })}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <Button
+                                                variant="secondary"
+                                                onClick={addActionColumnGroup}
+                                                className="gap-2"
+                                            >
+                                                Ajouter un appel
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Status mappings */}
@@ -1443,7 +1652,10 @@ export default function ImportListPage() {
                                 )}
 
                                 {/* Channel mappings (optional) */}
-                                {actionColumnMapping.channelColumn && detectedChannels.length > 0 && (
+                                {(
+                                    (actionColumnMode === "single" && !!actionColumnMapping.channelColumn) ||
+                                    (actionColumnMode === "multi-column" && actionColumnGroups.some((g) => !!g.channelColumn))
+                                ) && detectedChannels.length > 0 && (
                                     <div className="space-y-2">
                                         <p className="text-xs font-medium text-slate-700">
                                             Mapping des valeurs de canal vers les canaux CRM
@@ -1486,7 +1698,10 @@ export default function ImportListPage() {
                                     </div>
                                 )}
 
-                                {!!actionColumnMapping.statusColumn && (
+                                {(
+                                    (actionColumnMode === "single" && !!actionColumnMapping.statusColumn) ||
+                                    (actionColumnMode === "multi-column" && actionColumnGroups.some((g) => !!g.statusColumn))
+                                ) && (
                                     <div className="space-y-2">
                                         <p className="text-xs font-medium text-slate-700">Reconstruction avant import (simulation CRM)</p>
                                         <div className="grid grid-cols-1 gap-3">
