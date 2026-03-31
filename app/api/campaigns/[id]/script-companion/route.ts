@@ -14,15 +14,21 @@ type ScriptCompanionRules = {
     scriptCompanion?: {
         drafts?: Record<string, { content: string; updatedAt: string }>;
         shared?: { content: string; updatedAt: string; updatedBy: string | null };
+        aiDrafts?: Record<string, { content: string; updatedAt: string }>;
+        aiShared?: { content: string; updatedAt: string; updatedBy: string | null };
+        defaultTab?: "base" | "additional" | "ai";
     };
 };
 
 const upsertDraftSchema = z.object({
-    draft: z.string(),
+    draft: z.string().optional(),
+    kind: z.enum(["additional", "ai"]).optional().default("additional"),
+    defaultTab: z.enum(["base", "additional", "ai"]).optional(),
 });
 
 const publishSchema = z.object({
     content: z.string().optional(),
+    kind: z.enum(["additional", "ai"]).optional().default("additional"),
 });
 
 function parseScriptContent(script: string | null): string {
@@ -66,6 +72,9 @@ export const GET = withErrorHandler(async (
         baseScript: parseScriptContent(campaign.script ?? null),
         additionalDraft: draftEntry?.content ?? "",
         additionalShared: sharedEntry?.content ?? "",
+        aiDraft: rules.scriptCompanion?.aiDrafts?.[session.user.id]?.content ?? "",
+        aiShared: rules.scriptCompanion?.aiShared?.content ?? "",
+        defaultTab: rules.scriptCompanion?.defaultTab ?? "base",
         sharedUpdatedAt: sharedEntry?.updatedAt ?? null,
         sharedUpdatedBy: sharedEntry?.updatedBy ?? null,
     });
@@ -88,18 +97,38 @@ export const PUT = withErrorHandler(async (
     const now = new Date().toISOString();
     const rules = (campaign.rules ?? {}) as ScriptCompanionRules;
     const currentDrafts = rules.scriptCompanion?.drafts ?? {};
+    const currentAiDrafts = rules.scriptCompanion?.aiDrafts ?? {};
+
+    if (data.draft === undefined && data.defaultTab === undefined) {
+        throw new ValidationError("Aucune modification fournie");
+    }
 
     const nextRules: ScriptCompanionRules = {
         ...rules,
         scriptCompanion: {
-            drafts: {
-                ...currentDrafts,
-                [session.user.id]: {
-                    content: data.draft,
-                    updatedAt: now,
-                },
-            },
+            drafts:
+                data.kind === "additional" && data.draft !== undefined
+                    ? {
+                        ...currentDrafts,
+                        [session.user.id]: {
+                            content: data.draft,
+                            updatedAt: now,
+                        },
+                    }
+                    : currentDrafts,
+            aiDrafts:
+                data.kind === "ai" && data.draft !== undefined
+                    ? {
+                        ...currentAiDrafts,
+                        [session.user.id]: {
+                            content: data.draft,
+                            updatedAt: now,
+                        },
+                    }
+                    : currentAiDrafts,
             shared: rules.scriptCompanion?.shared,
+            aiShared: rules.scriptCompanion?.aiShared,
+            defaultTab: data.defaultTab ?? rules.scriptCompanion?.defaultTab ?? "base",
         },
     };
 
@@ -126,7 +155,11 @@ export const POST = withErrorHandler(async (
     if (!campaign) throw new NotFoundError("Campagne introuvable");
 
     const rules = (campaign.rules ?? {}) as ScriptCompanionRules;
-    const draftEntry = rules.scriptCompanion?.drafts?.[session.user.id];
+    const kind = data.kind ?? "additional";
+    const draftEntry =
+        kind === "ai"
+            ? rules.scriptCompanion?.aiDrafts?.[session.user.id]
+            : rules.scriptCompanion?.drafts?.[session.user.id];
     const sharedContent = (data.content ?? draftEntry?.content ?? "").trim();
 
     if (!sharedContent) {
@@ -139,13 +172,29 @@ export const POST = withErrorHandler(async (
         scriptCompanion: {
             drafts: {
                 ...(rules.scriptCompanion?.drafts ?? {}),
-                [session.user.id]: { content: sharedContent, updatedAt: now },
+                ...(kind === "additional" ? { [session.user.id]: { content: sharedContent, updatedAt: now } } : {}),
             },
-            shared: {
-                content: sharedContent,
-                updatedAt: now,
-                updatedBy: session.user.name ?? null,
+            aiDrafts: {
+                ...(rules.scriptCompanion?.aiDrafts ?? {}),
+                ...(kind === "ai" ? { [session.user.id]: { content: sharedContent, updatedAt: now } } : {}),
             },
+            shared:
+                kind === "additional"
+                    ? {
+                        content: sharedContent,
+                        updatedAt: now,
+                        updatedBy: session.user.name ?? null,
+                    }
+                    : rules.scriptCompanion?.shared,
+            aiShared:
+                kind === "ai"
+                    ? {
+                        content: sharedContent,
+                        updatedAt: now,
+                        updatedBy: session.user.name ?? null,
+                    }
+                    : rules.scriptCompanion?.aiShared,
+            defaultTab: rules.scriptCompanion?.defaultTab ?? "base",
         },
     };
 

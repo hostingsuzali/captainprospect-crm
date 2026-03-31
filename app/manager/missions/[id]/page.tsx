@@ -150,6 +150,7 @@ interface CampaignData {
     icp: string;
     pitch: string;
     script?: string | null;
+    rules?: Record<string, unknown> | null;
     isActive: boolean;
 }
 
@@ -244,8 +245,14 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [aiSelectedIndex, setAiSelectedIndex] = useState<Record<ScriptSectionKey, number>>({ intro: 0, discovery: 0, objection: 0, closing: 0 });
     const [additionalScriptDraft, setAdditionalScriptDraft] = useState("");
     const [additionalScriptShared, setAdditionalScriptShared] = useState("");
+    const [aiEnhancedScriptDraft, setAiEnhancedScriptDraft] = useState("");
+    const [aiEnhancedScriptShared, setAiEnhancedScriptShared] = useState("");
     const [isSavingAdditionalScript, setIsSavingAdditionalScript] = useState(false);
     const [isSharingAdditionalScript, setIsSharingAdditionalScript] = useState(false);
+    const [isSavingAiEnhancedScript, setIsSavingAiEnhancedScript] = useState(false);
+    const [isSharingAiEnhancedScript, setIsSharingAiEnhancedScript] = useState(false);
+    const [defaultScriptTab, setDefaultScriptTab] = useState<"base" | "additional" | "ai">("base");
+    const [isSavingDefaultScriptTab, setIsSavingDefaultScriptTab] = useState(false);
     const [mailboxes, setMailboxes] = useState<Array<{ id: string; email: string; displayName: string | null }>>([]);
     const [isLoadingMailboxes, setIsLoadingMailboxes] = useState(false);
     const [showMailboxModal, setShowMailboxModal] = useState(false);
@@ -347,13 +354,22 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                     if (companionJson.success) {
                         setAdditionalScriptDraft(companionJson.data?.additionalDraft || "");
                         setAdditionalScriptShared(companionJson.data?.additionalShared || "");
+                        setAiEnhancedScriptDraft(companionJson.data?.aiDraft || "");
+                        setAiEnhancedScriptShared(companionJson.data?.aiShared || "");
+                        setDefaultScriptTab(companionJson.data?.defaultTab || "base");
                     } else {
                         setAdditionalScriptDraft("");
                         setAdditionalScriptShared("");
+                        setAiEnhancedScriptDraft("");
+                        setAiEnhancedScriptShared("");
+                        setDefaultScriptTab("base");
                     }
                 } catch {
                     setAdditionalScriptDraft("");
                     setAdditionalScriptShared("");
+                    setAiEnhancedScriptDraft("");
+                    setAiEnhancedScriptShared("");
+                    setDefaultScriptTab("base");
                 }
             }
         } catch (err) {
@@ -477,7 +493,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
             const res = await fetch(`/api/campaigns/${campaignData.id}/script-companion`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ draft: additionalScriptDraft }),
+                body: JSON.stringify({ draft: additionalScriptDraft, kind: "additional" }),
             });
             const json = await res.json();
             if (!json.success) {
@@ -500,7 +516,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
             const res = await fetch(`/api/campaigns/${campaignData.id}/script-companion`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ content: additionalScriptDraft }),
+                body: JSON.stringify({ content: additionalScriptDraft, kind: "additional" }),
             });
             const json = await res.json();
             if (!json.success) {
@@ -513,6 +529,75 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
             showError("Erreur", "Impossible de partager le script additionel");
         } finally {
             setIsSharingAdditionalScript(false);
+        }
+    };
+
+    const handleSaveAiEnhancedScript = async () => {
+        if (!campaignData) return;
+        setIsSavingAiEnhancedScript(true);
+        try {
+            const res = await fetch(`/api/campaigns/${campaignData.id}/script-companion`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ draft: aiEnhancedScriptDraft, kind: "ai" }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible de sauvegarder le script IA");
+                return;
+            }
+            success("Brouillon sauvegardé", "Le script amélioré par IA a été enregistré.");
+            await fetchCampaignStrategy();
+        } catch {
+            showError("Erreur", "Impossible de sauvegarder le script IA");
+        } finally {
+            setIsSavingAiEnhancedScript(false);
+        }
+    };
+
+    const handleShareAiEnhancedScript = async () => {
+        if (!campaignData) return;
+        setIsSharingAiEnhancedScript(true);
+        try {
+            const res = await fetch(`/api/campaigns/${campaignData.id}/script-companion`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: aiEnhancedScriptDraft, kind: "ai" }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible de partager le script IA");
+                return;
+            }
+            success("Script IA partagé", "Le script amélioré par IA est maintenant partagé à l'équipe.");
+            await fetchCampaignStrategy();
+        } catch {
+            showError("Erreur", "Impossible de partager le script IA");
+        } finally {
+            setIsSharingAiEnhancedScript(false);
+        }
+    };
+
+    const handleDefaultScriptTabChange = async (tab: "base" | "additional" | "ai") => {
+        if (!campaignData) return;
+        setDefaultScriptTab(tab);
+        setIsSavingDefaultScriptTab(true);
+        try {
+            const res = await fetch(`/api/campaigns/${campaignData.id}/script-companion`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ defaultTab: tab }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible d'enregistrer l'onglet par défaut");
+                return;
+            }
+            success("Onglet par défaut mis à jour", "Les SDR ouvriront directement cet onglet.");
+        } catch {
+            showError("Erreur", "Impossible d'enregistrer l'onglet par défaut");
+        } finally {
+            setIsSavingDefaultScriptTab(false);
         }
     };
 
@@ -1342,6 +1427,23 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                         </div>
                                     </div>
 
+                                    <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <p className="text-sm font-medium text-slate-700">Onglet script par défaut (SDR)</p>
+                                            <select
+                                                value={defaultScriptTab}
+                                                onChange={(e) => handleDefaultScriptTabChange(e.target.value as "base" | "additional" | "ai")}
+                                                disabled={!isStrategyEditing || isSavingDefaultScriptTab}
+                                                className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                <option value="base">Script de base</option>
+                                                <option value="additional">Script additionel</option>
+                                                <option value="ai">Script amélioré par IA</option>
+                                            </select>
+                                            {isSavingDefaultScriptTab && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
+                                        </div>
+                                    </div>
+
                                     <Tabs tabs={SCRIPT_TABS} activeTab={activeScriptTab} onTabChange={setActiveScriptTab} className="mb-4" />
 
                                     {isStrategyEditing ? (
@@ -1431,6 +1533,63 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                                 <p className="text-sm text-slate-700 whitespace-pre-wrap">{additionalScriptShared}</p>
                                             ) : (
                                                 <p className="text-sm text-slate-400 italic">Aucun script additionel partagé</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                                                <Sparkles className="w-5 h-5 text-emerald-600" />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-semibold text-slate-900">Script amélioré par IA</h2>
+                                                <p className="text-sm text-slate-500">Version enrichie et partageable à l'équipe</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {aiEnhancedScriptShared && !isStrategyEditing && (
+                                        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                                            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">Version partagée</p>
+                                            <p className="text-sm text-emerald-900 whitespace-pre-wrap">{aiEnhancedScriptShared}</p>
+                                        </div>
+                                    )}
+                                    {isStrategyEditing ? (
+                                        <div className="space-y-3">
+                                            <textarea
+                                                value={aiEnhancedScriptDraft}
+                                                onChange={(e) => setAiEnhancedScriptDraft(e.target.value)}
+                                                rows={9}
+                                                placeholder="Ajoutez une version du script améliorée par IA..."
+                                                className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none text-sm"
+                                            />
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={handleSaveAiEnhancedScript}
+                                                    disabled={isSavingAiEnhancedScript || isSharingAiEnhancedScript}
+                                                    className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 rounded-lg transition-colors"
+                                                >
+                                                    {isSavingAiEnhancedScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                                    Sauvegarder brouillon
+                                                </button>
+                                                <button
+                                                    onClick={handleShareAiEnhancedScript}
+                                                    disabled={isSavingAiEnhancedScript || isSharingAiEnhancedScript || !aiEnhancedScriptDraft.trim()}
+                                                    className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg transition-colors"
+                                                >
+                                                    {isSharingAiEnhancedScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+                                                    Partager avec l'équipe
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 min-h-[140px]">
+                                            {aiEnhancedScriptShared ? (
+                                                <p className="text-sm text-slate-700 whitespace-pre-wrap">{aiEnhancedScriptShared}</p>
+                                            ) : (
+                                                <p className="text-sm text-slate-400 italic">Aucun script IA partagé</p>
                                             )}
                                         </div>
                                     )}

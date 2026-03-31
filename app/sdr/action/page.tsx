@@ -90,6 +90,9 @@ interface NextActionData {
     campaignId?: string;
     channel?: Channel;
     script?: string;
+    scriptAdditional?: string;
+    scriptAiEnhanced?: string;
+    scriptDefaultTab?: "base" | "additional" | "ai";
     clientBookingUrl?: string;
     clientInterlocuteurs?: Array<{
         id: string; firstName: string; lastName: string; title?: string;
@@ -232,10 +235,9 @@ const PRIORITY_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 const SCRIPT_TABS = [
-    { id: "intro", label: "Intro" },
-    { id: "discovery", label: "Découverte" },
-    { id: "objection", label: "Objections" },
-    { id: "closing", label: "Closing" },
+    { id: "base", label: "Script de base" },
+    { id: "additional", label: "Script additionel" },
+    { id: "ai", label: "Script amélioré par IA" },
 ];
 
 // Stats modal body: summary + list of contacts with status (for Actions page)
@@ -412,7 +414,7 @@ export default function SDRActionPage() {
             return next;
         });
     }, []);
-    const [activeTab, setActiveTab] = useState<string>("intro");
+    const [activeTab, setActiveTab] = useState<string>("base");
     const [showBookingDrawer, setShowBookingDrawer] = useState(false);
     const [unifiedBookingDialogOpen, setUnifiedBookingDialogOpen] = useState(false);
     const [rdvDate, setRdvDate] = useState("");
@@ -768,7 +770,7 @@ export default function SDRActionPage() {
         setMeetingCat("");
         setShowSuccess(false);
         setElapsedTime(0);
-        setActiveTab("intro");
+        setActiveTab("base");
 
         try {
             const params = new URLSearchParams();
@@ -784,6 +786,10 @@ export default function SDRActionPage() {
                 setCurrentAction(null);
             } else {
                 setCurrentAction(json.data);
+                const preferredTab = json.data?.scriptDefaultTab;
+                if (preferredTab === "additional" || preferredTab === "ai" || preferredTab === "base") {
+                    setActiveTab(preferredTab);
+                }
                 if (timerRef.current) clearInterval(timerRef.current);
                 timerRef.current = setInterval(() => setElapsedTime((prev) => prev + 1), 1000);
             }
@@ -1520,19 +1526,47 @@ export default function SDRActionPage() {
         return () => window.removeEventListener("keydown", handler);
     }, [selectedResult, isSubmitting, resultOptions, handleSubmit]);
 
-    // Parse script
-    let scriptSections: Record<string, string> | null = null;
-    if (currentAction?.script) {
-        try {
-            const parsed = JSON.parse(currentAction.script);
-            if (typeof parsed === "object") scriptSections = parsed;
-        } catch { }
-    }
+    const parseBaseScript = (rawScript?: string): string => {
+        if (!rawScript?.trim()) return "";
+        const parseCandidate = (candidate: string): string | null => {
+            try {
+                const parsed = JSON.parse(candidate);
+                if (typeof parsed === "string") return parseCandidate(parsed) ?? parsed;
+                if (!parsed || typeof parsed !== "object") return null;
+                const sections = [
+                    { key: "intro", label: "Intro" },
+                    { key: "discovery", label: "Decouverte" },
+                    { key: "objection", label: "Objections" },
+                    { key: "closing", label: "Closing" },
+                ]
+                    .map(({ key, label }) => {
+                        const value = (parsed as Record<string, unknown>)[key];
+                        return typeof value === "string" && value.trim() ? `--- ${label} ---\n${value.trim()}` : null;
+                    })
+                    .filter((value): value is string => Boolean(value));
+                return sections.length > 0 ? sections.join("\n\n") : null;
+            } catch {
+                return null;
+            }
+        };
+        return parseCandidate(rawScript) ?? rawScript;
+    };
 
-    // Filter script tabs based on available content
-    const availableScriptTabs = scriptSections
-        ? SCRIPT_TABS.filter(tab => scriptSections && scriptSections[tab.id])
-        : [];
+    const scriptPanelContent = {
+        base: parseBaseScript(currentAction?.script),
+        additional: currentAction?.scriptAdditional?.trim() || "",
+        ai: currentAction?.scriptAiEnhanced?.trim() || "",
+    };
+    const availableScriptTabs = SCRIPT_TABS.filter((tab) => {
+        const content = scriptPanelContent[tab.id as keyof typeof scriptPanelContent];
+        return Boolean(content && content.trim());
+    });
+    useEffect(() => {
+        if (availableScriptTabs.length === 0) return;
+        if (!availableScriptTabs.some((tab) => tab.id === activeTab)) {
+            setActiveTab(availableScriptTabs[0].id);
+        }
+    }, [activeTab, availableScriptTabs]);
 
     // NOTE: Planning blocks are informational only — SDRs can prospect even without scheduled blocks today.
 
@@ -2792,7 +2826,7 @@ export default function SDRActionPage() {
                         </div>
 
                         <div className="p-5">
-                            {scriptSections && availableScriptTabs.length > 0 ? (
+                            {availableScriptTabs.length > 0 ? (
                                 <>
                                     <Tabs
                                         tabs={availableScriptTabs}
@@ -2802,7 +2836,7 @@ export default function SDRActionPage() {
                                     />
                                     <div className="bg-gradient-to-br from-slate-50 to-slate-100/50 border border-slate-200/60 rounded-xl p-5 min-h-[200px]">
                                         <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                                            {scriptSections[activeTab] || ""}
+                                            {scriptPanelContent[activeTab as keyof typeof scriptPanelContent] || ""}
                                         </p>
                                     </div>
                                 </>

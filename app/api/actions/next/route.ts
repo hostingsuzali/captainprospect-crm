@@ -297,6 +297,35 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         console.warn('Could not fetch client interlocuteurs:', err);
     }
 
+    const campaignMeta = await prisma.campaign.findUnique({
+        where: { id: next.campaign_id },
+        select: { script: true, rules: true },
+    });
+
+    const onboarding = await prisma.clientOnboarding.findFirst({
+        where: { clientId: next.client_id },
+        orderBy: { createdAt: "desc" },
+        select: { scripts: true },
+    });
+
+    const scriptFromCampaign = campaignMeta?.script ?? next.campaign_script ?? null;
+    const scriptFromOnboarding = onboarding?.scripts;
+    const scriptCompanion = (campaignMeta?.rules as {
+        scriptCompanion?: {
+            shared?: { content?: string };
+            aiShared?: { content?: string };
+            defaultTab?: "base" | "additional" | "ai";
+        };
+    } | null)?.scriptCompanion;
+
+    const normalizedBaseScript = (() => {
+        if (typeof scriptFromCampaign === "string" && scriptFromCampaign.trim()) return scriptFromCampaign;
+        if (scriptFromOnboarding && typeof scriptFromOnboarding === "object") {
+            return JSON.stringify(scriptFromOnboarding);
+        }
+        return null;
+    })();
+
     return successResponse({
         hasNext: true,
         priority: next._priorityLabel,
@@ -321,7 +350,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         },
         campaignId: next.campaign_id,
         channel: next.mission_channel,
-        script: next.campaign_script,
+        script: normalizedBaseScript,
+        scriptAdditional: scriptCompanion?.shared?.content ?? "",
+        scriptAiEnhanced: scriptCompanion?.aiShared?.content ?? "",
+        scriptDefaultTab: scriptCompanion?.defaultTab ?? "base",
         clientBookingUrl,
         clientInterlocuteurs,
         lastAction: next.last_action_result ? {
