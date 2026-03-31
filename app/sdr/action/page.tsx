@@ -414,6 +414,7 @@ export default function SDRActionPage() {
     }, []);
     const [activeTab, setActiveTab] = useState<string>("intro");
     const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+    const [unifiedBookingDialogOpen, setUnifiedBookingDialogOpen] = useState(false);
     const [rdvDate, setRdvDate] = useState("");
     const [meetingCat, setMeetingCat] = useState<"EXPLORATOIRE" | "BESOIN" | "">("");
     const [isImprovingNote, setIsImprovingNote] = useState(false);
@@ -2084,6 +2085,7 @@ export default function SDRActionPage() {
                             missionName={unifiedDrawerMissionName}
                             clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
                             clientInterlocuteurs={unifiedDrawerInterlocuteurs}
+                            onBookingDialogOpenChange={setUnifiedBookingDialogOpen}
                             onActionRecorded={() => {
                                 const rowKey = unifiedDrawerContactId ?? unifiedDrawerCompanyId ?? "";
                                 if (rowKey) {
@@ -2113,7 +2115,7 @@ export default function SDRActionPage() {
                 {/* Script companion drawer (table view only), synchronized with unified drawer */}
                 {unifiedDrawerOpen && unifiedDrawerMissionId && (
                     <ScriptCompanionDrawer
-                        isOpen={unifiedDrawerOpen}
+                        isOpen={unifiedDrawerOpen && !unifiedBookingDialogOpen}
                         onClose={closeUnifiedDrawer}
                         missionId={unifiedDrawerMissionId}
                         missionName={unifiedDrawerMissionName}
@@ -2774,6 +2776,7 @@ export default function SDRActionPage() {
                 </div>
 
                 {/* Right - Script Panel (3 cols) */}
+                {!showBookingDrawer && (
                 <div className="lg:col-span-3">
                     <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm h-full overflow-hidden">
                         <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-white">
@@ -2821,6 +2824,7 @@ export default function SDRActionPage() {
                         </div>
                     </div>
                 </div>
+                )}
             </div>
 
             {/* Action Results */}
@@ -3116,6 +3120,7 @@ export default function SDRActionPage() {
                     missionName={unifiedDrawerMissionName}
                     clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
                     clientInterlocuteurs={unifiedDrawerInterlocuteurs}
+                    onBookingDialogOpenChange={setUnifiedBookingDialogOpen}
                     onActionRecorded={() => {
                         const rowKey = unifiedDrawerContactId ?? unifiedDrawerCompanyId ?? "";
                         if (rowKey) setActionsCompleted((c) => c + 1);

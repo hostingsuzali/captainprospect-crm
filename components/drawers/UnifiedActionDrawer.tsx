@@ -115,6 +115,7 @@ interface UnifiedActionDrawerProps {
     onActionRecorded?: () => void;
     onValidateAndNext?: () => void;
     onContactSelect?: (contactId: string) => void;
+    onBookingDialogOpenChange?: (isOpen: boolean) => void;
 }
 
 // ============================================
@@ -387,6 +388,7 @@ export function UnifiedActionDrawer({
     onActionRecorded,
     onValidateAndNext,
     onContactSelect,
+    onBookingDialogOpenChange,
 }: UnifiedActionDrawerProps) {
     const { success, error: showError } = useToast();
 
@@ -507,6 +509,14 @@ export function UnifiedActionDrawer({
     const [meetingJoinUrl, setMeetingJoinUrl] = useState("");
     const [meetingAddress, setMeetingAddress] = useState("");
     const [meetingPhone, setMeetingPhone] = useState("");
+    useEffect(() => {
+        onBookingDialogOpenChange?.(showBookingDrawer);
+    }, [showBookingDrawer, onBookingDialogOpenChange]);
+
+    useEffect(() => {
+        if (!isOpen) onBookingDialogOpenChange?.(false);
+    }, [isOpen, onBookingDialogOpenChange]);
+
     const [showAddContact, setShowAddContact] = useState(false);
     const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
     const [historyExpanded, setHistoryExpanded] = useState(false);

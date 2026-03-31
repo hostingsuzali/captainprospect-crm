@@ -34,6 +34,21 @@ export interface EffectiveStatusConfig {
     nextSteps: EffectiveNextStep[];
 }
 
+const CORE_FALLBACK_STATUSES: EffectiveStatusDefinition[] = [
+    {
+        code: "MEETING_BOOKED",
+        label: "RDV pris",
+        color: "#A5D6A7",
+        sortOrder: 900,
+        requiresNote: false,
+        priorityLabel: "SKIP",
+        priorityOrder: 999,
+        triggersOpportunity: true,
+        triggersCallback: false,
+        resultCategoryCode: null,
+    },
+];
+
 const SCOPE_ORDER: ActionScopeType[] = ["GLOBAL", "CLIENT", "MISSION", "CAMPAIGN"];
 const DEFAULT_PRIORITY_ORDER: Record<ActionPriorityLabel, number> = {
     CALLBACK: 1,
@@ -189,6 +204,18 @@ export async function getEffectiveStatusConfig(
             statuses.sort((a, b) => a.sortOrder - b.sortOrder);
         }
     }
+
+    // Safety net: ensure core workflow statuses exist in effective config.
+    // MEETING_BOOKED is required by SDR drawers/pages to open booking dialog flow.
+    for (const fallback of CORE_FALLBACK_STATUSES) {
+        if (!statuses.some((s) => s.code === fallback.code)) {
+            statuses.push({
+                ...fallback,
+                sortOrder: Math.max(...statuses.map((s) => s.sortOrder), 0) + 1,
+            });
+        }
+    }
+    statuses.sort((a, b) => a.sortOrder - b.sortOrder);
 
     // Next steps (same merge logic)
     const nextStepRows = await prisma.actionNextStep.findMany({
