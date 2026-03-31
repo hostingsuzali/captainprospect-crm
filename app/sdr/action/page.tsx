@@ -670,13 +670,18 @@ export default function SDRActionPage() {
         : ACTION_RESULT_LABELS;
 
     const callbackResultCodes = useMemo(() => {
+        const defaults = ["CALLBACK_REQUESTED", "RAPPEL", "RELANCE"];
         if (!statusConfig?.statuses?.length) {
-            return new Set<string>(["CALLBACK_REQUESTED", "RAPPEL", "RELANCE"]);
+            return new Set<string>(defaults);
         }
         const configured = statusConfig.statuses
-            .filter((s) => s.triggersCallback === true)
+            .filter((s) => {
+                if (s.triggersCallback === true) return true;
+                const haystack = `${s.code} ${s.label}`.toUpperCase();
+                return haystack.includes("RAPPEL") || haystack.includes("RELANCE");
+            })
             .map((s) => s.code);
-        return new Set<string>(configured);
+        return new Set<string>([...defaults, ...configured]);
     }, [statusConfig]);
 
     const isCallbackResult = useCallback((code: string | null | undefined) => {
