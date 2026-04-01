@@ -105,6 +105,7 @@ interface NextActionData {
         result: string;
         note?: string;
         createdAt: string;
+        callbackDate?: string;
     };
     lastActionBy?: { id: string; name: string | null } | null;
 }
@@ -718,6 +719,26 @@ export default function SDRActionPage() {
             return true;
         });
     }, [queueItems, tableFilterResult, tableFilterPriority, tableFilterChannel, tableFilterType]);
+
+    const prioritizedQueueItems = useMemo(() => {
+        const now = Date.now();
+        const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+        const withRank = filteredQueueItems.map((row, idx) => {
+            const callbackDateRaw = row.lastAction?.callbackDate;
+            const callbackTs = callbackDateRaw ? new Date(callbackDateRaw).getTime() : Number.POSITIVE_INFINITY;
+            const isCallback = !!row.lastAction && isCallbackResult(row.lastAction.result);
+            const isWithin3Days = isCallback && Number.isFinite(callbackTs) && callbackTs <= now + threeDaysMs;
+            return { row, idx, isWithin3Days, callbackTs };
+        });
+
+        withRank.sort((a, b) => {
+            if (a.isWithin3Days !== b.isWithin3Days) return a.isWithin3Days ? -1 : 1;
+            if (a.isWithin3Days && b.isWithin3Days && a.callbackTs !== b.callbackTs) return a.callbackTs - b.callbackTs;
+            return a.idx - b.idx;
+        });
+
+        return withRank.map((x) => x.row);
+    }, [filteredQueueItems, isCallbackResult]);
 
     const hasTableFiltersActive = !!(tableFilterResult || tableFilterPriority || tableFilterChannel || tableFilterType);
     const clearTableFilters = () => {
@@ -2145,7 +2166,7 @@ export default function SDRActionPage() {
                         />
                     ) : (
                         <DataTable
-                            data={filteredQueueItems}
+                            data={prioritizedQueueItems}
                             columns={queueColumns}
                             keyField={(row) => queueRowKey(row)}
                             searchable
@@ -2159,11 +2180,18 @@ export default function SDRActionPage() {
                             selectable
                             selectedIds={tableSelectedIds}
                             onSelectionChange={(ids) => setTableSelectedIds(new Set(ids))}
-                            getRowClassName={(row) =>
-                                recentlyUpdatedRowKeys.has(queueRowKey(row))
-                                    ? "!bg-emerald-50/80 border-l-4 border-l-emerald-500 animate-fade-in"
-                                    : ""
-                            }
+                            getRowClassName={(row) => {
+                                if (recentlyUpdatedRowKeys.has(queueRowKey(row))) {
+                                    return "!bg-emerald-50/80 border-l-4 border-l-emerald-500 animate-fade-in";
+                                }
+                                const isCallbackRow = !!row.lastAction && isCallbackResult(row.lastAction.result);
+                                if (!isCallbackRow) return "";
+                                const callbackTs = row.lastAction?.callbackDate ? new Date(row.lastAction.callbackDate).getTime() : NaN;
+                                const in3Days = Number.isFinite(callbackTs) && callbackTs <= Date.now() + 3 * 24 * 60 * 60 * 1000;
+                                return in3Days
+                                    ? "!bg-amber-100/80 border-l-8 border-l-amber-500 ring-1 ring-amber-200/70"
+                                    : "!bg-amber-50/60 border-l-8 border-l-amber-300 ring-1 ring-amber-100/70";
+                            }}
                         />
                     )}
                 </div>
@@ -2191,11 +2219,11 @@ export default function SDRActionPage() {
                             onValidateAndNext={() => {
                                 if (!drawerRow) return;
                                 const key = queueRowKey(drawerRow);
-                                const idx = filteredQueueItems.findIndex((row) => queueRowKey(row) === key);
+                                const idx = prioritizedQueueItems.findIndex((row) => queueRowKey(row) === key);
                                 queryClient.invalidateQueries({ queryKey: queueQueryKey });
                                 setActionsCompleted((c) => c + 1);
-                                if (idx >= 0 && idx < filteredQueueItems.length - 1) {
-                                    const nextRow = filteredQueueItems[idx + 1];
+                                if (idx >= 0 && idx < prioritizedQueueItems.length - 1) {
+                                    const nextRow = prioritizedQueueItems[idx + 1];
                                     openDrawerForRow(nextRow);
                                 } else {
                                     closeUnifiedDrawer();

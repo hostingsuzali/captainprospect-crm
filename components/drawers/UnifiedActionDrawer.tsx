@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { BookingDrawer } from "@/components/sdr/BookingDrawer";
 import { ContactDrawer } from "./ContactDrawer";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/utils";
 import {
     sdrUnifiedDrawerCompanyKey,
@@ -772,6 +773,29 @@ export function UnifiedActionDrawer({
         [callbackResultCodes]
     );
 
+    const renderStatusWithHint = useCallback((resultCode: string) => {
+        const label = statusLabels[resultCode] ?? resultCode;
+        const hint = STATUS_HOVER_HINTS[resultCode];
+        if (!hint) return <span>{label}</span>;
+        return (
+            <Tooltip
+                position="top"
+                maxWidth="max-w-sm"
+                content={
+                    <div className="space-y-1">
+                        {hint.split("\n").map((line, idx) => (
+                            <p key={`${resultCode}-${idx}`} className="text-xs leading-relaxed">
+                                {line}
+                            </p>
+                        ))}
+                    </div>
+                }
+            >
+                <span className="underline decoration-dotted underline-offset-2 cursor-help">{label}</span>
+            </Tooltip>
+        );
+    }, [statusLabels]);
+
     const primaryPhone = useMemo(() => {
         if (contact?.phone) return { number: contact.phone, label: "Contact" };
         if (company?.phone) return { number: company.phone, label: "Société" };
@@ -1015,7 +1039,17 @@ export function UnifiedActionDrawer({
         (!noteRequiredForResult || newActionNote.trim().length > 0) &&
         !addActionMutation.isPending;
 
-    const visibleActions = historyExpanded ? actions : actions.slice(0, 5);
+    const sortedHistoryActions = useMemo(() => {
+        const copy = [...actions];
+        copy.sort((a, b) => {
+            const aCb = isCallbackResult(a.result) ? 1 : 0;
+            const bCb = isCallbackResult(b.result) ? 1 : 0;
+            if (aCb !== bCb) return bCb - aCb; // callback statuses first
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        return copy;
+    }, [actions, isCallbackResult]);
+    const visibleActions = historyExpanded ? sortedHistoryActions : sortedHistoryActions.slice(0, 5);
 
     // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1080,7 +1114,7 @@ export function UnifiedActionDrawer({
                                             <li key={a.id} className="flex items-center gap-1.5 flex-wrap">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                                                 <span className="font-semibold">
-                                                    {statusLabels[a.result] ?? a.result}
+                                                    {renderStatusWithHint(a.result)}
                                                 </span>
                                                 <span className="text-emerald-800/70">
                                                     ·{" "}
@@ -2591,7 +2625,7 @@ export function UnifiedActionDrawer({
                                                                             cfg.text
                                                                         )}
                                                                     >
-                                                                        {statusLabels[a.result] ?? a.result}
+                                                                        {renderStatusWithHint(a.result)}
                                                                     </span>
                                                                     {a.channel && (
                                                                         <span className={cn(

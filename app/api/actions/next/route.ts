@@ -89,6 +89,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         last_action_result: string | null;
         last_action_note: string | null;
         last_action_created: Date | null;
+        last_action_callback_date: Date | null;
         last_action_sdr_id?: string | null;
         last_action_sdr_name?: string | null;
         priority: number;
@@ -227,6 +228,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 COALESCE(lac.result, lac2.result)::text as last_action_result,
                 COALESCE(lac.note, lac2.note) as last_action_note,
                 COALESCE(lac."createdAt", lac2."createdAt") as last_action_created,
+                COALESCE(lac."callbackDate", lac2."callbackDate") as last_action_callback_date,
                 COALESCE(lac."sdrId", lac2."sdrId") as last_action_sdr_id,
                 COALESCE(lac.sdr_name, lac2.sdr_name) as last_action_sdr_name
             FROM all_targets at
@@ -394,6 +396,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             result: next.last_action_result,
             note: next.last_action_note,
             createdAt: next.last_action_created?.toISOString(),
+            callbackDate: next.last_action_callback_date?.toISOString(),
         } : null,
         lastActionBy: next.last_action_sdr_id
             ? { id: next.last_action_sdr_id, name: next.last_action_sdr_name ?? null }

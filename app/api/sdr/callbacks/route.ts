@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { statusConfigService } from "@/lib/services/StatusConfigService";
 
 // ============================================
 // GET /api/sdr/callbacks
@@ -57,17 +58,29 @@ export async function GET(request: Request) {
         });
         const teamLeadMissionIds = teamLeadMissions.map((m) => m.id);
 
+        const callbackStatusCodes = new Set<string>(["CALLBACK_REQUESTED", "RELANCE", "RAPPEL"]);
+        try {
+            const cfg = await statusConfigService.getEffectiveStatusConfig(
+                missionIdParam ? { missionId: missionIdParam } : {}
+            );
+            for (const status of cfg.statuses) {
+                if (status.triggersCallback) callbackStatusCodes.add(status.code);
+            }
+        } catch {
+            // Keep default callback codes if config lookup fails.
+        }
+
         // BD: scope by assigned missions.
         // Bookers: see callbacks on all missions (no mission restriction).
         // SDR: own callbacks + all callbacks for missions where they are team lead.
         const whereClause: {
             sdrId?: string;
-            result: "CALLBACK_REQUESTED";
+            result: { in: string[] };
             campaign?: { missionId: string | { in: string[] } };
             callbackDate?: { gte?: Date; lte?: Date };
             OR?: Array<{ sdrId: string; campaign: { missionId: string | { in: string[] } } } | { campaign: { missionId: string | { in: string[] } } }>;
         } = {
-            result: "CALLBACK_REQUESTED",
+            result: { in: Array.from(callbackStatusCodes) },
         };
 
         if (isBusinessDeveloper) {

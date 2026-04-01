@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { statusConfigService } from "@/lib/services/StatusConfigService";
 
 // ============================================
 // GET /api/sdr/callbacks/count
@@ -30,6 +31,16 @@ export async function GET(request: Request) {
         const isBooker = userRole === "BOOKER";
         const isSdr = userRole === "SDR";
 
+        const callbackStatusCodes = new Set<string>(["CALLBACK_REQUESTED", "RELANCE", "RAPPEL"]);
+        try {
+            const cfg = await statusConfigService.getEffectiveStatusConfig({});
+            for (const status of cfg.statuses) {
+                if (status.triggersCallback) callbackStatusCodes.add(status.code);
+            }
+        } catch {
+            // Keep default callback codes if config lookup fails.
+        }
+
         // For sidebar badge: only show callbacks from the SDR's assigned mission
         if (assignedOnly && isSdr) {
             // Get the SDR's current assigned mission (their active planning)
@@ -44,11 +55,11 @@ export async function GET(request: Request) {
             // If no assignment, show all callbacks for this SDR (fallback)
             const whereClause: {
                 sdrId: string;
-                result: "CALLBACK_REQUESTED";
+                result: { in: string[] };
                 campaign?: { missionId: string };
             } = {
                 sdrId: session.user.id,
-                result: "CALLBACK_REQUESTED",
+                result: { in: Array.from(callbackStatusCodes) },
             };
 
             // If they have an assignment, filter by that mission
@@ -127,11 +138,11 @@ export async function GET(request: Request) {
 
         const whereClause: {
             sdrId?: string;
-            result: "CALLBACK_REQUESTED";
+            result: { in: string[] };
             campaign?: { missionId: string | { in: string[] } };
             OR?: Array<{ sdrId: string; campaign: { missionId: string | { in: string[] } } } | { campaign: { missionId: string | { in: string[] } } }>;
         } = {
-            result: "CALLBACK_REQUESTED",
+            result: { in: Array.from(callbackStatusCodes) },
         };
 
         if (isBusinessDeveloper) {
