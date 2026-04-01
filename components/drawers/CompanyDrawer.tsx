@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Drawer, DrawerSection, DrawerField, Button, Input, Badge, Select, useToast } from "@/components/ui";
 import { ACTION_RESULT_LABELS, type ActionResult } from "@/lib/types";
 import {
@@ -126,7 +126,7 @@ export function CompanyDrawer({
     const [showQuickEmailModal, setShowQuickEmailModal] = useState(false);
     const [missionName, setMissionName] = useState<string>("");
     const [showAddContact, setShowAddContact] = useState(false);
-    const [statusConfig, setStatusConfig] = useState<{ statuses: Array<{ code: string; label: string; requiresNote: boolean }> } | null>(null);
+    const [statusConfig, setStatusConfig] = useState<{ statuses: Array<{ code: string; label: string; requiresNote: boolean; triggersCallback?: boolean }> } | null>(null);
 
     const effectiveMissionId = company?.missionId ?? resolvedMissionId ?? undefined;
 
@@ -218,6 +218,23 @@ export function CompanyDrawer({
     const statusLabels: Record<string, string> = statusConfig?.statuses?.length
         ? Object.fromEntries(statusConfig.statuses.map((s) => [s.code, s.label]))
         : { ...ACTION_RESULT_LABELS };
+
+    const callbackResultCodes = useMemo(() => {
+        const defaults = ["CALLBACK_REQUESTED", "RAPPEL", "RELANCE"];
+        if (!statusConfig?.statuses?.length) return new Set<string>(defaults);
+
+        const configured = statusConfig.statuses
+            .filter((s) => {
+                if (s.triggersCallback === true) return true;
+                const haystack = `${s.code} ${s.label}`.toUpperCase();
+                return haystack.includes("RAPPEL") || haystack.includes("RELANCE");
+            })
+            .map((s) => s.code);
+
+        return new Set<string>([...defaults, ...configured]);
+    }, [statusConfig]);
+
+    const isCallbackResult = (code: string | null | undefined) => !!code && callbackResultCodes.has(code);
 
     // Fetch actions history when drawer opens with a company
     useEffect(() => {
@@ -427,7 +444,7 @@ export function CompanyDrawer({
             await recordAction(
                 newActionResult,
                 newActionNote.trim() || undefined,
-                newActionResult === "CALLBACK_REQUESTED" && newCallbackDateValue
+                isCallbackResult(newActionResult) && newCallbackDateValue
                     ? new Date(newCallbackDateValue).toISOString()
                     : undefined
             );
@@ -777,7 +794,7 @@ export function CompanyDrawer({
                                     </div>
                                 )}
                                 {/* Rappel demandé: date de rappel */}
-                                {newActionResult === "CALLBACK_REQUESTED" && (
+                                {isCallbackResult(newActionResult) && (
                                     <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
                                         <div className="flex items-center gap-2 mb-2">
                                             <Clock className="w-5 h-5 text-amber-600" />

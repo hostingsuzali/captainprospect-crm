@@ -483,7 +483,7 @@ export function UnifiedActionDrawer({
 
     // React Query: action status config
     const { data: statusConfig = null } = useQuery<{
-        statuses: Array<{ code: string; label: string; requiresNote: boolean }>;
+        statuses: Array<{ code: string; label: string; requiresNote: boolean; triggersCallback?: boolean }>;
     } | null>({
         queryKey: sdrUnifiedDrawerStatusConfigKey(isOpen && missionId ? missionId : null),
         queryFn: async () => {
@@ -747,6 +747,26 @@ export function UnifiedActionDrawer({
         [statusConfig]
     );
 
+    const callbackResultCodes = useMemo(() => {
+        const defaults = ["CALLBACK_REQUESTED", "RAPPEL", "RELANCE"];
+        if (!statusConfig?.statuses?.length) return new Set<string>(defaults);
+
+        const configured = statusConfig.statuses
+            .filter((s) => {
+                if (s.triggersCallback === true) return true;
+                const haystack = `${s.code} ${s.label}`.toUpperCase();
+                return haystack.includes("RAPPEL") || haystack.includes("RELANCE");
+            })
+            .map((s) => s.code);
+
+        return new Set<string>([...defaults, ...configured]);
+    }, [statusConfig]);
+
+    const isCallbackResult = useCallback(
+        (code: string | null | undefined) => !!code && callbackResultCodes.has(code),
+        [callbackResultCodes]
+    );
+
     const primaryPhone = useMemo(() => {
         if (contact?.phone) return { number: contact.phone, label: "Contact" };
         if (company?.phone) return { number: company.phone, label: "Société" };
@@ -902,7 +922,7 @@ export function UnifiedActionDrawer({
                     result: newActionResult,
                     note: newActionNote.trim() || undefined,
                     callbackDate:
-                        newActionResult === "CALLBACK_REQUESTED" && newCallbackDateValue
+                        isCallbackResult(newActionResult) && newCallbackDateValue
                             ? new Date(newCallbackDateValue).toISOString()
                             : newActionResult === "MEETING_BOOKED" && rdvDate
                                 ? new Date(rdvDate).toISOString()
@@ -2324,7 +2344,7 @@ export function UnifiedActionDrawer({
                                     )}
 
                                     {/* Contextual: callback date */}
-                                    {newActionResult === "CALLBACK_REQUESTED" && (
+                                    {isCallbackResult(newActionResult) && (
                                         <div
                                             role="group"
                                             aria-label="Date de rappel"
@@ -2592,7 +2612,7 @@ export function UnifiedActionDrawer({
                                                                         </span>
                                                                     )}
                                                                 </div>
-                                                                {a.callbackDate && (a.result === "MEETING_BOOKED" || a.result === "CALLBACK_REQUESTED") ? (
+                                                                {a.callbackDate && (a.result === "MEETING_BOOKED" || isCallbackResult(a.result)) ? (
                                                                     <div className="flex flex-col">
                                                                         <time
                                                                             dateTime={a.callbackDate}

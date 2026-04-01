@@ -836,6 +836,33 @@ export default function SDRActionPage() {
         return () => { if (timerRef.current) clearInterval(timerRef.current); };
     }, [selectedMissionId, selectedListId, loadNextAction]);
 
+    useEffect(() => {
+        if (!currentAction?.campaignId) return;
+        const controller = new AbortController();
+        fetch(`/api/campaigns/${currentAction.campaignId}/script-companion`, { signal: controller.signal })
+            .then((res) => res.json())
+            .then((json) => {
+                if (!json?.success) return;
+                setCurrentAction((prev) => {
+                    if (!prev || prev.campaignId !== currentAction.campaignId) return prev;
+                    return {
+                        ...prev,
+                        scriptAdditional: json.data?.additionalShared ?? prev.scriptAdditional,
+                        scriptAiEnhanced: json.data?.aiShared ?? prev.scriptAiEnhanced,
+                        scriptDefaultTab: json.data?.defaultTab ?? prev.scriptDefaultTab,
+                    };
+                });
+                const preferredTab = json.data?.defaultTab;
+                if (preferredTab === "base" || preferredTab === "additional" || preferredTab === "ai") {
+                    setActiveTab(preferredTab);
+                }
+            })
+            .catch(() => {
+                // best effort only
+            });
+        return () => controller.abort();
+    }, [currentAction?.campaignId]);
+
     // Queue is loaded via useQuery (queueQueryKey) above
     const _queueEffectRemoved = true;
     useEffect(() => {
@@ -2848,7 +2875,14 @@ export default function SDRActionPage() {
                                 </div>
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-900">Script d'appel</h3>
-                                    <p className="text-xs text-slate-500">Guide conversationnel</p>
+                                    <p className="text-xs text-slate-500">
+                                        Guide conversationnel
+                                        {currentAction?.scriptDefaultTab && (
+                                            <span className="ml-2 inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                                Defaut: {SCRIPT_TABS.find((t) => t.id === currentAction.scriptDefaultTab)?.label ?? "Script"}
+                                            </span>
+                                        )}
+                                    </p>
                                 </div>
                             </div>
                         </div>

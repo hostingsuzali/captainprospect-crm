@@ -228,10 +228,12 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [additionalScriptShared, setAdditionalScriptShared] = useState("");
     const [aiEnhancedScriptDraft, setAiEnhancedScriptDraft] = useState("");
     const [aiEnhancedScriptShared, setAiEnhancedScriptShared] = useState("");
+    const [aiGeneratedAt, setAiGeneratedAt] = useState<string | null>(null);
     const [isSavingAdditionalScript, setIsSavingAdditionalScript] = useState(false);
     const [isSharingAdditionalScript, setIsSharingAdditionalScript] = useState(false);
     const [isSavingAiEnhancedScript, setIsSavingAiEnhancedScript] = useState(false);
     const [isSharingAiEnhancedScript, setIsSharingAiEnhancedScript] = useState(false);
+    const [isRefreshingAiEnhancedScript, setIsRefreshingAiEnhancedScript] = useState(false);
     const [defaultScriptTab, setDefaultScriptTab] = useState<"base" | "additional" | "ai">("base");
     const [isSavingDefaultScriptTab, setIsSavingDefaultScriptTab] = useState(false);
     const [mailboxes, setMailboxes] = useState<Array<{ id: string; email: string; displayName: string | null }>>([]);
@@ -321,12 +323,14 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                         setAdditionalScriptShared(companionJson.data?.additionalShared || "");
                         setAiEnhancedScriptDraft(companionJson.data?.aiDraft || "");
                         setAiEnhancedScriptShared(companionJson.data?.aiShared || "");
+                        setAiGeneratedAt(companionJson.data?.aiGeneratedAt || null);
                         setDefaultScriptTab(companionJson.data?.defaultTab || "base");
                     } else {
                         setAdditionalScriptDraft("");
                         setAdditionalScriptShared("");
                         setAiEnhancedScriptDraft("");
                         setAiEnhancedScriptShared("");
+                        setAiGeneratedAt(null);
                         setDefaultScriptTab("base");
                     }
                 } catch {
@@ -334,6 +338,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                     setAdditionalScriptShared("");
                     setAiEnhancedScriptDraft("");
                     setAiEnhancedScriptShared("");
+                    setAiGeneratedAt(null);
                     setDefaultScriptTab("base");
                 }
             }
@@ -547,6 +552,29 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
             showError("Erreur", "Impossible de partager le script IA");
         } finally {
             setIsSharingAiEnhancedScript(false);
+        }
+    };
+
+    const handleRefreshAiEnhancedScript = async () => {
+        if (!campaignData) return;
+        setIsRefreshingAiEnhancedScript(true);
+        try {
+            const res = await fetch(`/api/campaigns/${campaignData.id}/script-companion`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ force: true, source: "manual" }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible de générer le script IA");
+                return;
+            }
+            success("Script IA régénéré", "Le script a été recalculé depuis les commentaires d'appels.");
+            await fetchCampaignStrategy();
+        } catch {
+            showError("Erreur", "Impossible de régénérer le script IA");
+        } finally {
+            setIsRefreshingAiEnhancedScript(false);
         }
     };
 
@@ -1508,7 +1536,22 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                                 <p className="text-sm text-slate-500">Version enrichie et partageable à l'équipe</p>
                                             </div>
                                         </div>
+                                        {isStrategyEditing && (
+                                            <button
+                                                onClick={handleRefreshAiEnhancedScript}
+                                                disabled={isRefreshingAiEnhancedScript}
+                                                className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 rounded-lg transition-colors"
+                                            >
+                                                {isRefreshingAiEnhancedScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                                                Régénérer via commentaires d'appels
+                                            </button>
+                                        )}
                                     </div>
+                                    {aiGeneratedAt && (
+                                        <p className="text-xs text-slate-500 mb-3">
+                                            Dernière génération IA: {new Date(aiGeneratedAt).toLocaleString("fr-FR")}
+                                        </p>
+                                    )}
                                     {aiEnhancedScriptShared && !isStrategyEditing && (
                                         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                                             <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">Version partagée</p>
