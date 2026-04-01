@@ -2458,7 +2458,7 @@ export function UnifiedActionDrawer({
                                                     RESULT_CHIP_CONFIG.NO_RESPONSE;
                                                 const Icon = cfg.icon;
                                                 const isSelected = newActionResult === opt.value;
-                                                return (
+                                                const chipButton = (
                                                     <button
                                                         key={opt.value}
                                                         type="button"
@@ -2486,6 +2486,25 @@ export function UnifiedActionDrawer({
                                                         />
                                                         {opt.label}
                                                     </button>
+                                                );
+                                                if (!opt.title) return chipButton;
+                                                return (
+                                                    <Tooltip
+                                                        key={`${opt.value}-tooltip`}
+                                                        position="top"
+                                                        maxWidth="max-w-sm"
+                                                        content={
+                                                            <div className="space-y-1">
+                                                                {opt.title.split("\n").map((line, idx) => (
+                                                                    <p key={`${opt.value}-${idx}`} className="text-xs leading-relaxed">
+                                                                        {line}
+                                                                    </p>
+                                                                ))}
+                                                            </div>
+                                                        }
+                                                    >
+                                                        {chipButton}
+                                                    </Tooltip>
                                                 );
                                             })}
                                         </div>
