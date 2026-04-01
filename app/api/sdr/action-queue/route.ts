@@ -188,6 +188,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 a.result,
                 a.note,
                 a."createdAt",
+                a."callbackDate",
                 a."sdrId",
                 u.name as sdr_name
             FROM "Action" a
@@ -201,6 +202,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                 a.result,
                 a.note,
                 a."createdAt",
+                a."callbackDate",
                 a."sdrId",
                 u.name as sdr_name
             FROM "Action" a
