@@ -51,10 +51,7 @@ interface FormData {
     listingCriteria: string;
     estimatedContacts: string;
     // Scripts
-    introScript: string;
-    discoveryScript: string;
-    objectionScript: string;
-    closingScript: string;
+    baseScript: string;
     // Planning
     targetLaunchDate: string;
     notes: string;
@@ -79,10 +76,7 @@ const INITIAL_FORM_DATA: FormData = {
     listingSources: [],
     listingCriteria: "",
     estimatedContacts: "",
-    introScript: "",
-    discoveryScript: "",
-    objectionScript: "",
-    closingScript: "",
+    baseScript: "",
     targetLaunchDate: "",
     notes: "",
     createMission: false,
@@ -205,10 +199,7 @@ export default function BDClientOnboardingPage() {
             };
 
             const scripts = {
-                intro: formData.introScript,
-                discovery: formData.discoveryScript,
-                objection: formData.objectionScript,
-                closing: formData.closingScript,
+                base: formData.baseScript,
             };
 
             // Create client with onboarding
@@ -254,7 +245,7 @@ export default function BDClientOnboardingPage() {
                 });
 
                 const missionJson = await missionRes.json();
-                if (missionJson.success && scripts.intro) {
+                if (missionJson.success && scripts.base) {
                     // Create initial campaign with scripts (active by default)
                     await fetch("/api/campaigns", {
                         method: "POST",
@@ -264,7 +255,7 @@ export default function BDClientOnboardingPage() {
                             name: `Campagne ${formData.name}`,
                             icp: formData.icp,
                             pitch: formData.icp,
-                            script: JSON.stringify(scripts),
+                            script: scripts.base,
                             isActive: true,
                         }),
                     });
@@ -532,58 +523,19 @@ export default function BDClientOnboardingPage() {
                         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
                             <p className="text-sm text-emerald-700">
                                 <Sparkles className="w-4 h-4 inline mr-1" />
-                                Les scripts seront utilisés par les SDRs lors des appels. Structurez-les en sections pour une meilleure guidance.
+                                Le script sera utilisé par les SDRs lors des appels. Utilisez une version unique non divisée.
                             </p>
                         </div>
 
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Script d'introduction
+                                Script de base
                             </label>
                             <textarea
-                                value={formData.introScript}
-                                onChange={(e) => updateField("introScript", e.target.value)}
-                                placeholder="Bonjour, je suis [Prénom] de [Entreprise]..."
-                                rows={4}
-                                className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Questions de découverte
-                            </label>
-                            <textarea
-                                value={formData.discoveryScript}
-                                onChange={(e) => updateField("discoveryScript", e.target.value)}
-                                placeholder="Questions pour qualifier le prospect..."
-                                rows={4}
-                                className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Réponses aux objections
-                            </label>
-                            <textarea
-                                value={formData.objectionScript}
-                                onChange={(e) => updateField("objectionScript", e.target.value)}
-                                placeholder="Si le prospect dit 'Pas le temps' → ..."
-                                rows={4}
-                                className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Script de closing
-                            </label>
-                            <textarea
-                                value={formData.closingScript}
-                                onChange={(e) => updateField("closingScript", e.target.value)}
-                                placeholder="Pour conclure et fixer un RDV..."
-                                rows={4}
+                                value={formData.baseScript}
+                                onChange={(e) => updateField("baseScript", e.target.value)}
+                                placeholder="Script unique utilisé par les SDRs..."
+                                rows={12}
                                 className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
                             />
                         </div>

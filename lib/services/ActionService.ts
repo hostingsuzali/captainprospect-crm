@@ -139,9 +139,10 @@ export class ActionService {
  input: CreateActionInput,
  statusDef?: EffectiveStatusDefinition | null
  ): Promise<any> {
-        const resolvedResult = statusDef?.resultCategoryCode
-            ? resolveActionResult(statusDef.resultCategoryCode)
-            : resolveActionResult(input.result);
+        // IMPORTANT: Action.result must always be a valid ActionResult enum code.
+        // statusDef.resultCategoryCode is for reporting grouping (ResultCategory),
+        // and may contain values like "OTHER" that are not ActionResult values.
+        const resolvedResult = resolveActionResult(input.result);
         const triggersCallback = statusDef?.triggersCallback ?? (resolvedResult === 'CALLBACK_REQUESTED');
  const triggersOpportunity = statusDef?.triggersOpportunity ??
  (resolvedResult === 'MEETING_BOOKED' || resolvedResult === 'INTERESTED');

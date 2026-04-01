@@ -18,14 +18,58 @@ const updateCampaignSchema = z.object({
     name: z.string().min(1).optional(),
     icp: z.string().min(1).optional(),
     pitch: z.string().min(1).optional(),
-    script: z.object({
-        intro: z.string().optional(),
-        discovery: z.string().optional(),
-        objection: z.string().optional(),
-        closing: z.string().optional(),
-    }).optional(),
+    script: z.union([
+        z.string(),
+        z.object({
+            intro: z.string().optional(),
+            discovery: z.string().optional(),
+            objection: z.string().optional(),
+            closing: z.string().optional(),
+        }),
+    ]).optional(),
     isActive: z.boolean().optional(),
 });
+
+function normalizeScriptToSingleText(script: unknown): string | null {
+    if (typeof script === 'string') {
+        const trimmed = script.trim();
+        if (!trimmed) return '';
+        try {
+            const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+            if (parsed && typeof parsed === 'object') {
+                const ordered = [
+                    ['Introduction', parsed.intro],
+                    ['Decouverte', parsed.discovery],
+                    ['Objections', parsed.objection],
+                    ['Closing', parsed.closing],
+                ]
+                    .map(([label, value]) =>
+                        typeof value === 'string' && value.trim() ? `--- ${label} ---\n${value.trim()}` : null
+                    )
+                    .filter((v): v is string => Boolean(v));
+                if (ordered.length > 0) return ordered.join('\n\n');
+            }
+        } catch {
+            // keep plain string as-is
+        }
+        return script;
+    }
+    if (script && typeof script === 'object') {
+        const parsed = script as Record<string, unknown>;
+        const ordered = [
+            ['Introduction', parsed.intro],
+            ['Decouverte', parsed.discovery],
+            ['Objections', parsed.objection],
+            ['Closing', parsed.closing],
+        ]
+            .map(([label, value]) =>
+                typeof value === 'string' && value.trim() ? `--- ${label} ---\n${value.trim()}` : null
+            )
+            .filter((v): v is string => Boolean(v));
+        return ordered.join('\n\n');
+    }
+    return null;
+}
 
 // ============================================
 // GET /api/campaigns/[id] - Get campaign details
@@ -81,6 +125,7 @@ export const GET = withErrorHandler(async (
 
     return successResponse({
         ...campaign,
+        script: normalizeScriptToSingleText(campaign.script),
         stats,
     });
 });
@@ -101,7 +146,7 @@ export const PUT = withErrorHandler(async (
         where: { id },
         data: {
             ...data,
-            script: data.script ? JSON.stringify(data.script) : undefined,
+            script: data.script !== undefined ? normalizeScriptToSingleText(data.script) : undefined,
         },
         include: {
             mission: {

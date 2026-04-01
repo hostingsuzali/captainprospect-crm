@@ -19,13 +19,35 @@ const createCampaignSchema = z.object({
     missionId: z.string().min(1, 'Mission requise'),
     icp: z.string().min(1, 'ICP requis'),
     pitch: z.string().min(1, 'Pitch requis'),
-    script: z.object({
-        intro: z.string().min(1, 'Introduction requise'),
-        discovery: z.string().optional(),
-        objection: z.string().optional(),
-        closing: z.string().optional(),
-    }).optional(),
+    script: z.union([
+        z.string(),
+        z.object({
+            intro: z.string().optional(),
+            discovery: z.string().optional(),
+            objection: z.string().optional(),
+            closing: z.string().optional(),
+        }),
+    ]).optional(),
 });
+
+function normalizeScriptToSingleText(script: unknown): string | null {
+    if (typeof script === 'string') return script;
+    if (script && typeof script === 'object') {
+        const parsed = script as Record<string, unknown>;
+        const ordered = [
+            ['Introduction', parsed.intro],
+            ['Decouverte', parsed.discovery],
+            ['Objections', parsed.objection],
+            ['Closing', parsed.closing],
+        ]
+            .map(([label, value]) =>
+                typeof value === 'string' && value.trim() ? `--- ${label} ---\n${value.trim()}` : null
+            )
+            .filter((v): v is string => Boolean(v));
+        return ordered.join('\n\n');
+    }
+    return null;
+}
 
 // ============================================
 // GET /api/campaigns - List campaigns
@@ -112,7 +134,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             missionId: data.missionId,
             icp: data.icp,
             pitch: data.pitch,
-            script: data.script ? JSON.stringify(data.script) : null,
+            script: data.script ? normalizeScriptToSingleText(data.script) : null,
             isActive: true,
         },
         include: {

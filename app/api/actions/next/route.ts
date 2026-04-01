@@ -321,7 +321,21 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const normalizedBaseScript = (() => {
         if (typeof scriptFromCampaign === "string" && scriptFromCampaign.trim()) return scriptFromCampaign;
         if (scriptFromOnboarding && typeof scriptFromOnboarding === "object") {
-            return JSON.stringify(scriptFromOnboarding);
+            const onboardingScripts = scriptFromOnboarding as Record<string, unknown>;
+            if (typeof onboardingScripts.base === "string" && onboardingScripts.base.trim()) {
+                return onboardingScripts.base;
+            }
+            const ordered = [
+                ["Introduction", onboardingScripts.intro],
+                ["Decouverte", onboardingScripts.discovery],
+                ["Objections", onboardingScripts.objection],
+                ["Closing", onboardingScripts.closing],
+            ]
+                .map(([label, value]) =>
+                    typeof value === "string" && value.trim() ? `--- ${label} ---\n${value.trim()}` : null
+                )
+                .filter((v): v is string => Boolean(v));
+            return ordered.join("\n\n");
         }
         return null;
     })();

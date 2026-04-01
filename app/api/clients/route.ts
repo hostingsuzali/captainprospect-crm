@@ -32,12 +32,7 @@ const createClientSchema = z.object({
         aiAnalysis: z.any().optional(),
     }).optional(),
     targetLaunchDate: z.string().optional().nullable(),
-    scripts: z.object({
-        intro: z.string().optional(),
-        discovery: z.string().optional(),
-        objection: z.string().optional(),
-        closing: z.string().optional(),
-    }).optional(),
+    scripts: z.record(z.string(), z.unknown()).optional(),
     notes: z.string().optional().nullable(),
     createMission: z.boolean().optional(),
     missionName: z.string().optional().nullable(),
@@ -62,6 +57,22 @@ const createClientSchema = z.object({
         callDuration: z.number().optional(),
     }).optional().nullable(),
 });
+
+function extractUnifiedScript(scripts: Record<string, unknown> | undefined): string {
+    if (!scripts || typeof scripts !== 'object') return '';
+    if (typeof scripts.base === 'string' && scripts.base.trim()) return scripts.base;
+    const ordered = [
+        ['Introduction', scripts.intro],
+        ['Decouverte', scripts.discovery],
+        ['Objections', scripts.objection],
+        ['Closing', scripts.closing],
+    ]
+        .map(([label, value]) =>
+            typeof value === 'string' && value.trim() ? `--- ${label} ---\n${value.trim()}` : null
+        )
+        .filter((v): v is string => Boolean(v));
+    return ordered.join('\n\n');
+}
 
 // ============================================
 // GET /api/clients - List all clients
@@ -206,14 +217,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
         missionId = mission.id;
 
-        if (scripts?.intro || onboardingData?.icp) {
+        const unifiedScript = extractUnifiedScript(scripts as Record<string, unknown> | undefined);
+        if (unifiedScript || onboardingData?.icp) {
             await prisma.campaign.create({
                 data: {
                     missionId: mission.id,
                     name: `Campagne ${name}`,
                     icp: onboardingData?.icp || 'ICP à définir',
                     pitch: onboardingData?.icp || 'Pitch à définir',
-                    script: scripts ? JSON.stringify(scripts) : undefined,
+                    script: unifiedScript || undefined,
                     isActive: true,
                 },
             });

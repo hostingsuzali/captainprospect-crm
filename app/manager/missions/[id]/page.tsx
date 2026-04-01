@@ -154,22 +154,6 @@ interface CampaignData {
     isActive: boolean;
 }
 
-interface ScriptSections {
-    intro: string;
-    discovery: string;
-    objection: string;
-    closing: string;
-}
-
-type ScriptSectionKey = keyof ScriptSections;
-
-const SCRIPT_TABS = [
-    { id: "intro", label: "Introduction" },
-    { id: "discovery", label: "Découverte" },
-    { id: "objection", label: "Objections" },
-    { id: "closing", label: "Closing" },
-];
-
 // ============================================
 // CHANNEL CONFIG
 // ============================================
@@ -234,15 +218,12 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [isStrategyEditing, setIsStrategyEditing] = useState(false);
     const [isSavingStrategy, setIsSavingStrategy] = useState(false);
     const [strategyForm, setStrategyForm] = useState({ icp: "", pitch: "" });
-    const [scriptSections, setScriptSections] = useState<ScriptSections>({ intro: "", discovery: "", objection: "", closing: "" });
-    const [activeScriptTab, setActiveScriptTab] = useState("intro");
+    const [baseScript, setBaseScript] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
-    const [generatingSection, setGeneratingSection] = useState<string | null>(null);
+    const [generatingSection, setGeneratingSection] = useState<"all" | null>(null);
     const [aiModalOpen, setAiModalOpen] = useState(false);
-    const [aiRequestedSection, setAiRequestedSection] = useState<"all" | ScriptSectionKey>("all");
-    const [aiActiveTab, setAiActiveTab] = useState<ScriptSectionKey>("intro");
-    const [aiSuggestions, setAiSuggestions] = useState<Partial<Record<ScriptSectionKey, string[]>>>({});
-    const [aiSelectedIndex, setAiSelectedIndex] = useState<Record<ScriptSectionKey, number>>({ intro: 0, discovery: 0, objection: 0, closing: 0 });
+    const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+    const [aiSelectedIndex, setAiSelectedIndex] = useState(0);
     const [additionalScriptDraft, setAdditionalScriptDraft] = useState("");
     const [additionalScriptShared, setAdditionalScriptShared] = useState("");
     const [aiEnhancedScriptDraft, setAiEnhancedScriptDraft] = useState("");
@@ -331,23 +312,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                 const c: CampaignData = json.data;
                 setCampaignData(c);
                 setStrategyForm({ icp: c.icp || "", pitch: c.pitch || "" });
-                if (c.script) {
-                    try {
-                        const parsed = JSON.parse(c.script);
-                        if (typeof parsed === "object") {
-                            setScriptSections({
-                                intro: parsed.intro || "",
-                                discovery: parsed.discovery || "",
-                                objection: parsed.objection || "",
-                                closing: parsed.closing || "",
-                            });
-                        } else {
-                            setScriptSections({ intro: c.script, discovery: "", objection: "", closing: "" });
-                        }
-                    } catch {
-                        setScriptSections({ intro: c.script, discovery: "", objection: "", closing: "" });
-                    }
-                }
+                setBaseScript(c.script || "");
                 try {
                     const companionRes = await fetch(`/api/campaigns/${c.id}/script-companion`);
                     const companionJson = await companionRes.json();
@@ -391,7 +356,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                 body: JSON.stringify({
                     icp: strategyForm.icp,
                     pitch: strategyForm.pitch,
-                    script: { intro: scriptSections.intro, discovery: scriptSections.discovery, objection: scriptSections.objection, closing: scriptSections.closing },
+                    script: baseScript,
                 }),
             });
             const json = await res.json();
@@ -409,14 +374,14 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
         }
     };
 
-    const generateWithMistral = async (section: "all" | ScriptSectionKey) => {
+    const generateWithMistral = async () => {
         if (!mission) return;
         if (!strategyForm.icp.trim() || !strategyForm.pitch.trim()) {
             showError("Erreur", "Veuillez renseigner l'ICP et le pitch avant de générer");
             return;
         }
         setIsGenerating(true);
-        setGeneratingSection(section);
+        setGeneratingSection("all");
         try {
             const res = await fetch("/api/ai/mistral/script", {
                 method: "POST",
@@ -429,7 +394,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                     campaignDescription: mission.objective,
                     icp: strategyForm.icp,
                     pitch: strategyForm.pitch,
-                    section,
+                    section: "all",
                     suggestionsCount: 3,
                 }),
             });
@@ -437,17 +402,38 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
             if (json.success && (json.data?.suggestions || json.data?.script)) {
                 const suggestions = json.data?.suggestions || {};
                 const fallbackScript = json.data?.script || {};
-                const merged: Partial<Record<ScriptSectionKey, string[]>> = { ...suggestions };
-                (["intro", "discovery", "objection", "closing"] as ScriptSectionKey[]).forEach((k) => {
-                    if (!merged[k] || merged[k]?.length === 0) {
-                        const v = fallbackScript?.[k];
-                        if (typeof v === "string" && v.trim()) merged[k] = [v];
-                    }
-                });
-                setAiSuggestions(merged);
-                setAiRequestedSection(section);
-                setAiActiveTab(section === "all" ? "intro" : section);
-                setAiSelectedIndex({ intro: 0, discovery: 0, objection: 0, closing: 0 });
+                const toSingleScript = (source: Record<string, unknown>): string => {
+                    const ordered = [
+                        ["Introduction", source.intro],
+                        ["Decouverte", source.discovery],
+                        ["Objections", source.objection],
+                        ["Closing", source.closing],
+                    ]
+                        .map(([label, value]) =>
+                            typeof value === "string" && value.trim() ? `--- ${label} ---\n${value.trim()}` : null
+                        )
+                        .filter((v): v is string => Boolean(v));
+                    return ordered.join("\n\n");
+                };
+                const maxLen = Math.max(
+                    suggestions?.intro?.length ?? 0,
+                    suggestions?.discovery?.length ?? 0,
+                    suggestions?.objection?.length ?? 0,
+                    suggestions?.closing?.length ?? 0,
+                );
+                const mergedSuggestions =
+                    maxLen > 0
+                        ? Array.from({ length: maxLen }, (_, idx) =>
+                            toSingleScript({
+                                intro: suggestions?.intro?.[idx] ?? fallbackScript?.intro ?? "",
+                                discovery: suggestions?.discovery?.[idx] ?? fallbackScript?.discovery ?? "",
+                                objection: suggestions?.objection?.[idx] ?? fallbackScript?.objection ?? "",
+                                closing: suggestions?.closing?.[idx] ?? fallbackScript?.closing ?? "",
+                            })
+                        ).filter((s) => s.trim().length > 0)
+                        : [toSingleScript(fallbackScript)].filter((s) => s.trim().length > 0);
+                setAiSuggestions(mergedSuggestions);
+                setAiSelectedIndex(0);
                 setAiModalOpen(true);
             } else {
                 showError("Erreur", json.error || "Impossible de générer le script");
@@ -460,29 +446,15 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
         }
     };
 
-    const applySelectedSuggestions = (mode: "all" | ScriptSectionKey) => {
-        const applyOne = (key: ScriptSectionKey) => {
-            const list = aiSuggestions[key] || [];
-            const idx = aiSelectedIndex[key] ?? 0;
-            const value = list[idx] ?? "";
-            setScriptSections((prev) => ({ ...prev, [key]: value }));
-        };
-        if (mode === "all") {
-            (["intro", "discovery", "objection", "closing"] as ScriptSectionKey[]).forEach(applyOne);
-            success("Suggestions appliquées", "Les sections ont été appliquées");
-        } else {
-            applyOne(mode);
-            success("Suggestion appliquée", "La suggestion a été appliquée");
-        }
+    const applySelectedSuggestion = () => {
+        const value = aiSuggestions[aiSelectedIndex] ?? "";
+        setBaseScript(value);
+        success("Suggestion appliquée", "La suggestion a été appliquée");
         setAiModalOpen(false);
     };
 
     const copyScript = () => {
-        const full = Object.entries(scriptSections)
-            .filter(([, c]) => c)
-            .map(([k, c]) => `--- ${k.toUpperCase()} ---\n${c}`)
-            .join("\n\n");
-        navigator.clipboard.writeText(full);
+        navigator.clipboard.writeText(baseScript || "");
         success("Script copié", "Copié dans le presse-papier");
     };
 
@@ -1404,13 +1376,13 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                             </div>
                                             <div>
                                                 <h2 className="text-lg font-semibold text-slate-900">Script d'appel</h2>
-                                                <p className="text-sm text-slate-500">Introduction, découverte, objections, closing</p>
+                                                <p className="text-sm text-slate-500">Script unique (non divisé)</p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             {isStrategyEditing && (
                                                 <button
-                                                    onClick={() => generateWithMistral("all")}
+                                                    onClick={generateWithMistral}
                                                     disabled={isGenerating || !strategyForm.icp || !strategyForm.pitch}
                                                     className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-700 bg-gradient-to-r from-purple-50 to-indigo-50 border border-indigo-200 hover:from-purple-100 hover:to-indigo-100 disabled:opacity-50 rounded-lg transition-colors"
                                                 >
@@ -1444,37 +1416,24 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                         </div>
                                     </div>
 
-                                    <Tabs tabs={SCRIPT_TABS} activeTab={activeScriptTab} onTabChange={setActiveScriptTab} className="mb-4" />
-
                                     {isStrategyEditing ? (
                                         <div className="space-y-2">
-                                            <div className="flex justify-end">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => generateWithMistral(activeScriptTab as ScriptSectionKey)}
-                                                    disabled={isGenerating || !strategyForm.icp || !strategyForm.pitch}
-                                                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:text-slate-400 disabled:cursor-not-allowed"
-                                                >
-                                                    {isGenerating && generatingSection === activeScriptTab ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-                                                    Générer cette section
-                                                </button>
-                                            </div>
                                             <textarea
-                                                value={scriptSections[activeScriptTab as ScriptSectionKey]}
-                                                onChange={(e) => setScriptSections(prev => ({ ...prev, [activeScriptTab]: e.target.value }))}
+                                                value={baseScript}
+                                                onChange={(e) => setBaseScript(e.target.value)}
                                                 rows={10}
-                                                placeholder={`Script de ${SCRIPT_TABS.find(t => t.id === activeScriptTab)?.label.toLowerCase()}...`}
+                                                placeholder="Ajoutez un script de base unique..."
                                                 className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none font-mono text-sm"
                                             />
                                         </div>
                                     ) : (
                                         <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 min-h-[180px]">
-                                            {scriptSections[activeScriptTab as ScriptSectionKey] ? (
-                                                <p className="text-sm text-slate-700 whitespace-pre-wrap">{scriptSections[activeScriptTab as ScriptSectionKey]}</p>
+                                            {baseScript ? (
+                                                <p className="text-sm text-slate-700 whitespace-pre-wrap">{baseScript}</p>
                                             ) : (
                                                 <div className="text-center py-8 text-sm text-slate-400">
                                                     <Sparkles className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                                                    Aucun script pour cette section
+                                                    Aucun script de base
                                                 </div>
                                             )}
                                         </div>
@@ -2585,56 +2544,37 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                 description="Choisissez une proposition avant de l'appliquer à votre script."
                 size="xl"
             >
-                {aiRequestedSection === "all" && (
-                    <Tabs
-                        tabs={SCRIPT_TABS}
-                        activeTab={aiActiveTab}
-                        onTabChange={(t) => setAiActiveTab(t as ScriptSectionKey)}
-                        className="mb-4"
-                    />
-                )}
-
-                {(() => {
-                    const currentSection: ScriptSectionKey =
-                        aiRequestedSection === "all" ? aiActiveTab : aiRequestedSection;
-                    const items = aiSuggestions[currentSection] || [];
-
-                    return (
-                        <div className="space-y-3">
-                            {items.length === 0 ? (
-                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                                    Aucune suggestion reçue pour cette section. Réessayez la génération.
-                                </div>
-                            ) : (
-                                items.map((text, idx) => {
-                                    const selected = (aiSelectedIndex[currentSection] ?? 0) === idx;
-                                    return (
-                                        <button
-                                            key={`${currentSection}-${idx}`}
-                                            type="button"
-                                            onClick={() =>
-                                                setAiSelectedIndex((prev) => ({ ...prev, [currentSection]: idx }))
-                                            }
-                                            className={`w-full text-left rounded-xl border p-4 transition-all ${selected
-                                                ? "border-indigo-300 bg-indigo-50"
-                                                : "border-slate-200 bg-white hover:bg-slate-50"}`}
-                                        >
-                                            <div className="flex items-center justify-between gap-3 mb-2">
-                                                <div className="text-xs font-bold tracking-wide uppercase text-slate-500">
-                                                    Suggestion {idx + 1}
-                                                </div>
-                                                <div className={`text-[11px] font-bold px-2 py-1 rounded-full ${selected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"}`}>
-                                                    {selected ? "Sélectionnée" : "Choisir"}
-                                                </div>
-                                            </div>
-                                            <div className="text-sm text-slate-800 whitespace-pre-wrap">{text}</div>
-                                        </button>
-                                    );
-                                })
-                            )}
+                <div className="space-y-3">
+                    {aiSuggestions.length === 0 ? (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                            Aucune suggestion reçue. Réessayez la génération.
                         </div>
-                    );
-                })()}
+                    ) : (
+                        aiSuggestions.map((text, idx) => {
+                            const selected = aiSelectedIndex === idx;
+                            return (
+                                <button
+                                    key={`suggestion-${idx}`}
+                                    type="button"
+                                    onClick={() => setAiSelectedIndex(idx)}
+                                    className={`w-full text-left rounded-xl border p-4 transition-all ${selected
+                                        ? "border-indigo-300 bg-indigo-50"
+                                        : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                                >
+                                    <div className="flex items-center justify-between gap-3 mb-2">
+                                        <div className="text-xs font-bold tracking-wide uppercase text-slate-500">
+                                            Suggestion {idx + 1}
+                                        </div>
+                                        <div className={`text-[11px] font-bold px-2 py-1 rounded-full ${selected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"}`}>
+                                            {selected ? "Sélectionnée" : "Choisir"}
+                                        </div>
+                                    </div>
+                                    <div className="text-sm text-slate-800 whitespace-pre-wrap">{text}</div>
+                                </button>
+                            );
+                        })
+                    )}
+                </div>
 
                 <ModalFooter>
                     <button
@@ -2644,10 +2584,10 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                         Annuler
                     </button>
                     <button
-                        onClick={() => applySelectedSuggestions(aiRequestedSection === "all" ? "all" : aiRequestedSection)}
+                        onClick={applySelectedSuggestion}
                         className="h-9 px-4 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
                     >
-                        {aiRequestedSection === "all" ? "Appliquer tout" : "Appliquer"}
+                        Appliquer
                     </button>
                 </ModalFooter>
             </Modal>
