@@ -85,6 +85,11 @@ const STATUS_CONFIG = {
     ACTIONABLE: { label: "Actionnable", color: "text-emerald-500", bg: "bg-emerald-50", borderColor: "border-emerald-200", icon: CheckCircle },
 };
 
+const STATUS_HOVER_HINTS: Record<string, string> = {
+    RELANCE: "Rappel demandé\nLe prospect attend ton appel\nIl y a un signal d'intérêt",
+    RAPPEL: "Rappel à faire\nLe prospect n'a pas encore été joint\nC'est un rappel logistique, pas commercial",
+};
+
 // ============================================
 // COMPANY DRAWER COMPONENT
 // ============================================
@@ -212,8 +217,8 @@ export function CompanyDrawer({
         ["INTERESTED", "CALLBACK_REQUESTED", "ENVOIE_MAIL"].includes(code);
 
     const statusOptions = statusConfig?.statuses?.length
-        ? statusConfig.statuses.map((s) => ({ value: s.code, label: s.label }))
-        : Object.entries(ACTION_RESULT_LABELS).map(([value, label]) => ({ value, label }));
+        ? statusConfig.statuses.map((s) => ({ value: s.code, label: s.label, title: STATUS_HOVER_HINTS[s.code] }))
+        : Object.entries(ACTION_RESULT_LABELS).map(([value, label]) => ({ value, label, title: STATUS_HOVER_HINTS[value] }));
 
     const statusLabels: Record<string, string> = statusConfig?.statuses?.length
         ? Object.fromEntries(statusConfig.statuses.map((s) => [s.code, s.label]))

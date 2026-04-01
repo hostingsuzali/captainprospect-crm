@@ -14,6 +14,7 @@ export interface SelectOption {
     label: string;
     icon?: React.ReactNode;
     disabled?: boolean;
+    title?: string;
 }
 
 interface SelectProps {
@@ -165,6 +166,7 @@ export function Select({
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 onKeyDown={handleKeyDown}
                 disabled={disabled}
+                title={selectedOption?.title}
                 className={cn(
                     "w-full flex items-center justify-between gap-2 px-4 py-3 min-h-[40px]",
                     "border rounded-xl text-left transition-colors",
@@ -239,6 +241,7 @@ export function Select({
                                     <button
                                         key={option.value}
                                         type="button"
+                                        title={option.title}
                                         onClick={() => {
                                             if (!option.disabled) {
                                                 onChange(option.value);

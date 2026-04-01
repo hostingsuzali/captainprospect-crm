@@ -141,6 +141,11 @@ const STATUS_CONFIG = {
     },
 };
 
+const STATUS_HOVER_HINTS: Record<string, string> = {
+    RELANCE: "Rappel demandé\nLe prospect attend ton appel\nIl y a un signal d'intérêt",
+    RAPPEL: "Rappel à faire\nLe prospect n'a pas encore été joint\nC'est un rappel logistique, pas commercial",
+};
+
 // Result chip definitions — icon + semantic color grouping
 const RESULT_CHIP_CONFIG: Record<
     string,
@@ -730,8 +735,8 @@ export function UnifiedActionDrawer({
         () => {
             const raw =
                 statusConfig?.statuses?.length
-                    ? statusConfig.statuses.map((s) => ({ value: s.code, label: s.label }))
-                    : Object.entries(ACTION_RESULT_LABELS).map(([value, label]) => ({ value, label }));
+                    ? statusConfig.statuses.map((s) => ({ value: s.code, label: s.label, title: STATUS_HOVER_HINTS[s.code] }))
+                    : Object.entries(ACTION_RESULT_LABELS).map(([value, label]) => ({ value, label, title: STATUS_HOVER_HINTS[value] }));
             // Exclude MEETING_CANCELLED from call result options — invalid phone / bad number
             // should use NUMERO_KO, BAD_CONTACT, or INVALIDE, not meeting cancelled
             return raw.filter((opt) => opt.value !== "MEETING_CANCELLED");

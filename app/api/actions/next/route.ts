@@ -7,6 +7,18 @@ import {
 } from '@/lib/api-utils';
 import { statusConfigService } from '@/lib/services/StatusConfigService';
 
+function buildCallbackResultCodes(config: { statuses: Array<{ code: string; label: string; triggersCallback?: boolean }> }) {
+    const defaults = ["CALLBACK_REQUESTED", "RELANCE", "RAPPEL"];
+    const configured = config.statuses
+        .filter((s) => {
+            if (s.triggersCallback === true) return true;
+            const haystack = `${s.code} ${s.label}`.toUpperCase();
+            return haystack.includes("RAPPEL") || haystack.includes("RELANCE");
+        })
+        .map((s) => s.code);
+    return new Set<string>([...defaults, ...configured]);
+}
+
 // ============================================
 // OPTIMIZED QUEUE QUERY - PHASE 2.5
 // ============================================
@@ -223,7 +235,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         )
         SELECT *
         FROM targets_with_last_action
-        WHERE (last_action_created IS NULL OR last_action_created < $${isBooker || shouldBypassAssignmentGate ? 1 : 2})
+        WHERE 1=1
         ORDER BY 
             CASE WHEN contact_status = 'ACTIONABLE' THEN 0 WHEN contact_status = 'PARTIAL' THEN 1 WHEN contact_status = 'INCOMPLETE' THEN 2 ELSE 3 END,
             COALESCE(last_action_created, '1970-01-01'::timestamp) ASC
@@ -256,6 +268,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         configMissionId ? { missionId: configMissionId } : {}
     );
 
+    const callbackResultCodes = buildCallbackResultCodes(config);
     const withPriority = result.map((row) => {
         const { priorityOrder, priorityLabel } = statusConfigService.getPriorityForResult(
             row.last_action_result,
@@ -263,7 +276,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         );
         return { ...row, _priorityOrder: priorityOrder, _priorityLabel: priorityLabel };
     });
-    const filtered = withPriority.filter((r) => r._priorityOrder < 999);
+    const filtered = withPriority.filter((r) => {
+        const isInCooldown = !!r.last_action_created && new Date(r.last_action_created).getTime() >= cooldownDate.getTime();
+        const isOwnedCallback = !!r.last_action_result && callbackResultCodes.has(r.last_action_result) && r.last_action_sdr_id === sdrId;
+
+        if (r._priorityOrder >= 999) return false;
+        if (!isInCooldown) return true;
+        return isOwnedCallback;
+    });
     const sorted = filtered.sort(
         (a, b) =>
             a._priorityOrder - b._priorityOrder ||

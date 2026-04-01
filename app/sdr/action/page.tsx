@@ -234,6 +234,11 @@ const PRIORITY_LABELS: Record<string, { label: string; color: string }> = {
     RETRY: { label: "Relance", color: "bg-slate-50 text-slate-700 border-slate-200" },
 };
 
+const STATUS_HOVER_HINTS: Record<string, string> = {
+    RELANCE: "Rappel demandé\nLe prospect attend ton appel\nIl y a un signal d'intérêt",
+    RAPPEL: "Rappel à faire\nLe prospect n'a pas encore été joint\nC'est un rappel logistique, pas commercial",
+};
+
 const SCRIPT_TABS = [
     { id: "base", label: "Script de base" },
     { id: "additional", label: "Script additionel" },
@@ -2942,6 +2947,7 @@ export default function SDRActionPage() {
                             <button
                                 key={option.value}
                                 onClick={() => setSelectedResult(option.value)}
+                                title={STATUS_HOVER_HINTS[option.value]}
                                 className={cn(
                                     "relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all",
                                     selectedResult === option.value
