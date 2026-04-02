@@ -21,7 +21,8 @@ const updateSchema = z.object({
   result: z.enum(["MEETING_BOOKED", "MEETING_CANCELLED"]).optional(),
   confirmationStatus: z.enum(["PENDING", "CONFIRMED", "CANCELLED"]).optional(),
   sdrId: z.string().cuid().optional(),
-  contactId: z.string().cuid().optional().nullable(),
+  // Keep this permissive: some imported legacy contacts may not use CUID format.
+  contactId: z.string().min(1).optional().nullable(),
   meetingAddress: z.string().optional(),
   meetingJoinUrl: z.string().optional(),
   meetingPhone: z.string().optional(),

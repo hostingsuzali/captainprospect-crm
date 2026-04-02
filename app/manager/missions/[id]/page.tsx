@@ -569,7 +569,11 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                 showError("Erreur", json.error || "Impossible de générer le script IA");
                 return;
             }
-            success("Script IA régénéré", "Le script a été recalculé depuis les commentaires d'appels.");
+            if (json.refreshed && json.aiScript) {
+                success("Script IA régénéré", "Le script a été recalculé depuis les commentaires d'appels.");
+            } else {
+                success("Script IA inchangé", "Aucun nouveau commentaire d'appel exploitable (ou génération vide).");
+            }
             await fetchCampaignStrategy();
         } catch {
             showError("Erreur", "Impossible de régénérer le script IA");

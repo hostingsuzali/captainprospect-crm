@@ -419,10 +419,8 @@ function ResultFilterBar({
 function exportCSV(rows: ActionRecord[], mission: string) {
     const headers = ["Date", "Contact", "Société", "SDR", "Résultat", "Note", "Durée (s)"];
     const lines = rows.map(r => {
-        const name = r.contact
-            ? `${r.contact.firstName || ""} ${r.contact.lastName || ""}`.trim()
-            : "";
-        const company = r.company?.name ?? r.contact?.company?.name ?? "";
+        const name = getContactName(r);
+        const company = getCompanyName(r);
         const note = (r.voipSummary ?? r.note ?? "").replace(/"/g, '""');
         const dateKey = (r.callbackDate as string | null) || r.createdAt;
         return [
@@ -439,6 +437,16 @@ function exportCSV(rows: ActionRecord[], mission: string) {
     a.href = URL.createObjectURL(blob);
     a.download = `prospection_${mission}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
+}
+
+function getContactName(action: ActionRecord): string {
+    const full = `${action.contact?.firstName || ""} ${action.contact?.lastName || ""}`.trim();
+    if (full) return full;
+    return "";
+}
+
+function getCompanyName(action: ActionRecord): string {
+    return action.company?.name || action.contact?.company?.name || "";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -547,7 +555,7 @@ export default function ManagerProspectionPage() {
             if (actionsJson.success) {
                 const next: ActionRecord[] = (actionsJson.data || []).map((a: ActionRecord) => ({
                     ...a,
-                    _searchKey: `${a.contact?.firstName || ""} ${a.contact?.lastName || ""} ${a.company?.name || ""} ${a.contact?.company?.name || ""}`.toLowerCase(),
+                    _searchKey: `${getContactName(a)} ${getCompanyName(a)}`.toLowerCase(),
                 }));
                 setActions(prev => {
                     const added = next.filter(n => !prev.some(p => p.id === n.id)).length;
@@ -670,8 +678,8 @@ export default function ManagerProspectionPage() {
             else if (sortKey === "sdr") cmp = (a.sdr?.name || "").localeCompare(b.sdr?.name || "");
             else if (sortKey === "duration") cmp = (a.duration || 0) - (b.duration || 0);
             else if (sortKey === "name") {
-                const na = (a.contact ? `${a.contact.firstName} ${a.contact.lastName}` : a.company?.name || "").trim();
-                const nb = (b.contact ? `${b.contact.firstName} ${b.contact.lastName}` : b.company?.name || "").trim();
+                const na = getContactName(a) || getCompanyName(a);
+                const nb = getContactName(b) || getCompanyName(b);
                 cmp = na.localeCompare(nb);
             }
             return sortDir === "asc" ? cmp : -cmp;
@@ -1216,12 +1224,9 @@ export default function ManagerProspectionPage() {
                                     const displayNote = row.voipSummary ?? row.note;
                                     const isVoip = row.channel === "CALL" && row.voipProvider;
                                     const waitingVoip = isVoip && !row.voipSummary && !row.note;
-                                    const name = row.contact
-                                        ? `${row.contact.firstName || ""} ${row.contact.lastName || ""}`.trim() || row.company?.name || ""
-                                        : row.company?.name || "—";
-                                    const companyName = row.contact
-                                        ? (row.contact.company?.name || row.company?.name)
-                                        : row.company?.name;
+                                    const contactName = getContactName(row);
+                                    const companyName = getCompanyName(row);
+                                    const name = contactName || companyName || "—";
                                     const showCompany = companyName && companyName !== name;
 
                                     return (

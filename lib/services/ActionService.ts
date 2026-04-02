@@ -424,6 +424,7 @@ export class ActionService {
  prisma.action.findMany({
  where: whereClause,
  include: {
+ company: true,
  contact: {
  include: { company: true },
  },

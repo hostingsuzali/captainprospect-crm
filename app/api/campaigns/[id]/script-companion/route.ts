@@ -22,8 +22,8 @@ type ScriptCompanionRules = {
     };
 };
 
-const MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions";
-const MISTRAL_MODEL = "mistral-large-latest";
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_MODEL = "gpt-4o";
 
 const upsertDraftSchema = z.object({
     draft: z.string().optional(),
@@ -70,7 +70,7 @@ async function buildImprovedAiScript(params: {
     currentScript: string;
     notes: string[];
 }): Promise<string | null> {
-    const apiKey = process.env.MISTRAL_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return null;
     if (params.notes.length === 0) return null;
 
@@ -101,14 +101,14 @@ Instructions:
 - Réponds uniquement avec le script final (pas d'explication).
 `.trim();
 
-    const response = await fetch(MISTRAL_API_URL, {
+    const response = await fetch(OPENAI_API_URL, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            model: MISTRAL_MODEL,
+            model: OPENAI_MODEL,
             messages: [
                 { role: "system", content: "Tu améliores des scripts SDR B2B à partir de feedback terrain." },
                 { role: "user", content: prompt },

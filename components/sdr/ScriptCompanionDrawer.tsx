@@ -15,7 +15,7 @@ interface ScriptCompanionDrawerProps {
     missionName?: string;
 }
 
-type ScriptTabId = "base" | "additional";
+type ScriptTabId = "base" | "additional" | "ai";
 
 type CampaignSummary = {
     id: string;
@@ -30,6 +30,10 @@ type CompanionData = {
     additionalShared: string;
     sharedUpdatedAt: string | null;
     sharedUpdatedBy: string | null;
+    aiShared: string;
+    aiGeneratedAt: string | null;
+    aiGeneratedFrom: string | null;
+    defaultTab: "base" | "additional" | "ai";
 };
 
 export function ScriptCompanionDrawer({
@@ -79,6 +83,9 @@ export function ScriptCompanionDrawer({
     useEffect(() => {
         if (companionData) {
             setAdditionalDraft(companionData.additionalDraft || companionData.additionalShared || "");
+            if (companionData.defaultTab === "ai" || companionData.defaultTab === "base" || companionData.defaultTab === "additional") {
+                setActiveTab(companionData.defaultTab);
+            }
         } else {
             setAdditionalDraft("");
         }
@@ -155,6 +162,7 @@ export function ScriptCompanionDrawer({
                     tabs={[
                         { id: "base", label: "Script de base" },
                         { id: "additional", label: "Script additionel" },
+                        { id: "ai", label: "Script amélioré par IA" },
                     ]}
                 />
 
@@ -185,6 +193,26 @@ export function ScriptCompanionDrawer({
                                     </pre>
                                 ) : (
                                     <p className="text-sm text-slate-500">Aucun script de base configuré sur cette campagne.</p>
+                                )}
+                            </div>
+                        ) : activeTab === "ai" ? (
+                            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                {companionData.aiShared ? (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <p className="text-sm font-medium text-slate-700">Script amélioré par IA</p>
+                                            {companionData.aiGeneratedAt && (
+                                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                                    {companionData.aiGeneratedFrom ? `${companionData.aiGeneratedFrom} ` : ""}· {new Date(companionData.aiGeneratedAt).toLocaleDateString("fr-FR")}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <pre className="whitespace-pre-wrap text-sm leading-6 text-slate-700 font-sans">
+                                            {companionData.aiShared}
+                                        </pre>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-500">Aucun script IA disponible pour cette campagne.</p>
                                 )}
                             </div>
                         ) : (

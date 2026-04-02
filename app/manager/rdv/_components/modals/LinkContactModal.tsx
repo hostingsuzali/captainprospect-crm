@@ -17,9 +17,11 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
   const [results, setResults] = useState<LinkContactResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [linkError, setLinkError] = useState("");
 
   const handleSearch = async (q: string) => {
     setQuery(q);
+    setLinkError("");
     if (q.trim().length < 2) { setResults([]); return; }
     setSearching(true);
     try {
@@ -34,6 +36,7 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
   };
 
   const handleLink = async (c: LinkContactResult) => {
+    setLinkError("");
     setSaving(true);
     try {
       const res = await fetch(`/api/manager/rdv/${meeting.id}`, {
@@ -45,7 +48,11 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
       if (res.ok && json?.success) {
         onLinked(c);
         onClose();
+      } else {
+        setLinkError(json?.error || "Impossible de lier ce contact pour le moment.");
       }
+    } catch {
+      setLinkError("Erreur réseau. Veuillez réessayer.");
     } finally {
       setSaving(false);
     }
@@ -79,6 +86,9 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
         {searching && <div style={{ fontSize: 13, color: "var(--ink3)", textAlign: "center" }}>Recherche…</div>}
         {!searching && query.trim().length >= 2 && results.length === 0 && (
           <div style={{ fontSize: 13, color: "var(--ink3)", textAlign: "center" }}>Aucun contact trouvé.</div>
+        )}
+        {linkError && (
+          <div style={{ fontSize: 12, color: "var(--red)", textAlign: "center" }}>{linkError}</div>
         )}
 
         {groups.length > 0 && (
