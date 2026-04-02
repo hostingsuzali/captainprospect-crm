@@ -1005,9 +1005,10 @@ export function UnifiedActionDrawer({
 
     const createInterlocutorContactMutation = useMutation({
         mutationFn: async () => {
-            if (!companyId) throw new Error("Aucune société sélectionnée");
+            const targetCompanyId = contact?.companyId || company?.id || companyId;
+            if (!targetCompanyId) throw new Error("Aucune société liée au contact courant");
             const payload = {
-                companyId,
+                companyId: targetCompanyId,
                 firstName: newInterlocutorContact.firstName.trim() || undefined,
                 lastName: newInterlocutorContact.lastName.trim() || undefined,
                 phone: newInterlocutorContact.phone.trim() || undefined,
@@ -1027,7 +1028,7 @@ export function UnifiedActionDrawer({
         onSuccess: (createdContact) => {
             success("Contact créé", "Le nouveau contact a été ajouté avec succès");
             setNewInterlocutorContact({ firstName: "", lastName: "", phone: "", email: "" });
-            queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerCompanyKey(companyId) });
+            queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerCompanyKey(createdContact.companyId) });
             queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerContactKey(createdContact.id) });
             queryClient.invalidateQueries({ queryKey: actionsQueryKey });
             onContactSelect?.(createdContact.id);
@@ -1042,7 +1043,7 @@ export function UnifiedActionDrawer({
         newInterlocutorContact.phone.trim().length > 0 ||
         newInterlocutorContact.email.trim().length > 0;
     const canCreateInterlocutorContact =
-        !!companyId &&
+        !!(contact?.companyId || company?.id || companyId) &&
         hasInterlocutorName &&
         hasInterlocutorChannel &&
         !createInterlocutorContactMutation.isPending;
