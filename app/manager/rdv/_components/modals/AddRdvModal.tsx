@@ -17,7 +17,18 @@ interface Mission {
 interface Company {
   id: string;
   name: string;
-  contacts: { id: string; firstName: string | null; lastName: string | null; email: string | null }[];
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  contacts: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    phone?: string | null;
+    title?: string | null;
+    linkedin?: string | null;
+  }[];
 }
 
 interface AddRdvModalProps {
@@ -187,6 +198,7 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
 
   const selectedCompany = companies.find((c) => c.id === companyId);
   const contacts = selectedCompany?.contacts ?? [];
+  const selectedContact = contacts.find((c) => c.id === contactId);
 
   const effectiveCompanyId = companyMode === "new" ? null : companyId;
   const hasCompany =
@@ -658,9 +670,30 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
         contactId={contactId}
         companyId={companyId}
         contactName={
-          contacts.find(c => c.id === contactId)
-            ? [contacts.find(c => c.id === contactId)?.firstName, contacts.find(c => c.id === contactId)?.lastName].filter(Boolean).join(" ")
+          selectedContact
+            ? [selectedContact.firstName, selectedContact.lastName].filter(Boolean).join(" ")
             : selectedCompany?.name || "Contact"
+        }
+        contactInfo={
+          selectedContact
+            ? {
+                firstName: selectedContact.firstName ?? null,
+                lastName: selectedContact.lastName ?? null,
+                email: selectedContact.email ?? null,
+                phone: selectedContact.phone ?? null,
+                title: selectedContact.title ?? null,
+                linkedin: selectedContact.linkedin ?? null,
+                companyName: selectedCompany?.name ?? null,
+                companyEmail: selectedCompany?.email ?? null,
+                companyPhone: selectedCompany?.phone ?? null,
+                website: selectedCompany?.website ?? null,
+              }
+            : {
+                companyName: selectedCompany?.name ?? null,
+                companyEmail: selectedCompany?.email ?? null,
+                companyPhone: selectedCompany?.phone ?? null,
+                website: selectedCompany?.website ?? null,
+              }
         }
         rdvDate={callbackDate ? callbackDate : undefined}
         meetingType={meetingType || undefined}

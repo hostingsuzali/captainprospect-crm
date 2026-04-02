@@ -148,7 +148,7 @@ function extractMeetingJoinUrl(eventData: Record<string, unknown> | undefined): 
 // ============================================
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
-    const session = await requireRole(['SDR', 'BUSINESS_DEVELOPER'], request);
+    const session = await requireRole(['SDR', 'BUSINESS_DEVELOPER', 'MANAGER'], request);
     const { contactId, companyId, eventData, rdvDate, meetingType, meetingCategory, meetingAddress, meetingJoinUrl, meetingPhone } = await validateRequest(request, bookingSuccessSchema);
 
     const bookingNote = eventData
