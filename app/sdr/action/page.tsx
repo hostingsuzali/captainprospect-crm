@@ -2212,6 +2212,9 @@ export default function SDRActionPage() {
                             clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
                             clientInterlocuteurs={unifiedDrawerInterlocuteurs}
                             onBookingDialogOpenChange={setUnifiedBookingDialogOpen}
+                            onContactSelect={(newContactId) => {
+                                setUnifiedDrawerContactId(newContactId);
+                            }}
                             onActionRecorded={() => {
                                 const rowKey = unifiedDrawerContactId ?? unifiedDrawerCompanyId ?? "";
                                 if (rowKey) {
@@ -3255,6 +3258,9 @@ export default function SDRActionPage() {
                     clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
                     clientInterlocuteurs={unifiedDrawerInterlocuteurs}
                     onBookingDialogOpenChange={setUnifiedBookingDialogOpen}
+                    onContactSelect={(newContactId) => {
+                        setUnifiedDrawerContactId(newContactId);
+                    }}
                     onActionRecorded={() => {
                         const rowKey = unifiedDrawerContactId ?? unifiedDrawerCompanyId ?? "";
                         if (rowKey) setActionsCompleted((c) => c + 1);

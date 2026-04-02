@@ -531,12 +531,14 @@ export function UnifiedActionDrawer({
     const [showAddContact, setShowAddContact] = useState(false);
     const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
     const [historyExpanded, setHistoryExpanded] = useState(false);
+    const [expandedCompanyContactId, setExpandedCompanyContactId] = useState<string | null>(null);
     const [newInterlocutorContact, setNewInterlocutorContact] = useState({
         firstName: "",
         lastName: "",
         phone: "",
         email: "",
     });
+    const [interlocutorContactSaved, setInterlocutorContactSaved] = useState(false);
 
     // Inline editing
     const [isEditingContact, setIsEditingContact] = useState(false);
@@ -599,6 +601,7 @@ export function UnifiedActionDrawer({
     useEffect(() => {
         if (newActionResult !== "MAUVAIS_INTERLOCUTEUR") {
             setNewInterlocutorContact({ firstName: "", lastName: "", phone: "", email: "" });
+            setInterlocutorContactSaved(false);
         }
     }, [newActionResult]);
 
@@ -616,6 +619,7 @@ export function UnifiedActionDrawer({
         if (!isOpen || !companyId) {
             setIsEditingContact(false);
             setIsEditingCompany(false);
+            setExpandedCompanyContactId(null);
         }
     }, [isOpen, companyId]);
 
@@ -954,6 +958,9 @@ export function UnifiedActionDrawer({
             const campaignId = campaigns[0]?.id;
             if (!campaignId) throw new Error("Aucune campagne disponible pour cette mission");
             if (!newActionResult) throw new Error("Sélectionnez un résultat");
+            if (requiresSavedInterlocutorBeforeSubmit) {
+                throw new Error("Veuillez d'abord sauvegarder le nouveau contact avant d'enregistrer l'action");
+            }
             if (textFieldRequiredForResult && !newActionNote.trim()) {
                 noteRef.current?.focus();
                 throw new Error(isRefusalResult ? "La raison du refus est requise" : "Une note est requise pour ce résultat");
@@ -1028,6 +1035,7 @@ export function UnifiedActionDrawer({
         onSuccess: (createdContact) => {
             success("Contact créé", "Le nouveau contact a été ajouté avec succès");
             setNewInterlocutorContact({ firstName: "", lastName: "", phone: "", email: "" });
+            setInterlocutorContactSaved(true);
             queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerCompanyKey(createdContact.companyId) });
             queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerContactKey(createdContact.id) });
             queryClient.invalidateQueries({ queryKey: actionsQueryKey });
@@ -1047,6 +1055,15 @@ export function UnifiedActionDrawer({
         hasInterlocutorName &&
         hasInterlocutorChannel &&
         !createInterlocutorContactMutation.isPending;
+    const hasStartedInterlocutorInput =
+        newInterlocutorContact.firstName.trim().length > 0 ||
+        newInterlocutorContact.lastName.trim().length > 0 ||
+        newInterlocutorContact.phone.trim().length > 0 ||
+        newInterlocutorContact.email.trim().length > 0;
+    const requiresSavedInterlocutorBeforeSubmit =
+        newActionResult === "MAUVAIS_INTERLOCUTEUR" &&
+        (hasStartedInterlocutorInput || interlocutorContactSaved) &&
+        !interlocutorContactSaved;
 
     const saveContactMutation = useMutation({
         mutationFn: async () => {
@@ -1101,6 +1118,7 @@ export function UnifiedActionDrawer({
 
     const canSubmit =
         !!newActionResult &&
+        !requiresSavedInterlocutorBeforeSubmit &&
         (!textFieldRequiredForResult || newActionNote.trim().length > 0) &&
         !addActionMutation.isPending;
 
@@ -2399,65 +2417,105 @@ export function UnifiedActionDrawer({
                                         </p>
                                         <div className="space-y-1.5 max-h-36 overflow-y-auto">
                                             {company.contacts.slice(0, 5).map((c) => (
-                                                <div
-                                                    key={c.id}
-                                                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-colors cursor-pointer"
-                                                    onClick={() => onContactSelect?.(c.id)}
-                                                    role="button"
-                                                    tabIndex={0}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter' || e.key === ' ') {
-                                                            e.preventDefault();
-                                                            onContactSelect?.(c.id);
-                                                        }
-                                                    }}
-                                                >
+                                                <div key={c.id} className="rounded-xl border border-slate-100 bg-slate-50 overflow-hidden">
                                                     <div
-                                                        className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600 shrink-0"
-                                                        aria-hidden="true"
+                                                        className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-100/70 transition-colors cursor-pointer"
+                                                        onClick={() => {
+                                                            if (expandedCompanyContactId === c.id) {
+                                                                onContactSelect?.(c.id);
+                                                                return;
+                                                            }
+                                                            setExpandedCompanyContactId(c.id);
+                                                        }}
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === "Enter" || e.key === " ") {
+                                                                e.preventDefault();
+                                                                if (expandedCompanyContactId === c.id) {
+                                                                    onContactSelect?.(c.id);
+                                                                } else {
+                                                                    setExpandedCompanyContactId(c.id);
+                                                                }
+                                                            }
+                                                        }}
                                                     >
-                                                        {(c.firstName?.[0] || c.lastName?.[0] || "?").toUpperCase()}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
-                                                            {c.firstName || ""} {c.lastName || ""}
-                                                        </p>
-                                                        {c.title && (
-                                                            <p className="text-xs text-slate-400 truncate">{c.title}</p>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                        {c.phone && (
-                                                            <a
-                                                                href={`tel:${c.phone}`}
-                                                                aria-label={`Appeler ${c.firstName || c.lastName || "contact"}`}
-                                                                className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
-                                                            >
-                                                                <Phone className="w-3.5 h-3.5" aria-hidden="true" />
-                                                            </a>
-                                                        )}
-                                                        {c.email && (
-                                                            <a
-                                                                href={`mailto:${c.email}`}
-                                                                aria-label={`Envoyer un email à ${c.firstName || c.lastName || "contact"}`}
-                                                                className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                            >
-                                                                <Mail className="w-3.5 h-3.5" aria-hidden="true" />
-                                                            </a>
-                                                        )}
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleBadContact(c.id);
-                                                            }}
-                                                            title="Mauvais contact"
-                                                            aria-label={`Marquer ${c.firstName || c.lastName || "contact"} comme mauvais contact`}
-                                                            className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                        <div
+                                                            className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600 shrink-0"
+                                                            aria-hidden="true"
                                                         >
-                                                            <UserX className="w-3.5 h-3.5" aria-hidden="true" />
-                                                        </button>
+                                                            {(c.firstName?.[0] || c.lastName?.[0] || "?").toUpperCase()}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-medium text-slate-800 truncate">
+                                                                {c.firstName || ""} {c.lastName || ""}
+                                                            </p>
+                                                            {c.title && (
+                                                                <p className="text-xs text-slate-400 truncate">{c.title}</p>
+                                                            )}
+                                                        </div>
+                                                        {expandedCompanyContactId === c.id ? (
+                                                            <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                                                        ) : (
+                                                            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                                                        )}
                                                     </div>
+                                                    {expandedCompanyContactId === c.id && (
+                                                        <div className="px-3 pb-2.5 pt-1 border-t border-slate-200 bg-white">
+                                                            <div className="space-y-1.5 text-xs text-slate-600">
+                                                                <p className="font-medium text-slate-700">
+                                                                    {`${c.firstName || ""} ${c.lastName || ""}`.trim() || "Sans nom"}
+                                                                </p>
+                                                                {c.phone && (
+                                                                    <p className="flex items-center gap-1.5">
+                                                                        <Phone className="w-3 h-3 text-emerald-500" />
+                                                                        {c.phone}
+                                                                    </p>
+                                                                )}
+                                                                {c.email && (
+                                                                    <p className="flex items-center gap-1.5">
+                                                                        <Mail className="w-3 h-3 text-indigo-500" />
+                                                                        {c.email}
+                                                                    </p>
+                                                                )}
+                                                                {!c.phone && !c.email && (
+                                                                    <p className="text-slate-400">Aucun téléphone/email</p>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
+                                                                {c.phone && (
+                                                                    <a
+                                                                        href={`tel:${c.phone}`}
+                                                                        aria-label={`Appeler ${c.firstName || c.lastName || "contact"}`}
+                                                                        className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
+                                                                    >
+                                                                        <Phone className="w-3.5 h-3.5" aria-hidden="true" />
+                                                                    </a>
+                                                                )}
+                                                                {c.email && (
+                                                                    <a
+                                                                        href={`mailto:${c.email}`}
+                                                                        aria-label={`Envoyer un email à ${c.firstName || c.lastName || "contact"}`}
+                                                                        className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                                    >
+                                                                        <Mail className="w-3.5 h-3.5" aria-hidden="true" />
+                                                                    </a>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleBadContact(c.id);
+                                                                    }}
+                                                                    title="Mauvais contact"
+                                                                    aria-label={`Marquer ${c.firstName || c.lastName || "contact"} comme mauvais contact`}
+                                                                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                                >
+                                                                    <UserX className="w-3.5 h-3.5" aria-hidden="true" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
@@ -2781,34 +2839,38 @@ export function UnifiedActionDrawer({
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                                 <input
                                                     value={newInterlocutorContact.firstName}
-                                                    onChange={(e) =>
-                                                        setNewInterlocutorContact((prev) => ({ ...prev, firstName: e.target.value }))
-                                                    }
+                                                    onChange={(e) => {
+                                                        setInterlocutorContactSaved(false);
+                                                        setNewInterlocutorContact((prev) => ({ ...prev, firstName: e.target.value }));
+                                                    }}
                                                     placeholder="Prénom"
                                                     className="w-full px-3 py-2 text-sm border border-rose-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400/30 focus:border-rose-400"
                                                 />
                                                 <input
                                                     value={newInterlocutorContact.lastName}
-                                                    onChange={(e) =>
-                                                        setNewInterlocutorContact((prev) => ({ ...prev, lastName: e.target.value }))
-                                                    }
+                                                    onChange={(e) => {
+                                                        setInterlocutorContactSaved(false);
+                                                        setNewInterlocutorContact((prev) => ({ ...prev, lastName: e.target.value }));
+                                                    }}
                                                     placeholder="Nom"
                                                     className="w-full px-3 py-2 text-sm border border-rose-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400/30 focus:border-rose-400"
                                                 />
                                                 <input
                                                     value={newInterlocutorContact.phone}
-                                                    onChange={(e) =>
-                                                        setNewInterlocutorContact((prev) => ({ ...prev, phone: e.target.value }))
-                                                    }
+                                                    onChange={(e) => {
+                                                        setInterlocutorContactSaved(false);
+                                                        setNewInterlocutorContact((prev) => ({ ...prev, phone: e.target.value }));
+                                                    }}
                                                     placeholder="Téléphone"
                                                     className="w-full px-3 py-2 text-sm border border-rose-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400/30 focus:border-rose-400"
                                                 />
                                                 <input
                                                     type="email"
                                                     value={newInterlocutorContact.email}
-                                                    onChange={(e) =>
-                                                        setNewInterlocutorContact((prev) => ({ ...prev, email: e.target.value }))
-                                                    }
+                                                    onChange={(e) => {
+                                                        setInterlocutorContactSaved(false);
+                                                        setNewInterlocutorContact((prev) => ({ ...prev, email: e.target.value }));
+                                                    }}
                                                     placeholder="Email"
                                                     className="w-full px-3 py-2 text-sm border border-rose-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400/30 focus:border-rose-400"
                                                 />
@@ -2829,6 +2891,11 @@ export function UnifiedActionDrawer({
                                                     Sauvegarder le contact
                                                 </Button>
                                             </div>
+                                            {requiresSavedInterlocutorBeforeSubmit && (
+                                                <p className="text-[11px] text-rose-700">
+                                                    Sauvegardez d&apos;abord le nouveau contact pour pouvoir enregistrer l&apos;action.
+                                                </p>
+                                            )}
                                         </div>
                                     )}
 
