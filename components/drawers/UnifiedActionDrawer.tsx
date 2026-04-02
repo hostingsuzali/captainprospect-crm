@@ -133,7 +133,7 @@ const STATUS_CONFIG = {
         icon: Clock,
     },
     ACTIONABLE: {
-        label: "Actionnable",
+        label: "Contact Qualifié",
         color: "text-emerald-600",
         bg: "bg-emerald-50",
         border: "border-emerald-200",
@@ -144,9 +144,11 @@ const STATUS_CONFIG = {
 
 const RELANCE_HOVER_HINT = "👉 Rappel demandé\n➡️ Le prospect attend ton appel\n➡️ Il y a un signal d’intérêt";
 const RAPPEL_HOVER_HINT = "👉 Rappel à faire\n➡️ Le prospect n’a pas encore été joint\n➡️ C’est un rappel logistique, pas commercial";
+const HORS_CIBLE_HOVER_HINT = "Prospect hors des critères de ciblage.\n\nSecteur non pertinent\nTaille / structure incompatible\nPas dans les critères de qualification";
 
 const getStatusHoverHint = (code: string, label?: string | null): string | undefined => {
     const haystack = `${code} ${label ?? ""}`.toUpperCase();
+    if (haystack.includes("HORS_CIBLE") || haystack.includes("HORS CIBLE")) return HORS_CIBLE_HOVER_HINT;
     if (haystack.includes("RELANCE")) return RELANCE_HOVER_HINT;
     if (haystack.includes("RAPPEL")) return RAPPEL_HOVER_HINT;
     return undefined;
@@ -855,12 +857,14 @@ export function UnifiedActionDrawer({
 
     const noteRequiredForResult = newActionResult ? getRequiresNote(newActionResult) : false;
     const isRefusalResult = newActionResult === "REFUS";
-    const textFieldRequiredForResult = noteRequiredForResult || isRefusalResult;
+    const isOutOfTargetResult = newActionResult === "HORS_CIBLE";
+    const textFieldRequiredForResult = noteRequiredForResult || isRefusalResult || isOutOfTargetResult;
     const notePlaceholder = useMemo(() => {
         switch (newActionResult) {
             case "INTERESTED": return "Qu'est-ce qui a suscité l'intérêt ? Prochaine étape ?";
             case "CALLBACK_REQUESTED": return "À quel sujet rappeler ? Date souhaitée ?";
             case "REFUS": return "Raison du refus (texte libre)...";
+            case "HORS_CIBLE": return "Raison du hors cible (texte libre)...";
             case "DISQUALIFIED": return "Pourquoi ce contact est-il disqualifié ?";
             case "MEETING_BOOKED": return "Détails du rendez-vous planifié...";
             case "ENVOIE_MAIL": return "Objet et résumé de l'email envoyé...";
@@ -963,7 +967,13 @@ export function UnifiedActionDrawer({
             }
             if (textFieldRequiredForResult && !newActionNote.trim()) {
                 noteRef.current?.focus();
-                throw new Error(isRefusalResult ? "La raison du refus est requise" : "Une note est requise pour ce résultat");
+                throw new Error(
+                    isRefusalResult
+                        ? "La raison du refus est requise"
+                        : isOutOfTargetResult
+                            ? "La raison du hors cible est requise"
+                            : "Une note est requise pour ce résultat"
+                );
             }
             const selectedCampaign = campaigns[0];
             const channel = (selectedCampaign?.mission?.channel ?? "CALL") as "CALL" | "EMAIL" | "LINKEDIN";
@@ -2906,7 +2916,7 @@ export function UnifiedActionDrawer({
                                             htmlFor="action-note"
                                             className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider"
                                         >
-                                            {isRefusalResult ? "Raison du refus" : "Note"}
+                                            {isRefusalResult ? "Raison du refus" : isOutOfTargetResult ? "Raison du hors cible" : "Note"}
                                             {textFieldRequiredForResult && (
                                                 <span className="text-red-500 ml-1" aria-hidden="true">*</span>
                                             )}
