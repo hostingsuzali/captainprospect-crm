@@ -850,10 +850,13 @@ export function UnifiedActionDrawer({
     );
 
     const noteRequiredForResult = newActionResult ? getRequiresNote(newActionResult) : false;
+    const isRefusalResult = newActionResult === "REFUS";
+    const textFieldRequiredForResult = noteRequiredForResult || isRefusalResult;
     const notePlaceholder = useMemo(() => {
         switch (newActionResult) {
             case "INTERESTED": return "Qu'est-ce qui a suscité l'intérêt ? Prochaine étape ?";
             case "CALLBACK_REQUESTED": return "À quel sujet rappeler ? Date souhaitée ?";
+            case "REFUS": return "Raison du refus (texte libre)...";
             case "DISQUALIFIED": return "Pourquoi ce contact est-il disqualifié ?";
             case "MEETING_BOOKED": return "Détails du rendez-vous planifié...";
             case "ENVOIE_MAIL": return "Objet et résumé de l'email envoyé...";
@@ -951,9 +954,9 @@ export function UnifiedActionDrawer({
             const campaignId = campaigns[0]?.id;
             if (!campaignId) throw new Error("Aucune campagne disponible pour cette mission");
             if (!newActionResult) throw new Error("Sélectionnez un résultat");
-            if (noteRequiredForResult && !newActionNote.trim()) {
+            if (textFieldRequiredForResult && !newActionNote.trim()) {
                 noteRef.current?.focus();
-                throw new Error("Une note est requise pour ce résultat");
+                throw new Error(isRefusalResult ? "La raison du refus est requise" : "Une note est requise pour ce résultat");
             }
             const selectedCampaign = campaigns[0];
             const channel = (selectedCampaign?.mission?.channel ?? "CALL") as "CALL" | "EMAIL" | "LINKEDIN";
@@ -1097,7 +1100,7 @@ export function UnifiedActionDrawer({
 
     const canSubmit =
         !!newActionResult &&
-        (!noteRequiredForResult || newActionNote.trim().length > 0) &&
+        (!textFieldRequiredForResult || newActionNote.trim().length > 0) &&
         !addActionMutation.isPending;
 
     const sortedHistoryActions = useMemo(() => {
@@ -2835,11 +2838,11 @@ export function UnifiedActionDrawer({
                                             htmlFor="action-note"
                                             className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider"
                                         >
-                                            Note
-                                            {noteRequiredForResult && (
+                                            {isRefusalResult ? "Raison du refus" : "Note"}
+                                            {textFieldRequiredForResult && (
                                                 <span className="text-red-500 ml-1" aria-hidden="true">*</span>
                                             )}
-                                            {noteRequiredForResult && (
+                                            {textFieldRequiredForResult && (
                                                 <span className="sr-only"> (obligatoire)</span>
                                             )}
                                         </label>
@@ -2852,7 +2855,7 @@ export function UnifiedActionDrawer({
                                                 placeholder={notePlaceholder}
                                                 rows={3}
                                                 maxLength={500}
-                                                aria-required={noteRequiredForResult}
+                                                aria-required={textFieldRequiredForResult}
                                                 aria-describedby="note-char-count"
                                                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 resize-none transition-all"
                                             />
