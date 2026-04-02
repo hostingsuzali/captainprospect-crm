@@ -160,7 +160,7 @@ export const MANAGER_NAV: NavSection[] = [
       {
         href: "/manager/settings",
         icon: Mail,
-        label: "Notifications email",
+        label: "Parametres email",
         permission: "pages.sdrs",
       },
       {
