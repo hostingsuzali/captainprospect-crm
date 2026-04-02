@@ -75,10 +75,29 @@ const TYPE_STYLES = {
 const LISTS_QUERY_KEY = ["manager", "lists"] as const;
 
 async function fetchListsApi(): Promise<ListData[]> {
-    const res = await fetch("/api/lists");
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || "Impossible de charger les listes");
-    return json.data;
+    const pageSize = 200;
+    let page = 1;
+    let hasMore = true;
+    const allLists: ListData[] = [];
+
+    while (hasMore) {
+        const res = await fetch(`/api/lists?page=${page}&limit=${pageSize}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || "Impossible de charger les listes");
+
+        const batch = Array.isArray(json.data) ? (json.data as ListData[]) : [];
+        allLists.push(...batch);
+
+        hasMore = Boolean(json.pagination?.hasMore);
+        page += 1;
+
+        // Defensive guard in case pagination metadata is missing
+        if (!json.pagination && batch.length < pageSize) {
+            hasMore = false;
+        }
+    }
+
+    return allLists;
 }
 
 export default function ListsPage() {

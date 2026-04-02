@@ -7,27 +7,17 @@ import {
     Loader2,
     Calendar,
     X,
-    ExternalLink,
     Mail,
     Phone,
     Building2,
-    Briefcase,
     CheckCircle2,
     Copy,
-    ChevronRight,
     Video,
     MapPin,
-    Globe,
-    Linkedin,
     Clock,
     User,
-    PhoneCall,
-    Send,
     Check,
     CalendarCheck,
-    Sparkles,
-    Info,
-    AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -116,53 +106,6 @@ const AVATAR_COLORS = [
     "bg-cyan-100 text-cyan-700",
 ];
 
-const MEETING_TYPE_CONFIG = {
-    VISIO: {
-        icon: Video,
-        label: "Visio",
-        color: "text-indigo-700",
-        bg: "bg-indigo-50",
-        border: "border-indigo-300",
-        selectedBg: "bg-indigo-600",
-        pill: "bg-indigo-100 text-indigo-700",
-    },
-    PHYSIQUE: {
-        icon: MapPin,
-        label: "Physique",
-        color: "text-emerald-700",
-        bg: "bg-emerald-50",
-        border: "border-emerald-300",
-        selectedBg: "bg-emerald-600",
-        pill: "bg-emerald-100 text-emerald-700",
-    },
-    TELEPHONIQUE: {
-        icon: Phone,
-        label: "Téléphonique",
-        color: "text-amber-700",
-        bg: "bg-amber-50",
-        border: "border-amber-300",
-        selectedBg: "bg-amber-600",
-        pill: "bg-amber-100 text-amber-700",
-    },
-} as const;
-
-const MEETING_CATEGORY_CONFIG = {
-    EXPLORATOIRE: {
-        label: "Exploratoire",
-        color: "text-blue-700",
-        bg: "bg-blue-50",
-        border: "border-blue-300",
-        desc: "Premier contact, découverte",
-    },
-    BESOIN: {
-        label: "Analyse de besoin",
-        color: "text-emerald-700",
-        bg: "bg-emerald-50",
-        border: "border-emerald-300",
-        desc: "Qualification approfondie",
-    },
-} as const;
-
 function hashStr(s: string) {
     return s.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
 }
@@ -184,7 +127,63 @@ function getEmbedBookingUrl(rawUrl: string): string {
     }
 }
 
-// ── Small helper: copy-to-clipboard pill button
+// ── Typewriter hook
+function useTypewriter(text: string, speed = 22, startDelay = 0) {
+    const [displayed, setDisplayed] = useState("");
+    const [done, setDone] = useState(false);
+
+    useEffect(() => {
+        setDisplayed("");
+        setDone(false);
+        if (!text) { setDone(true); return; }
+
+        let i = 0;
+        let timeout: ReturnType<typeof setTimeout>;
+
+        const tick = () => {
+            i++;
+            setDisplayed(text.slice(0, i));
+            if (i < text.length) {
+                timeout = setTimeout(tick, speed);
+            } else {
+                setDone(true);
+            }
+        };
+
+        const start = setTimeout(tick, startDelay);
+        return () => { clearTimeout(start); clearTimeout(timeout); };
+    }, [text, speed, startDelay]);
+
+    return { displayed, done };
+}
+
+// ── Typewriter line component — renders char by char, then shows children after done
+function TypewriterLine({
+    text,
+    speed = 22,
+    delay = 0,
+    className,
+    afterDone,
+}: {
+    text: string;
+    speed?: number;
+    delay?: number;
+    className?: string;
+    afterDone?: React.ReactNode;
+}) {
+    const { displayed, done } = useTypewriter(text, speed, delay);
+    return (
+        <span className={className}>
+            {displayed}
+            {!done && (
+                <span className="inline-block w-[1px] h-[0.85em] bg-current opacity-70 ml-[1px] animate-pulse align-middle" />
+            )}
+            {done && afterDone}
+        </span>
+    );
+}
+
+// ── Copy pill button
 function CopyPill({ text, label }: { text: string; label: string }) {
     const { success } = useToast();
     const [copied, setCopied] = useState(false);
@@ -205,8 +204,52 @@ function CopyPill({ text, label }: { text: string; label: string }) {
     );
 }
 
+// ── Animated fade-in wrapper (appears after a delay)
+function FadeIn({ delay = 0, children, className }: { delay?: number; children: React.ReactNode; className?: string }) {
+    const [visible, setVisible] = useState(false);
+    useEffect(() => {
+        const t = setTimeout(() => setVisible(true), delay);
+        return () => clearTimeout(t);
+    }, [delay]);
+    return (
+        <div
+            className={cn("transition-all duration-500", visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1", className)}
+        >
+            {children}
+        </div>
+    );
+}
+
+// ── Format date for display
+function formatRdvDate(iso: string): string {
+    if (!iso) return "";
+    try {
+        return new Date(iso).toLocaleString("fr-FR", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    } catch {
+        return iso;
+    }
+}
+
+const MEETING_TYPE_LABELS: Record<string, { label: string; icon: React.ElementType; colorClass: string }> = {
+    VISIO: { label: "Visio", icon: Video, colorClass: "text-indigo-600" },
+    PHYSIQUE: { label: "Physique", icon: MapPin, colorClass: "text-emerald-600" },
+    TELEPHONIQUE: { label: "Téléphonique", icon: Phone, colorClass: "text-amber-600" },
+};
+
+const MEETING_CATEGORY_LABELS: Record<string, string> = {
+    EXPLORATOIRE: "Exploratoire",
+    BESOIN: "Analyse de besoin",
+};
+
 // ============================================
-// BOOKING DIALOG — full-screen two-panel layout
+// BOOKING DRAWER
 // ============================================
 
 export function BookingDrawer({
@@ -245,11 +288,13 @@ export function BookingDrawer({
     const [meetingJoinUrlLocal, setMeetingJoinUrlLocal] = useState<string>(meetingJoinUrl ?? "");
     const [meetingPhoneLocal, setMeetingPhoneLocal] = useState<string>(meetingPhone ?? "");
 
+    // Typewriter trigger key — reset on open so animation replays
+    const [twKey, setTwKey] = useState(0);
+
     const activeInterlocuteurs = (interlocuteurs || []).filter(
         i => i.isActive && i.bookingLinks.length > 0
     );
 
-    // Build calendar options
     const bookingOptions: CalendarOption[] = [];
     if (bookingUrl?.trim()) {
         bookingOptions.push({
@@ -277,17 +322,16 @@ export function BookingDrawer({
     });
 
     const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
-
     const selectedOption = bookingOptions.find(o => o.id === selectedOptionId) || bookingOptions[0] || null;
     const embedUrl = selectedOption ? getEmbedBookingUrl(selectedOption.url) : "";
 
-    // Reset on open
     useEffect(() => {
         if (!isOpen) return;
         setBooked(false);
         setIsProcessing(false);
         setIframeLoading(true);
         setSelectedOptionId(bookingOptions[0]?.id ?? null);
+        setTwKey(k => k + 1); // restart typewriter
 
         setRdvDateLocal(rdvDate ?? "");
         setMeetingTypeLocal(meetingType ?? "");
@@ -304,30 +348,12 @@ export function BookingDrawer({
     const effectiveMeetingJoinUrl = onMeetingJoinUrlChange ? (meetingJoinUrl ?? "") : meetingJoinUrlLocal;
     const effectiveMeetingPhone = onMeetingPhoneChange ? (meetingPhone ?? "") : meetingPhoneLocal;
 
-    const setEffectiveRdvDate = (v: string) => {
-        onRdvDateChange?.(v);
-        if (!onRdvDateChange) setRdvDateLocal(v);
-    };
-    const setEffectiveMeetingType = (v: "" | "VISIO" | "PHYSIQUE" | "TELEPHONIQUE") => {
-        onMeetingTypeChange?.(v);
-        if (!onMeetingTypeChange) setMeetingTypeLocal(v);
-    };
-    const setEffectiveMeetingCategory = (v: "" | "EXPLORATOIRE" | "BESOIN") => {
-        onMeetingCategoryChange?.(v);
-        if (!onMeetingCategoryChange) setMeetingCategoryLocal(v);
-    };
-    const setEffectiveMeetingAddress = (v: string) => {
-        onMeetingAddressChange?.(v);
-        if (!onMeetingAddressChange) setMeetingAddressLocal(v);
-    };
-    const setEffectiveMeetingJoinUrl = (v: string) => {
-        onMeetingJoinUrlChange?.(v);
-        if (!onMeetingJoinUrlChange) setMeetingJoinUrlLocal(v);
-    };
-    const setEffectiveMeetingPhone = (v: string) => {
-        onMeetingPhoneChange?.(v);
-        if (!onMeetingPhoneChange) setMeetingPhoneLocal(v);
-    };
+    const setEffectiveRdvDate = (v: string) => { onRdvDateChange?.(v); if (!onRdvDateChange) setRdvDateLocal(v); };
+    const setEffectiveMeetingType = (v: "" | "VISIO" | "PHYSIQUE" | "TELEPHONIQUE") => { onMeetingTypeChange?.(v); if (!onMeetingTypeChange) setMeetingTypeLocal(v); };
+    const setEffectiveMeetingCategory = (v: "" | "EXPLORATOIRE" | "BESOIN") => { onMeetingCategoryChange?.(v); if (!onMeetingCategoryChange) setMeetingCategoryLocal(v); };
+    const setEffectiveMeetingAddress = (v: string) => { onMeetingAddressChange?.(v); if (!onMeetingAddressChange) setMeetingAddressLocal(v); };
+    const setEffectiveMeetingJoinUrl = (v: string) => { onMeetingJoinUrlChange?.(v); if (!onMeetingJoinUrlChange) setMeetingJoinUrlLocal(v); };
+    const setEffectiveMeetingPhone = (v: string) => { onMeetingPhoneChange?.(v); if (!onMeetingPhoneChange) setMeetingPhoneLocal(v); };
 
     const handleSelectCalendar = useCallback((id: string) => {
         if (id === selectedOptionId) return;
@@ -338,7 +364,6 @@ export function BookingDrawer({
     // Listen for booking completion postMessage
     useEffect(() => {
         if (!isOpen) return;
-
         const handleMessage = async (event: MessageEvent) => {
             const origin = event.origin;
             const isAllowed =
@@ -347,7 +372,6 @@ export function BookingDrawer({
                 origin === "https://calendly.com" ||
                 origin.endsWith(".cal.com") ||
                 origin === "https://cal.com";
-
             if (!isAllowed) return;
 
             const processBooking = async (eventData: unknown) => {
@@ -368,9 +392,9 @@ export function BookingDrawer({
                             rdvDate: isoRdvDate,
                             ...(effectiveMeetingType && { meetingType: effectiveMeetingType }),
                             ...(effectiveMeetingCategory && { meetingCategory: effectiveMeetingCategory }),
-                            ...(effectiveMeetingAddress != null && effectiveMeetingAddress.trim() && { meetingAddress: effectiveMeetingAddress.trim() }),
-                            ...(effectiveMeetingJoinUrl != null && effectiveMeetingJoinUrl.trim() && { meetingJoinUrl: effectiveMeetingJoinUrl.trim() }),
-                            ...(effectiveMeetingPhone != null && effectiveMeetingPhone.trim() && { meetingPhone: effectiveMeetingPhone.trim() }),
+                            ...(effectiveMeetingAddress?.trim() && { meetingAddress: effectiveMeetingAddress.trim() }),
+                            ...(effectiveMeetingJoinUrl?.trim() && { meetingJoinUrl: effectiveMeetingJoinUrl.trim() }),
+                            ...(effectiveMeetingPhone?.trim() && { meetingPhone: effectiveMeetingPhone.trim() }),
                         }),
                     });
                     const json = await res.json();
@@ -390,11 +414,8 @@ export function BookingDrawer({
                 }
             };
 
-            if (event.data.event === "calendly.event_scheduled") {
-                await processBooking(event.data.payload);
-            } else if (event.data.type === "booking_success" || event.data.event === "booking.completed") {
-                await processBooking(event.data);
-            }
+            if (event.data.event === "calendly.event_scheduled") await processBooking(event.data.payload);
+            else if (event.data.type === "booking_success" || event.data.event === "booking.completed") await processBooking(event.data);
         };
 
         window.addEventListener("message", handleMessage);
@@ -419,9 +440,9 @@ export function BookingDrawer({
                     rdvDate: isoRdvDate,
                     ...(effectiveMeetingType && { meetingType: effectiveMeetingType }),
                     ...(effectiveMeetingCategory && { meetingCategory: effectiveMeetingCategory }),
-                    ...(effectiveMeetingAddress != null && effectiveMeetingAddress.trim() && { meetingAddress: effectiveMeetingAddress.trim() }),
-                    ...(effectiveMeetingJoinUrl != null && effectiveMeetingJoinUrl.trim() && { meetingJoinUrl: effectiveMeetingJoinUrl.trim() }),
-                    ...(effectiveMeetingPhone != null && effectiveMeetingPhone.trim() && { meetingPhone: effectiveMeetingPhone.trim() }),
+                    ...(effectiveMeetingAddress?.trim() && { meetingAddress: effectiveMeetingAddress.trim() }),
+                    ...(effectiveMeetingJoinUrl?.trim() && { meetingJoinUrl: effectiveMeetingJoinUrl.trim() }),
+                    ...(effectiveMeetingPhone?.trim() && { meetingPhone: effectiveMeetingPhone.trim() }),
                 }),
             });
             const json = await res.json();
@@ -443,16 +464,19 @@ export function BookingDrawer({
 
     if (!isOpen) return null;
 
+    // Build display name for typewriter
+    const displayName = contactInfo?.firstName || contactInfo?.lastName
+        ? `${contactInfo?.firstName ?? ""} ${contactInfo?.lastName ?? ""}`.trim()
+        : contactName;
+
+    const MeetingTypeIcon = effectiveMeetingType ? MEETING_TYPE_LABELS[effectiveMeetingType]?.icon : null;
+
     return (
         <>
             {/* Overlay */}
-            <div
-                className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
-                onClick={onClose}
-                aria-hidden="true"
-            />
+            <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
 
-            {/* Centered dialog — tall for calendar iframe + confirm button */}
+            {/* Dialog */}
             <div className="fixed inset-0 z-[61] flex items-center justify-center p-4">
                 <div
                     role="dialog"
@@ -460,6 +484,7 @@ export function BookingDrawer({
                     aria-label={`Planifier un RDV avec ${contactName}`}
                     className="w-full max-w-5xl h-[88vh] min-h-[560px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
                 >
+                    {/* Header */}
                     <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-indigo-600 text-white">
                         <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
@@ -473,93 +498,138 @@ export function BookingDrawer({
                                 </p>
                             </div>
                         </div>
-                        <button
-                            onClick={onClose}
-                            aria-label="Fermer"
-                            className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                        >
+                        <button onClick={onClose} aria-label="Fermer" className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
                             <X className="w-5 h-5" />
                         </button>
                     </div>
 
                     <div className="flex-1 grid grid-cols-1 md:grid-cols-2 min-h-0 overflow-hidden">
-                        {/* Left: contact + company info, basic details + confirm button */}
+                        {/* ── LEFT PANEL ── */}
                         <div className="p-4 border-r border-slate-200 flex flex-col gap-4 overflow-y-auto min-h-0">
-                            {/* Contact & company summary */}
+
+                            {/* ── Contact card with typewriter ── */}
                             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 space-y-2 text-xs text-slate-700">
                                 <div className="flex items-start gap-2">
-                                    <div className="mt-0.5">
+                                    <div className="mt-0.5 shrink-0">
                                         <User className="w-4 h-4 text-slate-400" />
                                     </div>
-                                    <div className="space-y-0.5">
-                                        <p className="font-semibold text-slate-900">
-                                            {contactInfo?.firstName || contactInfo?.lastName
-                                                ? `${contactInfo?.firstName ?? ""} ${contactInfo?.lastName ?? ""}`.trim()
-                                                : contactName}
+                                    <div className="space-y-0.5 min-w-0">
+                                        {/* Typewriter on name */}
+                                        <p className="font-semibold text-slate-900 text-sm">
+                                            <TypewriterLine key={`name-${twKey}`} text={displayName} speed={20} delay={80} />
                                         </p>
+                                        {/* Title fades in after name */}
                                         {contactInfo?.title && (
-                                            <p className="text-[11px] text-slate-500">{contactInfo.title}</p>
+                                            <FadeIn delay={displayName.length * 20 + 200}>
+                                                <p className="text-[11px] text-slate-500">{contactInfo.title}</p>
+                                            </FadeIn>
                                         )}
+                                        {/* Email */}
                                         {contactInfo?.email && (
-                                            <p className="flex items-center gap-1">
-                                                <Mail className="w-3 h-3 text-indigo-500" />
-                                                <a
-                                                    href={`mailto:${contactInfo.email}`}
-                                                    className="truncate hover:text-indigo-600"
-                                                >
-                                                    {contactInfo.email}
-                                                </a>
-                                            </p>
+                                            <FadeIn delay={displayName.length * 20 + 320}>
+                                                <p className="flex items-center gap-1">
+                                                    <Mail className="w-3 h-3 text-indigo-500 shrink-0" />
+                                                    <a href={`mailto:${contactInfo.email}`} className="truncate hover:text-indigo-600">
+                                                        {contactInfo.email}
+                                                    </a>
+                                                    <CopyPill text={contactInfo.email} label="email" />
+                                                </p>
+                                            </FadeIn>
                                         )}
+                                        {/* Phone */}
                                         {contactInfo?.phone && (
-                                            <p className="flex items-center gap-1">
-                                                <Phone className="w-3 h-3 text-emerald-500" />
-                                                <a
-                                                    href={`tel:${contactInfo.phone}`}
-                                                    className="truncate hover:text-emerald-600"
-                                                >
-                                                    {contactInfo.phone}
-                                                </a>
-                                            </p>
+                                            <FadeIn delay={displayName.length * 20 + 440}>
+                                                <p className="flex items-center gap-1">
+                                                    <Phone className="w-3 h-3 text-emerald-500 shrink-0" />
+                                                    <a href={`tel:${contactInfo.phone}`} className="truncate hover:text-emerald-600">
+                                                        {contactInfo.phone}
+                                                    </a>
+                                                    <CopyPill text={contactInfo.phone} label="téléphone" />
+                                                </p>
+                                            </FadeIn>
                                         )}
                                     </div>
                                 </div>
 
+                                {/* Company section */}
                                 {contactInfo?.companyName && (
-                                    <div className="pt-2 border-t border-slate-200/70 mt-1 space-y-0.5">
-                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                                            <Building2 className="w-3 h-3 text-slate-400" />
-                                            Société
+                                    <FadeIn delay={displayName.length * 20 + 560}>
+                                        <div className="pt-2 border-t border-slate-200/70 space-y-0.5">
+                                            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                                                <Building2 className="w-3 h-3 text-slate-400" />
+                                                Société
+                                            </div>
+                                            <p className="text-sm font-semibold text-slate-900">{contactInfo.companyName}</p>
+                                            {contactInfo.companyEmail && (
+                                                <p className="flex items-center gap-1">
+                                                    <Mail className="w-3 h-3 text-indigo-500 shrink-0" />
+                                                    <a href={`mailto:${contactInfo.companyEmail}`} className="truncate hover:text-indigo-600">
+                                                        {contactInfo.companyEmail}
+                                                    </a>
+                                                    <CopyPill text={contactInfo.companyEmail} label="email société" />
+                                                </p>
+                                            )}
+                                            {contactInfo.companyPhone && (
+                                                <p className="flex items-center gap-1">
+                                                    <Phone className="w-3 h-3 text-emerald-500 shrink-0" />
+                                                    <a href={`tel:${contactInfo.companyPhone}`} className="truncate hover:text-emerald-600">
+                                                        {contactInfo.companyPhone}
+                                                    </a>
+                                                    <CopyPill text={contactInfo.companyPhone} label="téléphone société" />
+                                                </p>
+                                            )}
                                         </div>
-                                        <p className="text-sm font-semibold text-slate-900">
-                                            {contactInfo.companyName}
-                                        </p>
-                                        {contactInfo.companyEmail && (
-                                            <p className="flex items-center gap-1">
-                                                <Mail className="w-3 h-3 text-indigo-500" />
-                                                <a
-                                                    href={`mailto:${contactInfo.companyEmail}`}
-                                                    className="truncate hover:text-indigo-600"
-                                                >
-                                                    {contactInfo.companyEmail}
-                                                </a>
+                                    </FadeIn>
+                                )}
+
+                                {/* ── Live RDV summary — updates as user fills form ── */}
+                                {(effectiveRdvDate || effectiveMeetingType || effectiveMeetingCategory) && (
+                                    <div className="pt-2 border-t border-indigo-100 space-y-1.5 mt-1">
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-500 uppercase tracking-wide">
+                                            <Calendar className="w-3 h-3" />
+                                            Récapitulatif RDV
+                                        </div>
+
+                                        {/* Date */}
+                                        {effectiveRdvDate && (
+                                            <p className="flex items-center gap-1.5 text-[11px] text-slate-700">
+                                                <Clock className="w-3 h-3 text-indigo-400 shrink-0" />
+                                                <span className="font-medium capitalize">{formatRdvDate(effectiveRdvDate)}</span>
                                             </p>
                                         )}
-                                        {contactInfo.companyPhone && (
-                                            <p className="flex items-center gap-1">
-                                                <Phone className="w-3 h-3 text-emerald-500" />
-                                                <a
-                                                    href={`tel:${contactInfo.companyPhone}`}
-                                                    className="truncate hover:text-emerald-600"
-                                                >
-                                                    {contactInfo.companyPhone}
-                                                </a>
+
+                                        {/* Type */}
+                                        {effectiveMeetingType && MeetingTypeIcon && (
+                                            <p className={cn("flex items-center gap-1.5 text-[11px] font-medium", MEETING_TYPE_LABELS[effectiveMeetingType]?.colorClass)}>
+                                                <MeetingTypeIcon className="w-3 h-3 shrink-0" />
+                                                {MEETING_TYPE_LABELS[effectiveMeetingType]?.label}
+                                                {/* Show detail for each type */}
+                                                {effectiveMeetingType === "VISIO" && effectiveMeetingJoinUrl && (
+                                                    <a href={effectiveMeetingJoinUrl} target="_blank" rel="noopener noreferrer" className="ml-1 truncate max-w-[120px] underline underline-offset-2">
+                                                        {effectiveMeetingJoinUrl.replace(/^https?:\/\//, "").slice(0, 28)}…
+                                                    </a>
+                                                )}
+                                                {effectiveMeetingType === "PHYSIQUE" && effectiveMeetingAddress && (
+                                                    <span className="ml-1 truncate max-w-[140px] text-slate-600 font-normal">{effectiveMeetingAddress}</span>
+                                                )}
+                                                {effectiveMeetingType === "TELEPHONIQUE" && effectiveMeetingPhone && (
+                                                    <span className="ml-1 text-slate-600 font-normal">{effectiveMeetingPhone}</span>
+                                                )}
+                                            </p>
+                                        )}
+
+                                        {/* Category */}
+                                        {effectiveMeetingCategory && (
+                                            <p className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block shrink-0" />
+                                                {MEETING_CATEGORY_LABELS[effectiveMeetingCategory]}
                                             </p>
                                         )}
                                     </div>
                                 )}
                             </div>
 
+                            {/* ── Form: date + type + detail + category ── */}
                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
                                 Détails du rendez-vous
                             </p>
@@ -581,13 +651,13 @@ export function BookingDrawer({
                                             type="button"
                                             onClick={() => setEffectiveMeetingType(effectiveMeetingType === type ? "" : type)}
                                             className={cn(
-                                                "px-3 py-1.5 rounded-full border text-xs font-semibold",
+                                                "px-3 py-1.5 rounded-full border text-xs font-semibold transition-all",
                                                 effectiveMeetingType === type
                                                     ? "bg-indigo-50 border-indigo-400 text-indigo-700"
                                                     : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
                                             )}
                                         >
-                                            {type}
+                                            {type === "VISIO" ? "Visio" : type === "PHYSIQUE" ? "Physique" : "Téléphonique"}
                                         </button>
                                     ))}
                                 </div>
@@ -635,7 +705,28 @@ export function BookingDrawer({
                                 </div>
                             )}
 
-                            {/* Confirm RDV button */}
+                            <div className="space-y-1 text-xs">
+                                <label className="font-semibold text-slate-700">Catégorie</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {(["EXPLORATOIRE", "BESOIN"] as const).map((cat) => (
+                                        <button
+                                            key={cat}
+                                            type="button"
+                                            onClick={() => setEffectiveMeetingCategory(effectiveMeetingCategory === cat ? "" : cat)}
+                                            className={cn(
+                                                "px-3 py-1.5 rounded-full border text-xs font-semibold transition-all",
+                                                effectiveMeetingCategory === cat
+                                                    ? "bg-indigo-50 border-indigo-400 text-indigo-700"
+                                                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                                            )}
+                                        >
+                                            {MEETING_CATEGORY_LABELS[cat]}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Confirm button */}
                             <div className="mt-auto pt-4 border-t border-slate-200">
                                 <button
                                     type="button"
@@ -649,15 +740,9 @@ export function BookingDrawer({
                                     )}
                                 >
                                     {isProcessing ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                                            Enregistrement…
-                                        </>
+                                        <><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />Enregistrement…</>
                                     ) : (
-                                        <>
-                                            <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
-                                            Confirmer le RDV
-                                        </>
+                                        <><CheckCircle2 className="w-4 h-4" aria-hidden="true" />Confirmer le RDV</>
                                     )}
                                 </button>
                                 <p className="text-[11px] text-slate-400 mt-2 text-center">
@@ -666,17 +751,13 @@ export function BookingDrawer({
                             </div>
                         </div>
 
-                        {/* Right: calendar selector + iframe */}
+                        {/* ── RIGHT PANEL: calendar selector + iframe ── */}
                         <div className="relative bg-white min-h-0 flex-1 flex flex-col">
                             {!selectedOption ? (
                                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-50">
                                     <Calendar className="w-8 h-8 text-slate-300" />
-                                    <p className="text-sm font-semibold text-slate-600">
-                                        Aucun calendrier configuré
-                                    </p>
-                                    <p className="text-xs text-slate-400">
-                                        Contactez votre administrateur
-                                    </p>
+                                    <p className="text-sm font-semibold text-slate-600">Aucun calendrier configuré</p>
+                                    <p className="text-xs text-slate-400">Contactez votre administrateur</p>
                                 </div>
                             ) : (
                                 <>
@@ -698,12 +779,10 @@ export function BookingDrawer({
                                                                 : "bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/50"
                                                         )}
                                                     >
-                                                        <span
-                                                            className={cn(
-                                                                "w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0",
-                                                                selectedOptionId === opt.id ? "bg-white/20" : opt.avatarColor ?? "bg-slate-100 text-slate-600"
-                                                            )}
-                                                        >
+                                                        <span className={cn(
+                                                            "w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0",
+                                                            selectedOptionId === opt.id ? "bg-white/20" : opt.avatarColor ?? "bg-slate-100 text-slate-600"
+                                                        )}>
                                                             {opt.initials ?? "?"}
                                                         </span>
                                                         <span className="text-left">
@@ -717,43 +796,39 @@ export function BookingDrawer({
                                             </div>
                                         </div>
                                     )}
-                                <div className="flex-1 min-h-0 relative">
-                                    {iframeLoading && !isProcessing && !booked && (
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white z-10">
-                                            <Loader2 className="w-7 h-7 text-indigo-500 animate-spin" />
-                                            <p className="text-sm text-slate-500">
-                                                Chargement du calendrier…
-                                            </p>
-                                        </div>
-                                    )}
 
-                                    {isProcessing && (
-                                        <div className="absolute inset-0 bg-white/95 z-20 flex flex-col items-center justify-center gap-3">
-                                            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-                                            <p className="text-sm font-medium text-slate-700">Enregistrement du rendez-vous…</p>
-                                        </div>
-                                    )}
-
-                                    {booked && (
-                                        <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center gap-4">
-                                            <CheckCircle2 className="w-14 h-14 text-emerald-500" />
-                                            <p className="text-lg font-semibold text-slate-900">RDV confirmé !</p>
-                                            <p className="text-sm text-slate-500 text-center">
-                                                Rendez-vous avec {contactName} enregistré.
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    <iframe
-                                        ref={iframeRef}
-                                        src={embedUrl}
-                                        key={selectedOption.id}
-                                        onLoad={() => setIframeLoading(false)}
-                                        className="w-full h-full min-h-[320px] border-0"
-                                        title={selectedOption.label}
-                                        allow="camera; microphone; geolocation"
-                                    />
-                                </div>
+                                    <div className="flex-1 min-h-0 relative">
+                                        {iframeLoading && !isProcessing && !booked && (
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white z-10">
+                                                <Loader2 className="w-7 h-7 text-indigo-500 animate-spin" />
+                                                <p className="text-sm text-slate-500">Chargement du calendrier…</p>
+                                            </div>
+                                        )}
+                                        {isProcessing && (
+                                            <div className="absolute inset-0 bg-white/95 z-20 flex flex-col items-center justify-center gap-3">
+                                                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                                                <p className="text-sm font-medium text-slate-700">Enregistrement du rendez-vous…</p>
+                                            </div>
+                                        )}
+                                        {booked && (
+                                            <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center gap-4">
+                                                <CheckCircle2 className="w-14 h-14 text-emerald-500" />
+                                                <p className="text-lg font-semibold text-slate-900">RDV confirmé !</p>
+                                                <p className="text-sm text-slate-500 text-center">
+                                                    Rendez-vous avec {contactName} enregistré.
+                                                </p>
+                                            </div>
+                                        )}
+                                        <iframe
+                                            ref={iframeRef}
+                                            src={embedUrl}
+                                            key={selectedOption.id}
+                                            onLoad={() => setIframeLoading(false)}
+                                            className="w-full h-full min-h-[320px] border-0"
+                                            title={selectedOption.label}
+                                            allow="camera; microphone; geolocation"
+                                        />
+                                    </div>
                                 </>
                             )}
                         </div>
