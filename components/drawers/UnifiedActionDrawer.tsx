@@ -145,6 +145,7 @@ const STATUS_CONFIG = {
 const RELANCE_HOVER_HINT = "👉 Rappel demandé\n➡️ Le prospect attend ton appel\n➡️ Il y a un signal d’intérêt";
 const RAPPEL_HOVER_HINT = "👉 Rappel à faire\n➡️ Le prospect n’a pas encore été joint\n➡️ C’est un rappel logistique, pas commercial";
 const HORS_CIBLE_HOVER_HINT = "Prospect hors des critères de ciblage.\n\nSecteur non pertinent\nTaille / structure incompatible\nPas dans les critères de qualification";
+const MIN_NOTE_LENGTH_FOR_AI_ENHANCE = 25;
 
 const getStatusHoverHint = (code: string, label?: string | null): string | undefined => {
     const haystack = `${code} ${label ?? ""}`.toUpperCase();
@@ -891,7 +892,15 @@ export function UnifiedActionDrawer({
 
     const handleImproveNote = () => {
         const trimmed = newActionNote.trim();
-        if (trimmed) improveNoteMutation.mutate(trimmed);
+        if (!trimmed) return;
+        if (trimmed.length < MIN_NOTE_LENGTH_FOR_AI_ENHANCE) {
+            showError(
+                "Texte trop court",
+                `Ajoutez plus de contexte (au moins ${MIN_NOTE_LENGTH_FOR_AI_ENHANCE} caractères) avant l'amélioration IA.`
+            );
+            return;
+        }
+        improveNoteMutation.mutate(trimmed);
     };
 
     // ── Send email from inline panel + record action ────────────────────────
@@ -2942,7 +2951,7 @@ export function UnifiedActionDrawer({
                                             <button
                                                 type="button"
                                                 onClick={handleImproveNote}
-                                                disabled={!newActionNote.trim() || improveNoteMutation.isPending}
+                                                disabled={newActionNote.trim().length < MIN_NOTE_LENGTH_FOR_AI_ENHANCE || improveNoteMutation.isPending}
                                                 aria-label="Améliorer la note avec l'IA"
                                                 className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-400 rounded-lg px-2 py-1 hover:bg-indigo-50 border border-transparent hover:border-indigo-100"
                                             >
