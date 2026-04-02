@@ -531,6 +531,12 @@ export function UnifiedActionDrawer({
     const [showAddContact, setShowAddContact] = useState(false);
     const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
     const [historyExpanded, setHistoryExpanded] = useState(false);
+    const [newInterlocutorContact, setNewInterlocutorContact] = useState({
+        firstName: "",
+        lastName: "",
+        phone: "",
+        email: "",
+    });
 
     // Inline editing
     const [isEditingContact, setIsEditingContact] = useState(false);
@@ -588,6 +594,12 @@ export function UnifiedActionDrawer({
             setTimeout(() => noteRef.current?.focus(), 50);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [newActionResult]);
+
+    useEffect(() => {
+        if (newActionResult !== "MAUVAIS_INTERLOCUTEUR") {
+            setNewInterlocutorContact({ firstName: "", lastName: "", phone: "", email: "" });
+        }
     }, [newActionResult]);
 
     const toggleNoteExpand = (actionId: string) => {
@@ -987,6 +999,50 @@ export function UnifiedActionDrawer({
     });
 
     const handleAddAction = (andNext?: boolean) => addActionMutation.mutate({ andNext });
+
+    const createInterlocutorContactMutation = useMutation({
+        mutationFn: async () => {
+            if (!companyId) throw new Error("Aucune société sélectionnée");
+            const payload = {
+                companyId,
+                firstName: newInterlocutorContact.firstName.trim() || undefined,
+                lastName: newInterlocutorContact.lastName.trim() || undefined,
+                phone: newInterlocutorContact.phone.trim() || undefined,
+                email: newInterlocutorContact.email.trim() || undefined,
+            };
+            const res = await fetch("/api/contacts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const json = await res.json();
+            if (!json.success || !json.data?.id) {
+                throw new Error(json.error || "Impossible de créer le contact");
+            }
+            return json.data as Contact;
+        },
+        onSuccess: (createdContact) => {
+            success("Contact créé", "Le nouveau contact a été ajouté avec succès");
+            setNewInterlocutorContact({ firstName: "", lastName: "", phone: "", email: "" });
+            queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerCompanyKey(companyId) });
+            queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerContactKey(createdContact.id) });
+            queryClient.invalidateQueries({ queryKey: actionsQueryKey });
+            onContactSelect?.(createdContact.id);
+        },
+        onError: (err: Error) => showError("Erreur", err.message || "Impossible de créer le contact"),
+    });
+
+    const hasInterlocutorName =
+        newInterlocutorContact.firstName.trim().length > 0 ||
+        newInterlocutorContact.lastName.trim().length > 0;
+    const hasInterlocutorChannel =
+        newInterlocutorContact.phone.trim().length > 0 ||
+        newInterlocutorContact.email.trim().length > 0;
+    const canCreateInterlocutorContact =
+        !!companyId &&
+        hasInterlocutorName &&
+        hasInterlocutorChannel &&
+        !createInterlocutorContactMutation.isPending;
 
     const saveContactMutation = useMutation({
         mutationFn: async () => {
@@ -2704,6 +2760,71 @@ export function UnifiedActionDrawer({
                                                     </Button>
                                                 </>
                                             )}
+                                        </div>
+                                    )}
+
+                                    {newActionResult === "MAUVAIS_INTERLOCUTEUR" && (
+                                        <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-3.5 space-y-3">
+                                            <div className="flex items-start gap-2">
+                                                <Info className="w-4 h-4 text-rose-600 mt-0.5" aria-hidden="true" />
+                                                <div>
+                                                    <p className="text-sm font-semibold text-rose-800">Ajouter le bon contact</p>
+                                                    <p className="text-xs text-rose-700/90">
+                                                        Renseignez les informations du bon interlocuteur puis enregistrez-le.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                <input
+                                                    value={newInterlocutorContact.firstName}
+                                                    onChange={(e) =>
+                                                        setNewInterlocutorContact((prev) => ({ ...prev, firstName: e.target.value }))
+                                                    }
+                                                    placeholder="Prénom"
+                                                    className="w-full px-3 py-2 text-sm border border-rose-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400/30 focus:border-rose-400"
+                                                />
+                                                <input
+                                                    value={newInterlocutorContact.lastName}
+                                                    onChange={(e) =>
+                                                        setNewInterlocutorContact((prev) => ({ ...prev, lastName: e.target.value }))
+                                                    }
+                                                    placeholder="Nom"
+                                                    className="w-full px-3 py-2 text-sm border border-rose-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400/30 focus:border-rose-400"
+                                                />
+                                                <input
+                                                    value={newInterlocutorContact.phone}
+                                                    onChange={(e) =>
+                                                        setNewInterlocutorContact((prev) => ({ ...prev, phone: e.target.value }))
+                                                    }
+                                                    placeholder="Téléphone"
+                                                    className="w-full px-3 py-2 text-sm border border-rose-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400/30 focus:border-rose-400"
+                                                />
+                                                <input
+                                                    type="email"
+                                                    value={newInterlocutorContact.email}
+                                                    onChange={(e) =>
+                                                        setNewInterlocutorContact((prev) => ({ ...prev, email: e.target.value }))
+                                                    }
+                                                    placeholder="Email"
+                                                    className="w-full px-3 py-2 text-sm border border-rose-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-400/30 focus:border-rose-400"
+                                                />
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <p className="text-[11px] text-rose-700/80">
+                                                    Renseignez au moins un nom (prénom/nom) et un canal (téléphone/email).
+                                                </p>
+                                                <Button
+                                                    type="button"
+                                                    variant="secondary"
+                                                    onClick={() => createInterlocutorContactMutation.mutate()}
+                                                    disabled={!canCreateInterlocutorContact}
+                                                    isLoading={createInterlocutorContactMutation.isPending}
+                                                    className="gap-2 shrink-0 border-rose-300 text-rose-700 hover:bg-rose-100"
+                                                >
+                                                    <Save className="w-4 h-4" aria-hidden="true" />
+                                                    Sauvegarder le contact
+                                                </Button>
+                                            </div>
                                         </div>
                                     )}
 
