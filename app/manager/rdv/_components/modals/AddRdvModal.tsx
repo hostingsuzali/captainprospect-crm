@@ -460,7 +460,7 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
               value={callbackDate}
               onChange={setCallbackDate}
               placeholder="Choisir date et heure du RDV…"
-              min={new Date().toISOString().slice(0, 16)}
+              allowPastDates
             />
           </div>
 

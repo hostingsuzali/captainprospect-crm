@@ -16,7 +16,9 @@ export interface DateTimePickerProps {
     label?: React.ReactNode;
     placeholder?: string;
     disabled?: boolean;
-    /** Min datetime (no dates/times before this). Defaults to now. */
+    /** When true, any past date can be chosen (e.g. historique / import). Ignored if `min` is set. */
+    allowPastDates?: boolean;
+    /** Min datetime (no dates/times before this). Defaults to now unless `allowPastDates` is true. */
     min?: string;
     className?: string;
     /** Optional extra class for the trigger button (e.g. border-amber-200 for rappel) */
@@ -41,6 +43,7 @@ export function DateTimePicker({
     label,
     placeholder = "Choisir date et heure…",
     disabled = false,
+    allowPastDates = false,
     min,
     className,
     triggerClassName,
@@ -51,7 +54,12 @@ export function DateTimePicker({
     const triggerRef = useRef<HTMLButtonElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    const minDate = min ? new Date(min) : new Date();
+    const minDate: Date | undefined =
+        min != null && min !== ""
+            ? new Date(min)
+            : allowPastDates
+              ? undefined
+              : new Date();
     const selectedDate = value ? new Date(value) : null;
     const dateOnly = selectedDate
         ? format(selectedDate, "yyyy-MM-dd")
@@ -121,7 +129,8 @@ export function DateTimePicker({
         ? format(selectedDate, "EEEE d MMMM yyyy à HH:mm", { locale: fr })
         : placeholder;
 
-    const isPast = (date: Date) => {
+    const isBeforeMin = (date: Date) => {
+        if (!minDate) return false;
         const d = startOfDay(date);
         const m = startOfDay(minDate);
         return d < m;
@@ -185,9 +194,9 @@ export function DateTimePicker({
                             mode="single"
                             selected={selectedDate ?? undefined}
                             onSelect={handleDateSelect}
-                            disabled={(date) => isPast(date)}
-                            defaultMonth={selectedDate ?? minDate}
-                            fromDate={minDate}
+                            disabled={(date) => isBeforeMin(date)}
+                            defaultMonth={selectedDate ?? minDate ?? new Date()}
+                            {...(minDate ? { fromDate: minDate } : {})}
                             className="rdp-compact p-0"
                             classNames={{
                                 months: "flex flex-col gap-0",

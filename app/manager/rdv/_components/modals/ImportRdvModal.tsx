@@ -314,7 +314,10 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
                   </div>
                 ))}
                 <p style={{ fontSize: 11, color: "var(--ink3)" }}>
-                  * Au moins un des deux : Email du contact ou Nom de la société.
+                  * Au moins un des deux : Email du contact ou Nom de la société (exactement comme dans la liste de la mission).
+                </p>
+                <p style={{ fontSize: 11, color: "var(--ink3)" }}>
+                  Dates acceptées : JJ/MM/AAAA (ou avec point ou tiret), AAAA-MM-JJ, ou numéro Excel (ex. 45321). Si seulement 3 lignes sur 9 passent, vérifiez la liste cible et l’option « Créer contact + société ».
                 </p>
                 <div>
                   <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>

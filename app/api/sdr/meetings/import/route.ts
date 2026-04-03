@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { actionService } from "@/lib/services/ActionService";
+import { parseRdvImportDate } from "@/lib/rdv-import-parse-date";
 
 // ============================================
 // SDR RDV IMPORT – Create MEETING_BOOKED actions from CSV/XLSX
@@ -51,32 +52,6 @@ function detectDelimiter(firstLine: string): string {
         }
     }
     return detected;
-}
-
-function parseCsvDate(raw: string): Date | undefined {
-    const value = raw.trim();
-    if (!value) return undefined;
-    // French format: DD/MM/YY or DD/MM/YYYY or DD/MM/YY HH:MM
-    const frMatch = value.match(
-        /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})(?:[ T](\d{1,2}):(\d{2}))?$/
-    );
-    if (frMatch) {
-        const day = parseInt(frMatch[1], 10);
-        const month = parseInt(frMatch[2], 10);
-        let year = parseInt(frMatch[3], 10);
-        const hours = frMatch[4] ? parseInt(frMatch[4], 10) : 0;
-        const minutes = frMatch[5] ? parseInt(frMatch[5], 10) : 0;
-        if (year < 100) year = 2000 + year;
-        if (
-            Number.isNaN(day) || Number.isNaN(month) || Number.isNaN(year) ||
-            day < 1 || day > 31 || month < 1 || month > 12
-        ) return undefined;
-        const d = new Date(year, month - 1, day, hours, minutes, 0, 0);
-        return Number.isNaN(d.getTime()) ? undefined : d;
-    }
-    // Try standard parsing as fallback
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
 const MEETING_TYPES = ["VISIO", "PHYSIQUE", "TELEPHONIQUE"] as const;
@@ -225,14 +200,18 @@ export async function POST(request: NextRequest) {
             const isCompleted = /realis|done|complete/.test(normalizedStatus);
 
             const dateRaw = getVal(row, mappings.dateColumn);
-            const callbackDate = dateRaw ? parseCsvDate(dateRaw) : undefined;
+            const callbackDate = dateRaw ? parseRdvImportDate(dateRaw) : undefined;
             if (!callbackDate) {
                 errors.push({ row: rowNum, message: "Date invalide ou manquante" });
                 continue;
             }
 
-            const contactEmail = mappings.contactEmailColumn ? getVal(row, mappings.contactEmailColumn) : "";
-            const companyName = mappings.companyNameColumn ? getVal(row, mappings.companyNameColumn) : "";
+            const contactEmail = mappings.contactEmailColumn
+                ? getVal(row, mappings.contactEmailColumn).toLowerCase()
+                : "";
+            const companyName = mappings.companyNameColumn
+                ? getVal(row, mappings.companyNameColumn).replace(/\s+/g, " ").trim()
+                : "";
 
             let contactId: string | null = null;
             let companyId: string | null = null;
