@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { enrichActionFromCallProvider } from '@/lib/call-enrichment/enrich-action';
+import { enrichCallActionsParallel } from '@/lib/call-enrichment/enrich-sync-parallel';
 
 // POST /api/sdr/calls/sync
 // Finds the SDR's recent CALL actions (last 24h) that haven't been successfully enriched yet,
@@ -30,7 +30,14 @@ export async function POST() {
       createdAt: { gte: since },
       callEnrichmentAt: null, // not yet successfully enriched
     },
-    select: { id: true, createdAt: true, callEnrichmentError: true },
+    select: {
+      id: true,
+      createdAt: true,
+      callEnrichmentError: true,
+      callEnrichmentAt: true,
+      callSummary: true,
+      callRecordingUrl: true,
+    },
     orderBy: { createdAt: 'desc' },
     take: 30,
   });
@@ -40,31 +47,7 @@ export async function POST() {
     console.log(`[sync-calls]   actionId=${a.id} createdAt=${a.createdAt.toISOString()} prevError=${a.callEnrichmentError ?? 'none'}`);
   });
 
-  const results: { actionId: string; status: 'enriched' | 'no_match' | 'no_phone' | 'error' | 'skipped' }[] = [];
-
-  for (const action of actions) {
-    try {
-      await enrichActionFromCallProvider(action.id);
-
-      const after = await prisma.action.findUnique({
-        where: { id: action.id },
-        select: { callEnrichmentAt: true, callSummary: true, callEnrichmentError: true },
-      });
-
-      if (after?.callEnrichmentAt) {
-        results.push({ actionId: action.id, status: 'enriched' });
-      } else if (after?.callEnrichmentError === 'NO_MATCH') {
-        results.push({ actionId: action.id, status: 'no_match' });
-      } else if (after?.callEnrichmentError === 'NO_PHONE') {
-        results.push({ actionId: action.id, status: 'no_phone' });
-      } else {
-        results.push({ actionId: action.id, status: 'skipped' });
-      }
-    } catch (err) {
-      console.error(`[sync-calls] error enriching actionId=${action.id}:`, err);
-      results.push({ actionId: action.id, status: 'error' });
-    }
-  }
+  const results = await enrichCallActionsParallel(actions, '[sync-calls]');
 
   const enriched = results.filter((r) => r.status === 'enriched').length;
   const noMatch  = results.filter((r) => r.status === 'no_match').length;

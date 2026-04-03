@@ -64,8 +64,33 @@ function getAlloNumbers(): string[] {
   return (process.env.ALLO_NUMBERS ?? '').split(',').map((n) => n.trim()).filter(Boolean);
 }
 
-export async function enrichActionFromCallProvider(actionId: string): Promise<void> {
-  console.log(`[call-enrichment] ▶ start actionId=${actionId}`);
+/** True when default enrichment would skip but résumé or enregistrement is still missing (re-sync avec force). */
+export function enrichActionShouldUseForce(action: {
+  callEnrichmentAt: Date | null;
+  callSummary: string | null;
+  callRecordingUrl: string | null;
+}): boolean {
+  const hasSummary = !!action.callSummary?.trim();
+  const hasRecording = !!action.callRecordingUrl?.trim();
+  const wouldSkipNormal =
+    !!action.callEnrichmentAt && (hasSummary || hasRecording);
+  return wouldSkipNormal && (!hasSummary || !hasRecording);
+}
+
+export type EnrichActionOptions = {
+  /**
+   * When true, re-run Allo lookup even if a prior enrichment exists (e.g. partial summary without recording).
+   * Default false keeps SDR auto-sync and post-create enrichment idempotent.
+   */
+  force?: boolean;
+};
+
+export async function enrichActionFromCallProvider(
+  actionId: string,
+  options?: EnrichActionOptions,
+): Promise<void> {
+  const force = options?.force === true;
+  console.log(`[call-enrichment] ▶ start actionId=${actionId}${force ? ' (force)' : ''}`);
 
   const action = await prisma.action.findUnique({
     where: { id: actionId },
@@ -77,7 +102,7 @@ export async function enrichActionFromCallProvider(actionId: string): Promise<vo
     return;
   }
   // Skip only if enrichment ran AND produced at least some data (summary OR recording)
-  if (action.callEnrichmentAt && (action.callSummary || action.callRecordingUrl)) {
+  if (!force && action.callEnrichmentAt && (action.callSummary?.trim() || action.callRecordingUrl?.trim())) {
     console.log(`[call-enrichment] already enriched, skipping actionId=${actionId}`);
     return;
   }
@@ -125,7 +150,7 @@ export async function enrichActionFromCallProvider(actionId: string): Promise<vo
     where: { id: actionId },
     select: { callEnrichmentAt: true, callSummary: true, callRecordingUrl: true },
   });
-  if (latest?.callEnrichmentAt && (latest.callSummary || latest.callRecordingUrl)) {
+  if (!force && latest?.callEnrichmentAt && (latest.callSummary?.trim() || latest.callRecordingUrl?.trim())) {
     console.log(`[call-enrichment] skip — already enriched concurrently actionId=${actionId}`);
     return;
   }

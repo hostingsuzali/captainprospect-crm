@@ -1,7 +1,7 @@
 "use client";
 
 import {
-    useState, useEffect, useCallback, useMemo, useRef, useReducer
+    Fragment, useState, useEffect, useCallback, useMemo, useRef
 } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -12,11 +12,12 @@ import {
     Activity, Target, Send, PhoneMissed, ThumbsUp, PhoneOff,
     CalendarX, RotateCw, SlidersHorizontal, Download, Columns3,
     X, Minus, Radio, Zap, Users, Filter, ArrowUpDown,
-    Eye, EyeOff, MoreHorizontal, Maximize2, Play,
+    Eye, EyeOff, MoreHorizontal, Maximize2, Play, Mic,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Card, Button, useToast } from "@/components/ui";
 import { CallRecordingModal } from "@/components/prospection/CallRecordingModal";
+import { ManagerCallEnrichmentSyncModal } from "@/components/prospection/ManagerCallEnrichmentSyncModal";
 import { ACTION_RESULT_LABELS } from "@/lib/types";
 
 const UnifiedActionDrawer = dynamic(
@@ -47,6 +48,7 @@ interface MissionItem {
     channels?: string[];
     client: { id: string; name: string };
     _count?: { actions: number; campaigns: number };
+    sdrAssignments?: { sdrId: string; sdr: { id: string; name: string } }[];
 }
 
 interface ActionRecord {
@@ -237,7 +239,7 @@ function Th({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ALL_COLS = [
-    { key: "date", label: "Date & Heure" },
+    { key: "date", label: "Créée le" },
     { key: "name", label: "Contact / Société" },
     { key: "sdr", label: "Effectué par" },
     { key: "result", label: "Résultat" },
@@ -417,12 +419,12 @@ function ResultFilterBar({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function exportCSV(rows: ActionRecord[], mission: string) {
-    const headers = ["Date", "Contact", "Société", "SDR", "Résultat", "Résumé / Note", "Durée (s)"];
+    const headers = ["Date (création action)", "Contact", "Société", "SDR", "Résultat", "Résumé / Note", "Durée (s)"];
     const lines = rows.map(r => {
         const name = getContactName(r);
         const company = getCompanyName(r);
         const note = (r.callSummary?.trim() || r.note || "").replace(/"/g, '""');
-        const dateKey = (r.callbackDate as string | null) || r.createdAt;
+        const dateKey = r.createdAt;
         return [
             new Date(dateKey).toLocaleString("fr-FR"),
             name, company,
@@ -477,16 +479,24 @@ export default function ManagerProspectionPage() {
     const [loadingData, setLoadingData] = useState(false);
     const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
     const [newCount, setNewCount] = useState(0); // rows added since last manual refresh
-    const { error: showError } = useToast();
+    const { error: showError, success: showSuccess } = useToast();
     const [sdrOptions, setSdrOptions] = useState<{ id: string; name: string }[]>([]);
+    /** Mission picker (avant ouverture d'une mission) */
+    const [pickerMissionSearch, setPickerMissionSearch] = useState("");
+    const [pickerClientId, setPickerClientId] = useState("");
+    const [pickerSdrId, setPickerSdrId] = useState("");
     const [drawerAction, setDrawerAction] = useState<ActionRecord | null>(null);
     const [audioModalAction, setAudioModalAction] = useState<ActionRecord | null>(null);
+    const [callSyncModalOpen, setCallSyncModalOpen] = useState(false);
+    const [bulkCallSyncOpen, setBulkCallSyncOpen] = useState(false);
     const [drawerClientBookingUrl, setDrawerClientBookingUrl] = useState<string>("");
     const liveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // ── table state ─────────────────────────────────────────────────────────
     const [search, setSearch] = useState("");
     const [sdrFilter, setSdrFilter] = useState("");
+    /** Filtre canal sur les lignes d'historique (toutes missions / une mission) */
+    const [actionChannelFilter, setActionChannelFilter] = useState<"" | ChannelTabValue>("");
     const [resultFilters, setResultFilters] = useState<Set<string>>(new Set());
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
@@ -503,18 +513,28 @@ export default function ManagerProspectionPage() {
     const searchRef = useRef<HTMLInputElement>(null);
     const prevActionsRef = useRef<ActionRecord[]>([]);
 
-    // ── init ────────────────────────────────────────────────────────────────
+    // ── init SDR list ───────────────────────────────────────────────────────
     useEffect(() => {
         let cancelled = false;
-        fetch("/api/missions?isActive=true&limit=100")
-            .then(r => r.json())
-            .then(j => { if (!cancelled && j.success) setMissions(j.data); })
-            .finally(() => { if (!cancelled) setMissionsLoading(false); });
         fetch("/api/users?role=SDR,BUSINESS_DEVELOPER")
             .then(r => r.json())
             .then(j => { if (!cancelled && j.success) setSdrOptions(Array.isArray(j.data) ? j.data : []); });
         return () => { cancelled = true; };
     }, []);
+
+    // ── missions catalogue (par canal) — filtres mission / client / SDR en local ──
+    const reloadMissionsCatalog = useCallback(() => {
+        setMissionsLoading(true);
+        const p = new URLSearchParams({ isActive: "true", limit: "100", channel });
+        fetch(`/api/missions?${p}`)
+            .then(r => r.json())
+            .then(j => { if (j.success) setMissions(j.data); })
+            .finally(() => setMissionsLoading(false));
+    }, [channel]);
+
+    useEffect(() => {
+        reloadMissionsCatalog();
+    }, [reloadMissionsCatalog]);
 
     // ── keyboard shortcut: "/" focuses search ────────────────────────────────
     useEffect(() => {
@@ -527,8 +547,12 @@ export default function ManagerProspectionPage() {
                 setSearch("");
                 setResultFilters(new Set());
                 setSdrFilter("");
+                setActionChannelFilter("");
                 setDateFrom("");
                 setDateTo("");
+                setPickerMissionSearch("");
+                setPickerClientId("");
+                setPickerSdrId("");
             }
         };
         window.addEventListener("keydown", handler);
@@ -552,14 +576,21 @@ export default function ManagerProspectionPage() {
         return () => { cancelled = true; };
     }, [drawerAction, selectedMission?.client?.id]);
 
-    // ── fetch mission data ───────────────────────────────────────────────────
+    const fetchMissionStats = useCallback(async (missionId: string) => {
+        const qs = new URLSearchParams();
+        if (sdrFilter) qs.set("sdrId", sdrFilter);
+        if (actionChannelFilter) qs.set("channel", actionChannelFilter);
+        if (dateFrom) qs.set("from", `${dateFrom}T00:00:00`);
+        if (dateTo) qs.set("to", `${dateTo}T23:59:59.999`);
+        const suffix = qs.toString() ? `?${qs}` : "";
+        const statsJson = await fetch(`/api/missions/${missionId}/action-stats${suffix}`).then(r => r.json());
+        if (statsJson.success) setStats(statsJson.data);
+    }, [sdrFilter, actionChannelFilter, dateFrom, dateTo]);
+
     const fetchMissionData = useCallback(async (missionId: string, silent = false) => {
         if (!silent) setLoadingData(true);
         try {
-            const [actionsJson, statsJson] = await Promise.all([
-                fetch(`/api/actions?missionId=${missionId}&limit=2000`).then(r => r.json()),
-                fetch(`/api/missions/${missionId}/action-stats`).then(r => r.json()),
-            ]);
+            const actionsJson = await fetch(`/api/actions?missionId=${missionId}&limit=2000`).then(r => r.json());
             if (actionsJson.success) {
                 const next: ActionRecord[] = (actionsJson.data || []).map((a: ActionRecord) => ({
                     ...a,
@@ -581,7 +612,6 @@ export default function ManagerProspectionPage() {
                 });
                 setLastRefresh(new Date());
             }
-            if (statsJson.success) setStats(statsJson.data);
         } finally {
             if (!silent) setLoadingData(false);
         }
@@ -592,6 +622,11 @@ export default function ManagerProspectionPage() {
         fetchMissionData(selectedMission.id);
     }, [selectedMission, fetchMissionData]);
 
+    useEffect(() => {
+        if (!selectedMission) return;
+        fetchMissionStats(selectedMission.id);
+    }, [selectedMission, fetchMissionStats]);
+
     // ── live auto-refresh every 30s ──────────────────────────────────────────
     useEffect(() => {
         if (!selectedMission || !liveRefresh) {
@@ -600,14 +635,41 @@ export default function ManagerProspectionPage() {
         }
         liveTimerRef.current = setInterval(() => {
             fetchMissionData(selectedMission.id, true);
+            fetchMissionStats(selectedMission.id);
         }, 30_000);
         return () => { if (liveTimerRef.current) clearInterval(liveTimerRef.current); };
-    }, [selectedMission, liveRefresh, fetchMissionData]);
+    }, [selectedMission, liveRefresh, fetchMissionData, fetchMissionStats]);
 
-    // ── derived: missions by channel ─────────────────────────────────────────
+    // ── derived: missions by channel puis filtres sélection ─────────────────
     const missionsForChannel = useMemo(() =>
         missions.filter(m => m.channels?.includes(channel) ?? m.channel === channel),
         [missions, channel]);
+
+    const clientPickerOptions = useMemo(() => {
+        const map = new Map<string, string>();
+        missionsForChannel.forEach(m => {
+            if (m.client?.id) map.set(m.client.id, m.client.name);
+        });
+        return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "fr"));
+    }, [missionsForChannel]);
+
+    const missionsForPicker = useMemo(() => {
+        let list = missionsForChannel;
+        if (pickerClientId) list = list.filter(m => m.client.id === pickerClientId);
+        if (pickerSdrId) list = list.filter(m =>
+            m.sdrAssignments?.some(a => a.sdrId === pickerSdrId));
+        const q = pickerMissionSearch.trim().toLowerCase();
+        if (q) {
+            list = list.filter(
+                m =>
+                    m.name.toLowerCase().includes(q) ||
+                    m.client.name.toLowerCase().includes(q)
+            );
+        }
+        return list;
+    }, [missionsForChannel, pickerClientId, pickerSdrId, pickerMissionSearch]);
+
+    const pickerHasFilters = !!(pickerMissionSearch.trim() || pickerClientId || pickerSdrId);
 
     // ── result counts ────────────────────────────────────────────────────────
     const resultCounts = useMemo(() => {
@@ -717,6 +779,14 @@ export default function ManagerProspectionPage() {
     };
 
     // sparkline: last-7-hour buckets
+    const missionSupportsCall = useMemo(() => {
+        if (!selectedMission) return false;
+        const ch = selectedMission.channels?.length
+            ? selectedMission.channels
+            : [selectedMission.channel];
+        return ch.includes("CALL");
+    }, [selectedMission]);
+
     const hourlySparkData = useMemo(() => {
         const buckets = Array(8).fill(0);
         const now = Date.now();
@@ -740,9 +810,10 @@ export default function ManagerProspectionPage() {
         const ChannelIcon = CHANNEL_TABS.find(t => t.value === channel)?.icon ?? Phone;
         const channelLabel = CHANNEL_TABS.find(t => t.value === channel)?.label ?? "";
         return (
+            <Fragment>
             <div className="max-w-7xl mx-auto pb-12 space-y-8">
                 {/* Page header */}
-                <div className="flex items-start justify-between gap-4 pt-2">
+                <div className="flex items-start justify-between gap-4 pt-2 flex-wrap">
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center shadow-sm">
                             <ChannelIcon className="w-6 h-6 text-indigo-700" aria-hidden />
@@ -756,6 +827,17 @@ export default function ManagerProspectionPage() {
                             </p>
                         </div>
                     </div>
+                    {channel === "CALL" && (
+                        <button
+                            type="button"
+                            onClick={() => setBulkCallSyncOpen(true)}
+                            aria-label="Synchroniser les appels Allo pour toutes les missions"
+                            className="h-10 px-4 flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 text-violet-900 text-sm font-bold hover:bg-violet-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 shrink-0"
+                        >
+                            <Mic className="w-4 h-4 shrink-0" aria-hidden />
+                            Sync Allo (toutes les missions)
+                        </button>
+                    )}
                 </div>
 
                 {/* Channel tabs */}
@@ -788,6 +870,82 @@ export default function ManagerProspectionPage() {
                     })}
                 </div>
 
+                {/* Filtres de sélection de mission */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        Filtrer les missions
+                    </p>
+                    <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex-1 min-w-[200px]">
+                            <label htmlFor="picker-mission-search" className="sr-only">
+                                Rechercher une mission
+                            </label>
+                            <div className="relative">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" aria-hidden />
+                                <input
+                                    id="picker-mission-search"
+                                    type="text"
+                                    value={pickerMissionSearch}
+                                    onChange={e => setPickerMissionSearch(e.target.value)}
+                                    placeholder="Nom de mission ou client…"
+                                    className="w-full h-9 pl-10 pr-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400"
+                                />
+                            </div>
+                        </div>
+                        <div className="min-w-[180px]">
+                            <label htmlFor="picker-client" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                                Client
+                            </label>
+                            <select
+                                id="picker-client"
+                                value={pickerClientId}
+                                onChange={e => setPickerClientId(e.target.value)}
+                                className="w-full h-9 px-3 text-sm font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 cursor-pointer"
+                            >
+                                <option value="">Tous les clients</option>
+                                {clientPickerOptions.map(([id, name]) => (
+                                    <option key={id} value={id}>{name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="min-w-[180px]">
+                            <label htmlFor="picker-sdr" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                                SDR assigné
+                            </label>
+                            <select
+                                id="picker-sdr"
+                                value={pickerSdrId}
+                                onChange={e => setPickerSdrId(e.target.value)}
+                                className="w-full h-9 px-3 text-sm font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 cursor-pointer"
+                            >
+                                <option value="">Tous les SDR</option>
+                                {sdrOptions.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        {pickerHasFilters && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setPickerMissionSearch("");
+                                    setPickerClientId("");
+                                    setPickerSdrId("");
+                                }}
+                                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50"
+                            >
+                                <RotateCcw className="w-3.5 h-3.5" aria-hidden />
+                                Effacer
+                            </button>
+                        )}
+                    </div>
+                    <p className="text-xs text-slate-400">
+                        {missionsForPicker.length} mission{missionsForPicker.length !== 1 ? "s" : ""}
+                        {pickerHasFilters && missionsForChannel.length > 0
+                            ? ` sur ${missionsForChannel.length}` : ""}
+                    </p>
+                </div>
+
                 {/* Mission grid */}
                 {missionsLoading ? (
                     <div className="flex flex-col items-center justify-center py-24 gap-3">
@@ -800,9 +958,26 @@ export default function ManagerProspectionPage() {
                         <p className="text-base font-bold text-slate-600">Aucune mission {channelLabel}</p>
                         <p className="text-sm text-slate-400">Créez une mission avec ce canal pour la voir ici.</p>
                     </div>
+                ) : missionsForPicker.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-24 gap-3 border-2 border-dashed border-slate-200 rounded-3xl">
+                        <Filter className="w-10 h-10 text-slate-300" />
+                        <p className="text-base font-bold text-slate-600">Aucune mission ne correspond</p>
+                        <p className="text-sm text-slate-400">Élargissez ou réinitialisez les filtres ci-dessus.</p>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setPickerMissionSearch("");
+                                setPickerClientId("");
+                                setPickerSdrId("");
+                            }}
+                            className="mt-1 px-4 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-colors"
+                        >
+                            Réinitialiser les filtres
+                        </button>
+                    </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {missionsForChannel.map((mission, i) => {
+                        {missionsForPicker.map((mission, i) => {
                             const channelList = mission.channels?.length ? mission.channels : [mission.channel];
                             const isMultiCanal = channelList.length > 1;
                             const ChannelIconCard = CHANNEL_ICONS[mission.channel] ?? Phone;
@@ -877,6 +1052,19 @@ export default function ManagerProspectionPage() {
                     </div>
                 )}
             </div>
+
+            {channel === "CALL" && (
+                <ManagerCallEnrichmentSyncModal
+                    isOpen={bulkCallSyncOpen}
+                    onClose={() => setBulkCallSyncOpen(false)}
+                    onSynced={reloadMissionsCatalog}
+                    onToast={(kind, title, message) => {
+                        if (kind === "success") showSuccess(title, message);
+                        else showError(title, message);
+                    }}
+                />
+            )}
+            </Fragment>
         );
     }
 
@@ -893,7 +1081,20 @@ export default function ManagerProspectionPage() {
                     <div className="flex items-center gap-3">
                         <button
                             type="button"
-                            onClick={() => { setSelectedMission(null); setActions([]); setStats(null); }}
+                            onClick={() => {
+                                setSelectedMission(null);
+                                setActions([]);
+                                setStats(null);
+                                setSearch("");
+                                setSdrFilter("");
+                                setActionChannelFilter("");
+                                setResultFilters(new Set());
+                                setDateFrom("");
+                                setDateTo("");
+                                setPage(1);
+                                setSelectedIds(new Set());
+                                setNewCount(0);
+                            }}
                             aria-label="Retour aux missions"
                             className="w-9 h-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
                         >
@@ -940,7 +1141,11 @@ export default function ManagerProspectionPage() {
                         {/* Manual refresh */}
                         <button
                             type="button"
-                            onClick={() => { fetchMissionData(selectedMission.id); setNewCount(0); }}
+                            onClick={() => {
+                                fetchMissionData(selectedMission.id);
+                                fetchMissionStats(selectedMission.id);
+                                setNewCount(0);
+                            }}
                             disabled={loadingData}
                             aria-label="Actualiser les données"
                             className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
@@ -948,6 +1153,18 @@ export default function ManagerProspectionPage() {
                             <RefreshCw className={cn("w-3.5 h-3.5", loadingData && "animate-spin")} aria-hidden />
                             Actualiser
                         </button>
+
+                        {missionSupportsCall && (
+                            <button
+                                type="button"
+                                onClick={() => setCallSyncModalOpen(true)}
+                                aria-label="Synchroniser les appels Allo"
+                                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 text-violet-800 text-xs font-bold hover:bg-violet-100 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                            >
+                                <Mic className="w-3.5 h-3.5" aria-hidden />
+                                Sync appels
+                            </button>
+                        )}
 
                         {/* Export */}
                         <button
@@ -1039,7 +1256,7 @@ export default function ManagerProspectionPage() {
                     <select
                         value={sdrFilter}
                         onChange={e => { setSdrFilter(e.target.value); setPage(1); }}
-                        aria-label="Filtrer par utilisateur"
+                        aria-label="Filtrer par utilisateur (auteur de l'action)"
                         className="h-9 px-3 text-sm font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 min-w-[160px] cursor-pointer"
                     >
                         <option value="">Tous les utilisateurs</option>
@@ -1048,14 +1265,31 @@ export default function ManagerProspectionPage() {
 
                     <div className="w-px h-7 bg-slate-100 shrink-0 hidden sm:block" aria-hidden />
 
-                    {/* Date range filter */}
+                    <select
+                        value={actionChannelFilter}
+                        onChange={e => {
+                            setActionChannelFilter((e.target.value || "") as "" | ChannelTabValue);
+                            setPage(1);
+                        }}
+                        aria-label="Filtrer par canal de l'action"
+                        className="h-9 px-3 text-sm font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 min-w-[140px] cursor-pointer"
+                    >
+                        <option value="">Tous canaux</option>
+                        <option value="CALL">Appels</option>
+                        <option value="EMAIL">Email</option>
+                        <option value="LINKEDIN">LinkedIn</option>
+                    </select>
+
+                    <div className="w-px h-7 bg-slate-100 shrink-0 hidden sm:block" aria-hidden />
+
+                    {/* Date range filter (création de l'action) */}
                     <div className="flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden />
                         <input
                             type="date"
                             value={dateFrom}
                             onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-                            aria-label="Date de début"
+                            aria-label="Date de début (création de l'action)"
                             className="h-9 px-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 cursor-pointer"
                         />
                         <span className="text-xs text-slate-400 font-medium">→</span>
@@ -1063,7 +1297,7 @@ export default function ManagerProspectionPage() {
                             type="date"
                             value={dateTo}
                             onChange={e => { setDateTo(e.target.value); setPage(1); }}
-                            aria-label="Date de fin"
+                            aria-label="Date de fin (création de l'action)"
                             className="h-9 px-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 cursor-pointer"
                         />
                     </div>
@@ -1072,7 +1306,15 @@ export default function ManagerProspectionPage() {
                         {hasFilters && (
                             <button
                                 type="button"
-                                onClick={() => { setSearch(""); setSdrFilter(""); setResultFilters(new Set()); setDateFrom(""); setDateTo(""); setPage(1); }}
+                                onClick={() => {
+                                    setSearch("");
+                                    setSdrFilter("");
+                                    setActionChannelFilter("");
+                                    setResultFilters(new Set());
+                                    setDateFrom("");
+                                    setDateTo("");
+                                    setPage(1);
+                                }}
                                 className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
                                 aria-label="Réinitialiser tous les filtres"
                             >
@@ -1165,7 +1407,14 @@ export default function ManagerProspectionPage() {
                         <p className="text-xs text-slate-400">Modifiez vos filtres pour voir des données.</p>
                         <button
                             type="button"
-                            onClick={() => { setSearch(""); setSdrFilter(""); setResultFilters(new Set()); setDateFrom(""); setDateTo(""); }}
+                            onClick={() => {
+                                setSearch("");
+                                setSdrFilter("");
+                                setActionChannelFilter("");
+                                setResultFilters(new Set());
+                                setDateFrom("");
+                                setDateTo("");
+                            }}
                             className="mt-1 px-4 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-colors"
                         >
                             Réinitialiser les filtres
@@ -1187,7 +1436,7 @@ export default function ManagerProspectionPage() {
                                         />
                                     </th>
                                     {visibleCols.has("date") && (
-                                        <Th label="Date" sortKey="createdAt" currentKey={sortKey} dir={sortDir} onSort={handleSort} />
+                                        <Th label="Créée le" sortKey="createdAt" currentKey={sortKey} dir={sortDir} onSort={handleSort} />
                                     )}
                                     {visibleCols.has("name") && (
                                         <Th label="Contact / Société" sortKey="name" currentKey={sortKey} dir={sortDir} onSort={handleSort} className="min-w-[200px]" />
@@ -1254,8 +1503,10 @@ export default function ManagerProspectionPage() {
                                             {visibleCols.has("date") && (
                                                 <td className={cn("px-4 whitespace-nowrap", rowPy)}>
                                                     {(() => {
-                                                        const dateKey = (row.callbackDate as string | null) || row.createdAt;
-                                                        const d = new Date(dateKey);
+                                                        const d = new Date(row.createdAt);
+                                                        const cb = row.callbackDate
+                                                            ? new Date(row.callbackDate as string)
+                                                            : null;
                                                         return (
                                                             <>
                                                                 <p className="text-sm font-semibold text-slate-800 tabular-nums">
@@ -1270,6 +1521,15 @@ export default function ManagerProspectionPage() {
                                                                         minute: "2-digit",
                                                                     })}
                                                                 </p>
+                                                                {cb && !Number.isNaN(cb.getTime()) && (
+                                                                    <p className="text-[10px] text-amber-700 font-semibold mt-0.5 tabular-nums">
+                                                                        Rappel :{" "}
+                                                                        {cb.toLocaleDateString("fr-FR", {
+                                                                            day: "2-digit",
+                                                                            month: "short",
+                                                                        })}
+                                                                    </p>
+                                                                )}
                                                             </>
                                                         );
                                                     })()}
@@ -1479,6 +1739,23 @@ export default function ManagerProspectionPage() {
             </div>
 
             {/* ── Unified Action Drawer ────────────────────────────────── */}
+            {missionSupportsCall && (
+                <ManagerCallEnrichmentSyncModal
+                    isOpen={callSyncModalOpen}
+                    onClose={() => setCallSyncModalOpen(false)}
+                    missionId={selectedMission.id}
+                    missionName={selectedMission.name}
+                    onSynced={() => {
+                        fetchMissionData(selectedMission.id, true);
+                        fetchMissionStats(selectedMission.id);
+                    }}
+                    onToast={(kind, title, message) => {
+                        if (kind === "success") showSuccess(title, message);
+                        else showError(title, message);
+                    }}
+                />
+            )}
+
             {audioModalAction?.callRecordingUrl && (
                 <CallRecordingModal
                     isOpen={!!audioModalAction}
@@ -1502,7 +1779,10 @@ export default function ManagerProspectionPage() {
                     missionId={selectedMission.id}
                     missionName={selectedMission.name}
                     clientBookingUrl={drawerClientBookingUrl || undefined}
-                    onActionRecorded={() => fetchMissionData(selectedMission.id, true)}
+                    onActionRecorded={() => {
+                        fetchMissionData(selectedMission.id, true);
+                        fetchMissionStats(selectedMission.id);
+                    }}
                     onContactSelect={(newContactId) => {
                         // Switch drawer context to the new contact
                         setDrawerAction({
