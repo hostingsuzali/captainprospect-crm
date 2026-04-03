@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:help.withallo.com)",
+      "Bash(npx prisma:*)"
+    ]
+  }
+}

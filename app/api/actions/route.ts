@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { after } from 'next/server';
 import {
  successResponse,
  errorResponse,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/api-utils';
 import { actionService } from '@/lib/services/ActionService';
 import { statusConfigService } from '@/lib/services/StatusConfigService';
+import { enrichActionFromCallProvider } from '@/lib/call-enrichment/enrich-action';
 import { z } from 'zod';
 
 // ============================================
@@ -219,5 +221,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         meetingJoinUrl: data.meetingJoinUrl,
         meetingPhone: data.meetingPhone,
     }, statusDef);
+
+    if (data.channel === 'CALL') {
+        after(() =>
+            enrichActionFromCallProvider(action.id).catch((err) => {
+                console.error('[call-enrichment]', action.id, err);
+            })
+        );
+    }
+
     return successResponse(action, 201);
 });

@@ -12,10 +12,11 @@ import {
     Activity, Target, Send, PhoneMissed, ThumbsUp, PhoneOff,
     CalendarX, RotateCw, SlidersHorizontal, Download, Columns3,
     X, Minus, Radio, Zap, Users, Filter, ArrowUpDown,
-    Eye, EyeOff, MoreHorizontal, Maximize2,
+    Eye, EyeOff, MoreHorizontal, Maximize2, Play,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Card, Button, useToast } from "@/components/ui";
+import { CallRecordingModal } from "@/components/prospection/CallRecordingModal";
 import { ACTION_RESULT_LABELS } from "@/lib/types";
 
 const UnifiedActionDrawer = dynamic(
@@ -63,6 +64,9 @@ interface ActionRecord {
     channel: string;
     result: string;
     note?: string;
+    callSummary?: string | null;
+    callTranscription?: string | null;
+    callRecordingUrl?: string | null;
     duration?: number;
     createdAt: string;
     callbackDate?: string | null;
@@ -237,7 +241,7 @@ const ALL_COLS = [
     { key: "name", label: "Contact / Société" },
     { key: "sdr", label: "Effectué par" },
     { key: "result", label: "Résultat" },
-    { key: "note", label: "Note / Résumé" },
+    { key: "note", label: "Résumé / Note" },
     { key: "duration", label: "Durée" },
 ] as const;
 type ColKey = (typeof ALL_COLS)[number]["key"];
@@ -413,11 +417,11 @@ function ResultFilterBar({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function exportCSV(rows: ActionRecord[], mission: string) {
-    const headers = ["Date", "Contact", "Société", "SDR", "Résultat", "Note", "Durée (s)"];
+    const headers = ["Date", "Contact", "Société", "SDR", "Résultat", "Résumé / Note", "Durée (s)"];
     const lines = rows.map(r => {
         const name = getContactName(r);
         const company = getCompanyName(r);
-        const note = (r.note ?? "").replace(/"/g, '""');
+        const note = (r.callSummary?.trim() || r.note || "").replace(/"/g, '""');
         const dateKey = (r.callbackDate as string | null) || r.createdAt;
         return [
             new Date(dateKey).toLocaleString("fr-FR"),
@@ -443,6 +447,10 @@ function getContactName(action: ActionRecord): string {
 
 function getCompanyName(action: ActionRecord): string {
     return action.company?.name || action.contact?.company?.name || "";
+}
+
+function getActionDisplaySummary(action: ActionRecord): string {
+    return action.callSummary?.trim() || action.note?.trim() || "";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -472,6 +480,7 @@ export default function ManagerProspectionPage() {
     const { error: showError } = useToast();
     const [sdrOptions, setSdrOptions] = useState<{ id: string; name: string }[]>([]);
     const [drawerAction, setDrawerAction] = useState<ActionRecord | null>(null);
+    const [audioModalAction, setAudioModalAction] = useState<ActionRecord | null>(null);
     const [drawerClientBookingUrl, setDrawerClientBookingUrl] = useState<string>("");
     const liveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -554,7 +563,16 @@ export default function ManagerProspectionPage() {
             if (actionsJson.success) {
                 const next: ActionRecord[] = (actionsJson.data || []).map((a: ActionRecord) => ({
                     ...a,
-                    _searchKey: `${getContactName(a)} ${getCompanyName(a)}`.toLowerCase(),
+                    _searchKey: [
+                        getContactName(a),
+                        getCompanyName(a),
+                        a.note,
+                        a.callSummary,
+                        a.callTranscription,
+                    ]
+                        .filter(Boolean)
+                        .join(" ")
+                        .toLowerCase(),
                 }));
                 setActions(prev => {
                     const added = next.filter(n => !prev.some(p => p.id === n.id)).length;
@@ -1182,7 +1200,7 @@ export default function ManagerProspectionPage() {
                                     )}
                                     {visibleCols.has("note") && (
                                         <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400 min-w-[220px]">
-                                            Note / Résumé
+                                            Résumé / Note
                                         </th>
                                     )}
                                     {visibleCols.has("duration") && (
@@ -1196,7 +1214,10 @@ export default function ManagerProspectionPage() {
                                 {pageRows.map((row, idx) => {
                                     const cfg = getCfg(row.result);
                                     const isSelected = selectedIds.has(row.id);
-                                    const displayNote = row.note;
+                                    const displaySummary = getActionDisplaySummary(row);
+                                    const hasRecording =
+                                        row.channel === "CALL" &&
+                                        !!row.callRecordingUrl?.trim();
                                     const contactName = getContactName(row);
                                     const companyName = getCompanyName(row);
                                     const name = contactName || companyName || "—";
@@ -1298,18 +1319,41 @@ export default function ManagerProspectionPage() {
                                                 </td>
                                             )}
 
-                                            {/* Note */}
+                                            {/* Résumé (callSummary) + note + lecture audio */}
                                             {visibleCols.has("note") && (
-                                                <td className={cn("px-4 max-w-[260px]", rowPy)}>
-                                                    {displayNote ? (
-                                                        <div>
-                                                            <p className="text-xs text-slate-600 truncate" title={displayNote}>
-                                                                {displayNote}
-                                                            </p>
+                                                <td className={cn("px-4 max-w-[320px]", rowPy)}>
+                                                    <div className="flex items-start gap-2 min-w-0">
+                                                        {hasRecording && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setAudioModalAction(row);
+                                                                }}
+                                                                aria-label="Écouter l'enregistrement et la transcription"
+                                                                className={cn(
+                                                                    "shrink-0 mt-0.5 w-8 h-8 rounded-xl border border-indigo-200",
+                                                                    "bg-indigo-50 text-indigo-600 flex items-center justify-center",
+                                                                    "hover:bg-indigo-100 hover:border-indigo-300 transition-colors",
+                                                                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                                                                )}
+                                                            >
+                                                                <Play className="w-3.5 h-3.5 ml-0.5" fill="currentColor" aria-hidden />
+                                                            </button>
+                                                        )}
+                                                        <div className="min-w-0 flex-1">
+                                                            {displaySummary ? (
+                                                                <p
+                                                                    className="text-xs text-slate-600 line-clamp-2"
+                                                                    title={displaySummary}
+                                                                >
+                                                                    {displaySummary}
+                                                                </p>
+                                                            ) : (
+                                                                <span className="text-[11px] text-slate-300 italic">—</span>
+                                                            )}
                                                         </div>
-                                                    ) : (
-                                                        <span className="text-[11px] text-slate-300 italic">—</span>
-                                                    )}
+                                                    </div>
                                                 </td>
                                             )}
 
@@ -1435,6 +1479,20 @@ export default function ManagerProspectionPage() {
             </div>
 
             {/* ── Unified Action Drawer ────────────────────────────────── */}
+            {audioModalAction?.callRecordingUrl && (
+                <CallRecordingModal
+                    isOpen={!!audioModalAction}
+                    onClose={() => setAudioModalAction(null)}
+                    actionId={audioModalAction.id}
+                    transcription={audioModalAction.callTranscription}
+                    subtitle={
+                        [getContactName(audioModalAction), getCompanyName(audioModalAction)]
+                            .filter(Boolean)
+                            .join(" · ") || undefined
+                    }
+                />
+            )}
+
             {drawerAction && (
                 <UnifiedActionDrawer
                     isOpen={!!drawerAction}

@@ -42,6 +42,7 @@ import type { Column } from "@/components/ui/DataTable";
 import dynamic from "next/dynamic";
 import { CompanyDrawer, ContactDrawer } from "@/components/drawers";
 import { BookingDrawer } from "@/components/sdr/BookingDrawer";
+import { AlloCallPickerModal } from "@/components/sdr/AlloCallPickerModal";
 import { ScriptCompanionDrawer } from "@/components/sdr/ScriptCompanionDrawer";
 import { useSidebar } from "@/components/layout/SidebarProvider";
 
@@ -63,6 +64,20 @@ import {
 // ============================================
 // TYPES
 // ============================================
+
+interface AlloCallItem {
+    id: string;
+    from: string;
+    to: string;
+    duration: number;
+    direction: 'INBOUND' | 'OUTBOUND';
+    outcome?: string;
+    summary?: string;
+    recording_url?: string;
+    transcript?: Array<{ source: string; text: string }>;
+    created_at?: string;
+    start_time?: string | number;
+}
 
 interface NextActionData {
     hasNext: boolean;
@@ -176,7 +191,7 @@ interface DrawerCompany {
         phone: string | null;
         title: string | null;
         linkedin: string | null;
-        status: string;
+        status: "INCOMPLETE" | "PARTIAL" | "ACTIONABLE";
         companyId: string;
     }>;
     _count: { contacts: number };
@@ -384,8 +399,18 @@ export default function SDRActionPage() {
     const [elapsedTime, setElapsedTime] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const nextActionAbortRef = useRef<AbortController | null>(null);
-    const queueAbortRef = useRef<AbortController | null>(null);
     const refreshQueueAbortRef = useRef<AbortController | null>(null);
+    const [isSyncingCalls, setIsSyncingCalls] = useState(false);
+    const [syncResult, setSyncResult] = useState<{ enriched: number; total: number } | null>(null);
+
+    // Allo call picker dialog
+    const [alloDialogOpen, setAlloDialogOpen] = useState(false);
+    const [alloDialogCalls, setAlloDialogCalls] = useState<AlloCallItem[]>([]);
+    const [alloDialogLoading, setAlloDialogLoading] = useState(false);
+    const [alloDialogSelectedId, setAlloDialogSelectedId] = useState<string | null>(null);
+    const [alloDialogFilterPhone, setAlloDialogFilterPhone] = useState("");
+    const [alloDialogAlloLineCount, setAlloDialogAlloLineCount] = useState<number | null>(null);
+    const [linkedAlloCall, setLinkedAlloCall] = useState<AlloCallItem | null>(null);
 
     const [missions, setMissions] = useState<Mission[]>([]);
     const [lists, setLists] = useState<ListItem[]>([]);
@@ -423,6 +448,7 @@ export default function SDRActionPage() {
     const [activeTab, setActiveTab] = useState<string>("base");
     const [showBookingDrawer, setShowBookingDrawer] = useState(false);
     const [unifiedBookingDialogOpen, setUnifiedBookingDialogOpen] = useState(false);
+    const [unifiedAlloDialogOpen, setUnifiedAlloDialogOpen] = useState(false);
     const [rdvDate, setRdvDate] = useState("");
     const [meetingCat, setMeetingCat] = useState<"EXPLORATOIRE" | "BESOIN" | "">("");
 
@@ -541,7 +567,10 @@ export default function SDRActionPage() {
                     phone: ct.phone,
                     title: ct.title,
                     linkedin: ct.linkedin,
-                    status: (ct.status ?? "PARTIAL") as any,
+                    status:
+                        ct.status === "INCOMPLETE" || ct.status === "PARTIAL" || ct.status === "ACTIONABLE"
+                            ? ct.status
+                            : "PARTIAL",
                     companyId: ct.companyId,
                 })),
                 _count: { contacts: co._count?.contacts ?? co.contacts?.length ?? 0 },
@@ -824,6 +853,10 @@ export default function SDRActionPage() {
         setShowSuccess(false);
         setElapsedTime(0);
         setActiveTab("base");
+        setLinkedAlloCall(null);
+        setAlloDialogOpen(false);
+        setAlloDialogCalls([]);
+        setAlloDialogSelectedId(null);
 
         try {
             const params = new URLSearchParams();
@@ -888,152 +921,6 @@ export default function SDRActionPage() {
         return () => controller.abort();
     }, [currentAction?.campaignId]);
 
-    // Queue is loaded via useQuery (queueQueryKey) above
-    const _queueEffectRemoved = true;
-    useEffect(() => {
-        if (_queueEffectRemoved) return; // queue from useQuery above
-        if (viewMode !== "table" || selectedMissionId === null) {
-            return;
-        }
-        queueAbortRef.current?.abort();
-        const controller = new AbortController();
-        queueAbortRef.current = controller;
-        const signal = controller.signal;
-        setQueueLoading(true);
-        setQueueFetchError(null);
-        const params = new URLSearchParams();
-        params.set("missionId", selectedMissionId);
-        if (selectedListId) params.set("listId", selectedListId);
-        if (tableSearchApi) params.set("search", tableSearchApi);
-        fetch(`/api/sdr/action-queue?${params.toString()}`, { signal })
-            .then((res) => res.json())
-            .then((json) => {
-                if (signal.aborted) return;
-                if (json.success && json.data?.items) {
-                    setQueueFetchError(null);
-                    const items = json.data.items as QueueItem[];
-                    setQueueItems(items.map((i) => ({
-                        ...i,
-                        _displayName: i.contact
-                            ? `${(i.contact.firstName || "").trim()} ${(i.contact.lastName || "").trim()}`.trim() || i.company.name
-                            : i.company.name,
-                        _companyName: i.company.name,
-                        _phone: i.contact?.phone || i.company?.phone || null,
-                        _email: i.contact?.email || null,
-                        _searchNote: i.lastAction?.note ?? null,
-                    })));
-                } else {
-                    setQueueItems([]);
-                    setQueueFetchError(null);
-                }
-            })
-            .catch((err) => {
-                if ((err as Error).name === "AbortError") return;
-                setQueueItems([]);
-                setQueueFetchError("Impossible de charger la file d'actions");
-                showError("Impossible de charger la file d'actions");
-            })
-            .finally(() => {
-                if (!signal.aborted) setQueueLoading(false);
-                if (queueAbortRef.current === controller) queueAbortRef.current = null;
-            });
-        return () => controller.abort();
-    }, [viewMode, selectedMissionId, selectedListId, tableSearchApi, showError]);
-
-    // (Drawer contact/company loaded via useQuery above)
-    const _drawerFetchRemoved = true;
-    useEffect(() => {
-        if (_drawerFetchRemoved) return;
-        if (!drawerContactId) {
-            return;
-        }
-        const controller = new AbortController();
-        const signal = controller.signal;
-        fetch(`/api/contacts/${drawerContactId}`, { signal })
-            .then((res) => res.json())
-            .then((json) => {
-                if (signal.aborted) return;
-                if (json.success && json.data) {
-                    const c = json.data;
-                    setDrawerContact({
-                        id: c.id,
-                        firstName: c.firstName,
-                        lastName: c.lastName,
-                        email: c.email,
-                        phone: c.phone,
-                        additionalPhones: c.additionalPhones ?? undefined,
-                        additionalEmails: c.additionalEmails ?? undefined,
-                        title: c.title,
-                        linkedin: c.linkedin,
-                        status: c.status ?? "PARTIAL",
-                        companyId: c.company?.id ?? "",
-                        companyName: c.company?.name ?? undefined,
-                        companyPhone: c.company?.phone ?? undefined,
-                    });
-                } else {
-                    setDrawerContact(null);
-                }
-            })
-            .catch((err) => {
-                if ((err as Error).name === "AbortError") return;
-                setDrawerContact(null);
-                showError("Impossible de charger le contact");
-            })
-            .finally(() => {
-                if (!signal.aborted) setDrawerLoading(false);
-            });
-        return () => controller.abort();
-    }, [drawerContactId, showError]);
-
-    // (Company drawer loaded via useQuery above)
-    useEffect(() => {
-        if (_drawerFetchRemoved) return;
-        if (!drawerCompanyId) return;
-        const controller = new AbortController();
-        const signal = controller.signal;
-        fetch(`/api/companies/${drawerCompanyId}`, { signal })
-            .then((res) => res.json())
-            .then((json) => {
-                if (signal.aborted) return;
-                if (json.success && json.data) {
-                    const co = json.data;
-                    setDrawerCompany({
-                        id: co.id,
-                        name: co.name,
-                        industry: co.industry,
-                        country: co.country,
-                        website: co.website,
-                        size: co.size,
-                        phone: co.phone,
-                        status: co.status ?? "PARTIAL",
-                        contacts: (co.contacts ?? []).map((ct: { id: string; firstName: string | null; lastName: string | null; email: string | null; phone: string | null; title: string | null; linkedin: string | null; status: string; companyId: string }) => ({
-                            id: ct.id,
-                            firstName: ct.firstName,
-                            lastName: ct.lastName,
-                            email: ct.email,
-                            phone: ct.phone,
-                            title: ct.title,
-                            linkedin: ct.linkedin,
-                            status: (ct.status ?? "PARTIAL") as any,
-                            companyId: ct.companyId,
-                        })),
-                        _count: { contacts: co._count?.contacts ?? co.contacts?.length ?? 0 },
-                    });
-                } else {
-                    setDrawerCompany(null);
-                }
-            })
-            .catch((err) => {
-                if ((err as Error).name === "AbortError") return;
-                setDrawerCompany(null);
-                showError("Impossible de charger la société");
-            })
-            .finally(() => {
-                if (!signal.aborted) setDrawerLoading(false);
-            });
-        return () => controller.abort();
-    }, [drawerCompanyId, showError]);
-
     const queueRowKey = (row: QueueItem) => row.contactId ?? row.companyId;
 
     // Recently updated row keys (highlight in table after status update in drawer)
@@ -1047,6 +934,77 @@ export default function SDRActionPage() {
     const refreshQueue = useCallback(() => {
         queryClient.invalidateQueries({ queryKey: queueQueryKey });
     }, [queryClient, queueQueryKey]);
+
+    const handleSyncCalls = useCallback(async () => {
+        if (isSyncingCalls) return;
+        setIsSyncingCalls(true);
+        setSyncResult(null);
+        try {
+            const res = await fetch('/api/sdr/calls/sync', { method: 'POST' });
+            const json = await res.json();
+            if (json.success) {
+                const { enriched, total } = json.data;
+                setSyncResult({ enriched, total });
+                if (enriched > 0) {
+                    success("Appels synchronisés", `${enriched} appel${enriched > 1 ? 's' : ''} enrichi${enriched > 1 ? 's' : ''} (résumé, transcription, audio).`);
+                } else if (total === 0) {
+                    success("Déjà à jour", "Aucun appel récent à synchroniser.");
+                } else {
+                    success("Synchronisation terminée", `${total} appel${total > 1 ? 's' : ''} analysé${total > 1 ? 's' : ''} — aucune correspondance Allo trouvée.`);
+                }
+                refreshQueue();
+            } else {
+                showError("Erreur de synchronisation", json.error ?? "Impossible de contacter Allo.");
+            }
+        } catch {
+            showError("Erreur réseau", "La synchronisation a échoué.");
+        } finally {
+            setIsSyncingCalls(false);
+        }
+    }, [isSyncingCalls, refreshQueue, success, showError]);
+
+    const openAlloDialog = useCallback(async () => {
+        const phone =
+            currentAction?.contact?.phone ||
+            (currentAction?.channel === "CALL" && currentAction?.company?.phone
+                ? currentAction.company.phone
+                : null);
+        if (!phone) {
+            showError("Numéro manquant", "Aucun numéro de téléphone trouvé pour ce contact.");
+            return;
+        }
+        setAlloDialogFilterPhone(phone);
+        setAlloDialogAlloLineCount(null);
+        setAlloDialogOpen(true);
+        setAlloDialogLoading(true);
+        setAlloDialogCalls([]);
+        setAlloDialogSelectedId(null);
+        try {
+            const res = await fetch(`/api/sdr/calls/for-contact?phone=${encodeURIComponent(phone)}`);
+            const json = await res.json();
+            if (json.success) {
+                setAlloDialogCalls(json.data.calls ?? []);
+                const meta = json.data?.meta as { filterPhone?: string; alloLineCount?: number } | undefined;
+                if (meta?.filterPhone) setAlloDialogFilterPhone(meta.filterPhone);
+                if (typeof meta?.alloLineCount === "number") setAlloDialogAlloLineCount(meta.alloLineCount);
+            } else {
+                showError("Erreur Allo", json.error ?? "Impossible de charger les appels.");
+                setAlloDialogOpen(false);
+            }
+        } catch {
+            showError("Erreur réseau", "Impossible de contacter Allo.");
+            setAlloDialogOpen(false);
+        } finally {
+            setAlloDialogLoading(false);
+        }
+    }, [currentAction, showError]);
+
+    const confirmAlloCall = useCallback(() => {
+        const call = alloDialogCalls.find((c) => c.id === alloDialogSelectedId);
+        if (!call) return;
+        setLinkedAlloCall(call);
+        setAlloDialogOpen(false);
+    }, [alloDialogCalls, alloDialogSelectedId]);
 
     // When opening Stats modal in card view, fetch queue for current mission/list
     useEffect(() => {
@@ -1135,6 +1093,8 @@ export default function SDRActionPage() {
 
     const closeUnifiedDrawer = () => {
         setUnifiedDrawerOpen(false);
+        setUnifiedBookingDialogOpen(false);
+        setUnifiedAlloDialogOpen(false);
         setDrawerRow(null);
         setUnifiedDrawerContactId(null);
         setUnifiedDrawerCompanyId(null);
@@ -1529,13 +1489,41 @@ export default function SDRActionPage() {
                     note: note || undefined,
                     callbackDate: isCallbackResult(selectedResult) && callbackDateValue ? new Date(callbackDateValue).toISOString() : undefined,
                     duration: elapsedTime,
-                    ...(selectedResult === "MEETING_BOOKED" && meetingCat && { meetingCategory: meetingCat }),
                 }),
             });
             const json = await res.json();
             if (!json.success) {
                 setError(json.error || "Erreur");
                 return;
+            }
+            const newActionId = json.data?.id as string | undefined;
+            const callToLink = linkedAlloCall;
+            if (newActionId && currentAction.channel === "CALL" && callToLink) {
+                const transcription =
+                    callToLink.transcript?.length ?
+                        callToLink.transcript.map((t) => `${t.source}: ${t.text}`).join("\n")
+                    :   null;
+                try {
+                    const enrichRes = await fetch(`/api/actions/${newActionId}/enrich-call`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            callId: callToLink.id,
+                            summary: callToLink.summary ?? null,
+                            transcription,
+                            recordingUrl: callToLink.recording_url ?? null,
+                        }),
+                    });
+                    const enrichJson = await enrichRes.json();
+                    if (!enrichJson.success) {
+                        showError(
+                            "Appel non enregistré",
+                            enrichJson.error ?? "Les données Allo n'ont pas pu être attachées à l'action."
+                        );
+                    }
+                } catch {
+                    showError("Appel non enregistré", "Erreur réseau lors de l'enrichissement.");
+                }
             }
             setShowSuccess(true);
             setActionsCompleted((prev) => prev + 1);
@@ -1546,7 +1534,19 @@ export default function SDRActionPage() {
         } finally {
             setIsSubmitting(false);
         }
-    }, [selectedResult, currentAction, note, callbackDateValue, selectedMissionId, elapsedTime, loadNextAction, getRequiresNote, isCallbackResult]);
+    }, [
+        selectedResult,
+        currentAction,
+        note,
+        callbackDateValue,
+        selectedMissionId,
+        elapsedTime,
+        loadNextAction,
+        getRequiresNote,
+        isCallbackResult,
+        linkedAlloCall,
+        showError,
+    ]);
 
     // Handlers
     const handleMissionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -1580,6 +1580,7 @@ export default function SDRActionPage() {
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
     }, [selectedResult, isSubmitting, resultOptions, handleSubmit]);
+
 
     const parseBaseScript = (rawScript?: string): string => {
         if (!rawScript?.trim()) return "";
@@ -1624,6 +1625,36 @@ export default function SDRActionPage() {
     }, [activeTab, availableScriptTabs]);
 
     // NOTE: Planning blocks are informational only — SDRs can prospect even without scheduled blocks today.
+
+    // Sync calls button — always visible in headers
+    const syncCallsButton = (
+        <button
+            type="button"
+            onClick={handleSyncCalls}
+            disabled={isSyncingCalls}
+            title="Synchroniser les résumés et transcriptions d'appels Allo (24 dernières heures)"
+            className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all h-auto",
+                "border-white/20 bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm",
+                isSyncingCalls && "opacity-70 cursor-not-allowed"
+            )}
+        >
+            {isSyncingCalls ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+                <PhoneCall className="w-4 h-4" />
+            )}
+            {isSyncingCalls ? "Synchro…" : "Sync appels"}
+            {syncResult && !isSyncingCalls && (
+                <span className={cn(
+                    "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+                    syncResult.enriched > 0 ? "bg-emerald-400/30 text-emerald-200" : "bg-white/20 text-white/70"
+                )}>
+                    {syncResult.enriched}/{syncResult.total}
+                </span>
+            )}
+        </button>
+    );
 
     // ========== TABLE VIEW ==========
     if (viewMode === "table") {
@@ -1898,6 +1929,8 @@ export default function SDRActionPage() {
                                     <BarChart2 className="w-4 h-4" />
                                     Stats
                                 </Button>
+
+                                {syncCallsButton}
 
                                 {/* Stats badge - Actions count only (no timer for SDR/BD) */}
                                 <div className="px-4 py-2 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm">
@@ -2186,6 +2219,7 @@ export default function SDRActionPage() {
                             clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
                             clientInterlocuteurs={unifiedDrawerInterlocuteurs}
                             onBookingDialogOpenChange={setUnifiedBookingDialogOpen}
+                            onAlloDialogOpenChange={setUnifiedAlloDialogOpen}
                             onContactSelect={(newContactId) => {
                                 setUnifiedDrawerContactId(newContactId);
                             }}
@@ -2218,7 +2252,11 @@ export default function SDRActionPage() {
                 {/* Script companion drawer (table view only), synchronized with unified drawer */}
                 {unifiedDrawerOpen && unifiedDrawerMissionId && (
                     <ScriptCompanionDrawer
-                        isOpen={unifiedDrawerOpen && !unifiedBookingDialogOpen}
+                        isOpen={
+                            unifiedDrawerOpen &&
+                            !unifiedBookingDialogOpen &&
+                            !unifiedAlloDialogOpen
+                        }
                         onClose={closeUnifiedDrawer}
                         missionId={unifiedDrawerMissionId}
                         missionName={unifiedDrawerMissionName}
@@ -2418,6 +2456,7 @@ export default function SDRActionPage() {
                                     placeholder="Liste"
                                     className="min-w-[160px]"
                                 />
+                                {syncCallsButton}
                             </div>
                         </div>
                     </div>
@@ -2547,6 +2586,8 @@ export default function SDRActionPage() {
                                 <BarChart2 className="w-4 h-4" />
                                 Stats
                             </Button>
+
+                            {syncCallsButton}
 
                             {/* Stats Badges */}
                             <div className="px-4 py-2 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm">
@@ -2855,11 +2896,12 @@ export default function SDRActionPage() {
                                     <Badge className={cn("text-xs border font-medium", {
                                         "bg-slate-100 text-slate-600 border-slate-200": currentAction.lastAction.result === "NO_RESPONSE",
                                         "bg-red-50 text-red-600 border-red-200": currentAction.lastAction.result === "BAD_CONTACT",
-                                        "bg-emerald-50 text-emerald-700 border-emerald-200": currentAction.lastAction.result === "INTERESTED",
+                                        "bg-emerald-50 text-emerald-700 border-emerald-200":
+                                            currentAction.lastAction.result === "INTERESTED" ||
+                                            currentAction.lastAction.result === "MAIL_ENVOYE",
                                         "bg-amber-100 text-amber-700 border-amber-200": isCallbackResult(currentAction.lastAction.result),
                                         "bg-indigo-50 text-indigo-700 border-indigo-200": currentAction.lastAction.result === "MEETING_BOOKED",
                                         "bg-blue-50 text-blue-700 border-blue-200": currentAction.lastAction.result === "ENVOIE_MAIL",
-                                        "bg-emerald-50 text-emerald-700 border-emerald-200": currentAction.lastAction.result === "MAIL_ENVOYE",
                                     })}>
                                         {RESULT_ICON_MAP[currentAction.lastAction.result]}
                                         <span className="ml-1">{statusLabels[currentAction.lastAction.result] ?? currentAction.lastAction.result}</span>
@@ -3007,10 +3049,26 @@ export default function SDRActionPage() {
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-slate-400 font-medium">{note.length}/500</span>
+                            {/* Link Allo call button — only for CALL channel */}
+                            {currentAction?.channel === 'CALL' && (
+                                <button
+                                    type="button"
+                                    onClick={openAlloDialog}
+                                    className={cn(
+                                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                                        linkedAlloCall
+                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                            : "bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100"
+                                    )}
+                                >
+                                    <PhoneCall className="w-3.5 h-3.5" />
+                                    {linkedAlloCall ? "Appel validé ✓" : "Valider l'appel (Allo)"}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
-                <div className="p-5">
+                <div className="p-5 space-y-3">
                     <textarea
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
@@ -3019,8 +3077,52 @@ export default function SDRActionPage() {
                         maxLength={500}
                         className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl bg-slate-50/50 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:bg-white resize-none transition-colors"
                     />
+                    {/* Linked call preview */}
+                    {linkedAlloCall && (
+                        <div className="flex items-start gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                            <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <PhoneCall className="w-3.5 h-3.5 text-emerald-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-semibold text-emerald-800">Appel Allo lié</span>
+                                    {linkedAlloCall.duration > 0 && (
+                                        <span className="text-[11px] text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-md font-medium">
+                                            {Math.floor(linkedAlloCall.duration / 60)}m{linkedAlloCall.duration % 60}s
+                                        </span>
+                                    )}
+                                    {linkedAlloCall.outcome && (
+                                        <span className="text-[11px] text-slate-500">{linkedAlloCall.outcome}</span>
+                                    )}
+                                </div>
+                                {linkedAlloCall.summary && (
+                                    <p className="text-xs text-emerald-700 mt-1 line-clamp-2">{linkedAlloCall.summary}</p>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setLinkedAlloCall(null)}
+                                className="w-5 h-5 rounded flex items-center justify-center text-emerald-400 hover:text-emerald-600 transition-colors flex-shrink-0"
+                                title="Retirer le lien"
+                            >
+                                <XCircle className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
+
+            <AlloCallPickerModal
+                isOpen={alloDialogOpen}
+                onClose={() => setAlloDialogOpen(false)}
+                loading={alloDialogLoading}
+                calls={alloDialogCalls as unknown[]}
+                filterPhone={alloDialogFilterPhone}
+                alloLineCount={alloDialogAlloLineCount}
+                selectedId={alloDialogSelectedId}
+                onSelectId={setAlloDialogSelectedId}
+                onConfirm={confirmAlloCall}
+            />
 
             {/* Callback date (Rappel) - calendar when status triggers callback */}
             {isCallbackResult(selectedResult) && (
@@ -3217,6 +3319,7 @@ export default function SDRActionPage() {
                     clientBookingUrl={unifiedDrawerClientBookingUrl || undefined}
                     clientInterlocuteurs={unifiedDrawerInterlocuteurs}
                     onBookingDialogOpenChange={setUnifiedBookingDialogOpen}
+                    onAlloDialogOpenChange={setUnifiedAlloDialogOpen}
                     onContactSelect={(newContactId) => {
                         setUnifiedDrawerContactId(newContactId);
                     }}

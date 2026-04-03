@@ -794,6 +794,13 @@ model Action {
   confirmedBy    User?      @relation("MeetingConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
   rdvFiche       Json?
   rdvFicheUpdatedAt DateTime?
+  // Call enrichment (populated async via after() for CALL channel)
+  callSummary         String?   @db.Text
+  callTranscription   String?   @db.Text
+  callRecordingUrl    String?
+  callEnrichmentAt    DateTime?
+  callEnrichmentError String?
+
   createdAt     DateTime     @default(now())
 
   meetingFeedback   MeetingFeedback?

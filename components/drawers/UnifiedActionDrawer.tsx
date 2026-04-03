@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Drawer, Button, Badge, Select, useToast, TextSkeleton, ListSkeleton, DateTimePicker } from "@/components/ui";
+import { Drawer, Button, Badge, Select, useToast, TextSkeleton, ListSkeleton, DateTimePicker, Modal } from "@/components/ui";
 import { ACTION_RESULT_LABELS, type ActionResult } from "@/lib/types";
 import {
     Building2,
@@ -45,7 +45,9 @@ import {
     Info,
     Video,
     UserX,
+    XCircle,
 } from "lucide-react";
+import { AlloCallPickerModal } from "@/components/sdr/AlloCallPickerModal";
 import { BookingDrawer } from "@/components/sdr/BookingDrawer";
 import { ContactDrawer } from "./ContactDrawer";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -112,6 +114,28 @@ interface UnifiedActionDrawerProps {
     onValidateAndNext?: () => void;
     onContactSelect?: (contactId: string) => void;
     onBookingDialogOpenChange?: (isOpen: boolean) => void;
+    /** When the Allo call-picker modal opens, parent can hide overlapping UI (e.g. ScriptCompanionDrawer). */
+    onAlloDialogOpenChange?: (isOpen: boolean) => void;
+}
+
+interface AlloCallItem {
+    id: string;
+    from: string;
+    to: string;
+    duration: number;
+    direction: "INBOUND" | "OUTBOUND";
+    outcome?: string;
+    summary?: string;
+    recording_url?: string;
+    transcript?: Array<{ source: string; text: string }>;
+    created_at?: string;
+    start_time?: string | number;
+    /** Champs bruts API WithAllo (liste) */
+    from_number?: string;
+    to_number?: string;
+    start_date?: string;
+    call_summary?: string;
+    transcription?: string;
 }
 
 // ============================================
@@ -398,6 +422,7 @@ export function UnifiedActionDrawer({
     onValidateAndNext,
     onContactSelect,
     onBookingDialogOpenChange,
+    onAlloDialogOpenChange,
 }: UnifiedActionDrawerProps) {
     const { success, error: showError } = useToast();
 
@@ -486,6 +511,11 @@ export function UnifiedActionDrawer({
         staleTime: 60_000,
     });
 
+    const isCallCampaign = useMemo(
+        () => campaigns[0]?.mission?.channel === "CALL",
+        [campaigns]
+    );
+
     // React Query: action status config
     const { data: statusConfig = null } = useQuery<{
         statuses: Array<{ code: string; label: string; requiresNote: boolean; triggersCallback?: boolean }>;
@@ -507,6 +537,18 @@ export function UnifiedActionDrawer({
     const [newCallbackDateValue, setNewCallbackDateValue] = useState("");
     const noteRef = useRef<HTMLTextAreaElement>(null);
 
+    const [alloDialogOpen, setAlloDialogOpen] = useState(false);
+    const [alloDialogCalls, setAlloDialogCalls] = useState<AlloCallItem[]>([]);
+    const [alloDialogLoading, setAlloDialogLoading] = useState(false);
+    const [alloDialogSelectedId, setAlloDialogSelectedId] = useState<string | null>(null);
+    const [alloDialogFilterPhone, setAlloDialogFilterPhone] = useState("");
+    const [alloDialogAlloLineCount, setAlloDialogAlloLineCount] = useState<number | null>(null);
+    const [linkedAlloCall, setLinkedAlloCall] = useState<AlloCallItem | null>(null);
+    const linkedAlloCallRef = useRef<AlloCallItem | null>(null);
+    useEffect(() => {
+        linkedAlloCallRef.current = linkedAlloCall;
+    }, [linkedAlloCall]);
+
     const [showBookingDrawer, setShowBookingDrawer] = useState(false);
     const [rdvDate, setRdvDate] = useState("");
     const [meetingType, setMeetingType] = useState<"VISIO" | "PHYSIQUE" | "TELEPHONIQUE" | "">("");
@@ -521,6 +563,14 @@ export function UnifiedActionDrawer({
     useEffect(() => {
         if (!isOpen) onBookingDialogOpenChange?.(false);
     }, [isOpen, onBookingDialogOpenChange]);
+
+    useEffect(() => {
+        onAlloDialogOpenChange?.(alloDialogOpen);
+    }, [alloDialogOpen, onAlloDialogOpenChange]);
+
+    useEffect(() => {
+        if (!isOpen) onAlloDialogOpenChange?.(false);
+    }, [isOpen, onAlloDialogOpenChange]);
 
     const [showAddContact, setShowAddContact] = useState(false);
     const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
@@ -577,6 +627,57 @@ export function UnifiedActionDrawer({
             setExpandedCompanyContactId(null);
         }
     }, [isOpen, companyId]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setLinkedAlloCall(null);
+            setAlloDialogOpen(false);
+            setAlloDialogCalls([]);
+            setAlloDialogSelectedId(null);
+            setAlloDialogFilterPhone("");
+            setAlloDialogAlloLineCount(null);
+        }
+    }, [isOpen]);
+
+    const openAlloDialog = useCallback(async () => {
+        const phone =
+            contact?.phone || (isCallCampaign && company?.phone ? company.phone : null);
+        if (!phone) {
+            showError("Numéro manquant", "Aucun numéro de téléphone trouvé pour ce contact.");
+            return;
+        }
+        setAlloDialogFilterPhone(phone);
+        setAlloDialogAlloLineCount(null);
+        setAlloDialogOpen(true);
+        setAlloDialogLoading(true);
+        setAlloDialogCalls([]);
+        setAlloDialogSelectedId(null);
+        try {
+            const res = await fetch(`/api/sdr/calls/for-contact?phone=${encodeURIComponent(phone)}`);
+            const json = await res.json();
+            if (json.success) {
+                setAlloDialogCalls(json.data.calls ?? []);
+                const meta = json.data?.meta as { filterPhone?: string; alloLineCount?: number } | undefined;
+                if (meta?.filterPhone) setAlloDialogFilterPhone(meta.filterPhone);
+                if (typeof meta?.alloLineCount === "number") setAlloDialogAlloLineCount(meta.alloLineCount);
+            } else {
+                showError("Erreur Allo", json.error ?? "Impossible de charger les appels.");
+                setAlloDialogOpen(false);
+            }
+        } catch {
+            showError("Erreur réseau", "Impossible de contacter Allo.");
+            setAlloDialogOpen(false);
+        } finally {
+            setAlloDialogLoading(false);
+        }
+    }, [contact, company, isCallCampaign, showError]);
+
+    const confirmAlloCall = useCallback(() => {
+        const call = alloDialogCalls.find((c) => c.id === alloDialogSelectedId);
+        if (!call) return;
+        setLinkedAlloCall(call);
+        setAlloDialogOpen(false);
+    }, [alloDialogCalls, alloDialogSelectedId]);
 
     // Auto-expand history when prior actions exist
     useEffect(() => {
@@ -945,6 +1046,38 @@ export function UnifiedActionDrawer({
             });
             const json = await res.json();
             if (!json.success) throw new Error(json.error || "Impossible d'enregistrer l'action");
+
+            const newActionId = json.data?.id as string | undefined;
+            const callToLink = linkedAlloCallRef.current;
+            const missionChannel = (selectedCampaign?.mission?.channel ?? "CALL") as string;
+            if (newActionId && missionChannel === "CALL" && callToLink) {
+                const transcription =
+                    callToLink.transcript?.length ?
+                        callToLink.transcript.map((t) => `${t.source}: ${t.text}`).join("\n")
+                    :   null;
+                try {
+                    const enrichRes = await fetch(`/api/actions/${newActionId}/enrich-call`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            callId: callToLink.id,
+                            summary: callToLink.summary ?? null,
+                            transcription,
+                            recordingUrl: callToLink.recording_url ?? null,
+                        }),
+                    });
+                    const enrichJson = await enrichRes.json();
+                    if (!enrichJson.success) {
+                        showError(
+                            "Appel non enregistré",
+                            enrichJson.error ?? "Les données Allo n'ont pas pu être attachées à l'action."
+                        );
+                    }
+                } catch {
+                    showError("Appel non enregistré", "Erreur réseau lors de l'enrichissement.");
+                }
+            }
+
             return { andNext };
         },
         onSuccess: ({ andNext }) => {
@@ -952,6 +1085,7 @@ export function UnifiedActionDrawer({
             setNewActionNote("");
             setNewActionResult("");
             setNewCallbackDateValue("");
+            setLinkedAlloCall(null);
             queryClient.invalidateQueries({ queryKey: actionsQueryKey });
             onActionRecorded?.();
             if (andNext && onValidateAndNext) onValidateAndNext();
@@ -2804,7 +2938,39 @@ export function UnifiedActionDrawer({
                                                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 resize-none transition-all"
                                             />
                                         </div>
-                                        <div className="flex items-center justify-between mt-1.5">
+                                        {linkedAlloCall && (
+                                            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 mt-2">
+                                                <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                                    <PhoneCall className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="text-xs font-semibold text-emerald-800">Appel Allo validé</span>
+                                                        {linkedAlloCall.duration > 0 && (
+                                                            <span className="text-[11px] text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-md font-medium">
+                                                                {Math.floor(linkedAlloCall.duration / 60)}m{linkedAlloCall.duration % 60}s
+                                                            </span>
+                                                        )}
+                                                        {linkedAlloCall.outcome && (
+                                                            <span className="text-[11px] text-slate-500">{linkedAlloCall.outcome}</span>
+                                                        )}
+                                                    </div>
+                                                    {linkedAlloCall.summary && (
+                                                        <p className="text-xs text-emerald-700 mt-1 line-clamp-2">{linkedAlloCall.summary}</p>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLinkedAlloCall(null)}
+                                                    className="w-6 h-6 rounded flex items-center justify-center text-emerald-400 hover:text-emerald-700 transition-colors flex-shrink-0"
+                                                    title="Retirer le lien"
+                                                    aria-label="Retirer l'appel Allo sélectionné"
+                                                >
+                                                    <XCircle className="w-4 h-4" aria-hidden="true" />
+                                                </button>
+                                            </div>
+                                        )}
+                                        <div className="flex items-center justify-between gap-2 mt-1.5 flex-wrap">
                                             <button
                                                 type="button"
                                                 onClick={handleImproveNote}
@@ -2819,9 +2985,24 @@ export function UnifiedActionDrawer({
                                                 )}
                                                 {improveNoteMutation.isPending ? "Amélioration…" : "Améliorer avec l'IA"}
                                             </button>
+                                            {isCallCampaign && (
+                                                <button
+                                                    type="button"
+                                                    onClick={openAlloDialog}
+                                                    className={cn(
+                                                        "flex items-center gap-1.5 text-xs font-semibold rounded-lg px-2.5 py-1 border transition-all",
+                                                        linkedAlloCall
+                                                            ? "text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100"
+                                                            : "text-indigo-600 bg-indigo-50 border-indigo-100 hover:bg-indigo-100"
+                                                    )}
+                                                >
+                                                    <PhoneCall className="w-3.5 h-3.5" aria-hidden="true" />
+                                                    {linkedAlloCall ? "Appel validé ✓" : "Valider l'appel (Allo)"}
+                                                </button>
+                                            )}
                                             <p
                                                 id="note-char-count"
-                                                className="text-xs text-slate-400"
+                                                className="text-xs text-slate-400 ml-auto"
                                                 aria-live="polite"
                                                 aria-atomic="true"
                                             >
@@ -2944,6 +3125,18 @@ export function UnifiedActionDrawer({
                     }}
                 />
             )}
+
+            <AlloCallPickerModal
+                isOpen={alloDialogOpen}
+                onClose={() => setAlloDialogOpen(false)}
+                loading={alloDialogLoading}
+                calls={alloDialogCalls as unknown[]}
+                filterPhone={alloDialogFilterPhone}
+                alloLineCount={alloDialogAlloLineCount}
+                selectedId={alloDialogSelectedId}
+                onSelectId={setAlloDialogSelectedId}
+                onConfirm={confirmAlloCall}
+            />
 
         </Drawer>
     );
