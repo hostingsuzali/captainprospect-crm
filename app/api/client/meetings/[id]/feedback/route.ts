@@ -56,8 +56,8 @@ export const POST = withErrorHandler(async (
 
     const { outcome, recontactRequested, clientNote } = body;
 
-    if (!outcome || !recontactRequested) {
-        throw new NotFoundError('outcome and recontactRequested are required');
+    if (!outcome) {
+        throw new NotFoundError('outcome is required');
     }
 
     const validOutcomes = ['POSITIVE', 'NEUTRAL', 'NEGATIVE', 'NO_SHOW'];
@@ -66,7 +66,8 @@ export const POST = withErrorHandler(async (
     if (!validOutcomes.includes(outcome)) {
         throw new NotFoundError('Invalid outcome value');
     }
-    if (!validRecontact.includes(recontactRequested)) {
+    const recontact = recontactRequested ?? 'NO';
+    if (!validRecontact.includes(recontact)) {
         throw new NotFoundError('Invalid recontactRequested value');
     }
 
@@ -103,7 +104,7 @@ export const POST = withErrorHandler(async (
         data: {
             actionId,
             outcome,
-            recontactRequested,
+            recontactRequested: recontact,
             clientNote: clientNote || null,
         },
     });

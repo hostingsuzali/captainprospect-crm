@@ -182,16 +182,16 @@ interface DrawerCompany {
     _count: { contacts: number };
 }
 
-// Fallback when config API not available (display keys + anchors are assigned in useMemo)
-const RESULT_OPTIONS_FALLBACK: { value: ActionResult; label: string; icon: React.ReactNode; color: string }[] = [
-    { value: "NO_RESPONSE", label: "Pas de réponse", icon: <XCircle className="w-4 h-4" />, color: "slate" },
-    { value: "BAD_CONTACT", label: "Mauvais contact", icon: <Ban className="w-4 h-4" />, color: "red" },
-    { value: "INTERESTED", label: "Intéressé", icon: <Sparkles className="w-4 h-4" />, color: "emerald" },
-    { value: "CALLBACK_REQUESTED", label: "Rappel demandé", icon: <Clock className="w-4 h-4" />, color: "amber" },
-    { value: "MEETING_BOOKED", label: "RDV pris", icon: <Calendar className="w-4 h-4" />, color: "indigo" },
-    { value: "DISQUALIFIED", label: "Disqualifié", icon: <XCircle className="w-4 h-4" />, color: "slate" },
-    { value: "ENVOIE_MAIL", label: "Mail à envoyer", icon: <Mail className="w-4 h-4" />, color: "blue" },
-    { value: "MAIL_ENVOYE", label: "Mail envoyé", icon: <Send className="w-4 h-4" />, color: "emerald" },
+// Fallback when config API not available
+const RESULT_OPTIONS_FALLBACK: { value: ActionResult; label: string; icon: React.ReactNode; key: string; color: string }[] = [
+    { value: "NO_RESPONSE", label: "Pas de réponse", icon: <XCircle className="w-4 h-4" />, key: "1", color: "slate" },
+    { value: "BAD_CONTACT", label: "Mauvais contact", icon: <Ban className="w-4 h-4" />, key: "2", color: "red" },
+    { value: "INTERESTED", label: "Intéressé", icon: <Sparkles className="w-4 h-4" />, key: "3", color: "emerald" },
+    { value: "CALLBACK_REQUESTED", label: "Rappel demandé", icon: <Clock className="w-4 h-4" />, key: "4", color: "amber" },
+    { value: "MEETING_BOOKED", label: "RDV pris", icon: <Calendar className="w-4 h-4" />, key: "5", color: "indigo" },
+    { value: "DISQUALIFIED", label: "Disqualifié", icon: <XCircle className="w-4 h-4" />, key: "6", color: "slate" },
+    { value: "ENVOIE_MAIL", label: "Mail à envoyer", icon: <Mail className="w-4 h-4" />, key: "7", color: "blue" },
+    { value: "MAIL_ENVOYE", label: "Mail envoyé", icon: <Send className="w-4 h-4" />, key: "8", color: "emerald" },
 ];
 
 const RESULT_ICON_MAP: Record<string, React.ReactNode> = {
@@ -225,18 +225,6 @@ const RESULT_ICON_MAP: Record<string, React.ReactNode> = {
     MESSAGE_SENT: <Send className="w-4 h-4" />,
     REPLIED: <MessageSquare className="w-4 h-4" />,
 };
-
-/** URL / fragment–safe slug (accents stripped, lowercase, hyphenated). */
-function slugifyFragmentPart(s: string): string {
-    const ascii = s
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-    return ascii || "x";
-}
-
 const TABLE_QUEUE_LIMIT = 120;
 const STATS_QUEUE_LIMIT = 250;
 
@@ -590,7 +578,6 @@ export default function SDRActionPage() {
             color: string | null;
             requiresNote: boolean;
             triggersCallback?: boolean;
-            resultCategoryCode?: string | null;
         }>;
     } | null>(null);
 
@@ -673,40 +660,15 @@ export default function SDRActionPage() {
         return () => controller.abort();
     }, [selectedMissionId]);
 
-    const resultOptions = useMemo(() => {
-        const perCategorySeq = new Map<string, number>();
-        const nextSeqInCategory = (categoryKey: string) => {
-            const n = (perCategorySeq.get(categoryKey) ?? 0) + 1;
-            perCategorySeq.set(categoryKey, n);
-            return String(n).padStart(4, "0");
-        };
-        const resultAnchorId = (categoryKey: string, seq: string, label: string, code: string) =>
-            `result-${slugifyFragmentPart(categoryKey)}-${seq}-${slugifyFragmentPart(label || code)}-${slugifyFragmentPart(code)}`;
-
-        if (statusConfig?.statuses?.length) {
-            return statusConfig.statuses.map((s, i) => {
-                const categoryKey = s.resultCategoryCode ?? "UNCATEGORIZED";
-                const seq = nextSeqInCategory(categoryKey);
-                return {
-                    value: s.code as ActionResult,
-                    label: s.label,
-                    icon: RESULT_ICON_MAP[s.code] ?? <XCircle className="w-4 h-4" />,
-                    key: seq,
-                    anchorId: resultAnchorId(categoryKey, seq, s.label ?? s.code, s.code),
-                    color: ["slate", "red", "emerald", "amber", "indigo", "slate", "blue"][i % 7] as string,
-                };
-            });
-        }
-        const uncategorized = "UNCATEGORIZED";
-        return RESULT_OPTIONS_FALLBACK.map((item, i) => {
-            const seq = nextSeqInCategory(uncategorized);
-            return {
-                ...item,
-                key: seq,
-                anchorId: resultAnchorId(uncategorized, seq, item.label, item.value),
-            };
-        });
-    }, [statusConfig]);
+    const resultOptions = statusConfig?.statuses?.length
+        ? statusConfig.statuses.map((s, i) => ({
+            value: s.code as ActionResult,
+            label: s.label,
+            icon: RESULT_ICON_MAP[s.code] ?? <XCircle className="w-4 h-4" />,
+            key: String(i + 1),
+            color: ["slate", "red", "emerald", "amber", "indigo", "slate", "blue"][i % 7] as string,
+        }))
+        : RESULT_OPTIONS_FALLBACK;
 
     const statusLabels: Record<string, string> = statusConfig?.statuses?.length
         ? Object.fromEntries(statusConfig.statuses.map((s) => [s.code, s.label]))
@@ -2993,13 +2955,8 @@ export default function SDRActionPage() {
                         {resultOptions.map((option) => (
                             <button
                                 key={option.value}
-                                id={option.anchorId}
                                 onClick={() => setSelectedResult(option.value)}
-                                title={
-                                    [STATUS_HOVER_HINTS[option.value], `Lien: #${option.anchorId}`]
-                                        .filter(Boolean)
-                                        .join("\n") || `Lien: #${option.anchorId}`
-                                }
+                                title={STATUS_HOVER_HINTS[option.value]}
                                 className={cn(
                                     "relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all",
                                     selectedResult === option.value
@@ -3021,7 +2978,7 @@ export default function SDRActionPage() {
                                 )}>
                                     {option.label}
                                 </span>
-                                <span className="absolute top-2 right-2 min-w-[2.75rem] h-6 px-1 flex items-center justify-center text-[10px] font-mono text-slate-500 bg-slate-100 rounded tabular-nums">
+                                <span className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center text-[10px] font-mono text-slate-400 bg-slate-100 rounded">
                                     {option.key}
                                 </span>
                             </button>
