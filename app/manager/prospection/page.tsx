@@ -1265,7 +1265,7 @@ export default function ManagerProspectionPage() {
                                     return (
                                         <tr
                                             key={row.id}
-                                            onClick={() => setDrawerAction(row)}
+                                            onClick={() => toggleRow(row.id)}
                                             className={cn(
                                                 "group cursor-pointer transition-colors duration-100",
                                                 isSelected
@@ -1418,8 +1418,15 @@ export default function ManagerProspectionPage() {
                                             )}
 
                                             {/* Open drawer chevron */}
-                                            <td className={cn("pr-3 text-right", rowPy)}>
-                                                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 transition-colors" aria-hidden />
+                                            <td className={cn("pr-3 text-right", rowPy)} onClick={e => e.stopPropagation()}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDrawerAction(row)}
+                                                    aria-label={`Ouvrir les détails de ${name}`}
+                                                    className="rounded p-1 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-400"
+                                                >
+                                                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 transition-colors" aria-hidden />
+                                                </button>
                                             </td>
                                         </tr>
                                     );
