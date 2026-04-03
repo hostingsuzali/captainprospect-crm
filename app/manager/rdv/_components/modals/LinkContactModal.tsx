@@ -149,10 +149,6 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
         {!searching && query.trim().length >= 2 && results.length === 0 && (
           <div style={{ fontSize: 13, color: "var(--ink3)", textAlign: "center" }}>Aucun contact trouvé.</div>
         )}
-        {linkError && (
-          <div style={{ fontSize: 12, color: "var(--red)", textAlign: "center" }}>{linkError}</div>
-        )}
-
         {groups.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 340, overflowY: "auto" }}>
             {groups.map((g) => (
@@ -172,9 +168,10 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
                       style={{
                         display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
                         background: i % 2 === 0 ? "var(--surface)" : "var(--surface2)",
-                        cursor: "pointer", textAlign: "left", width: "100%",
+                        cursor: saving ? "not-allowed" : "pointer", textAlign: "left", width: "100%",
+                        border: "none",
                         borderBottom: i < g.contacts.length - 1 ? "1px solid var(--border)" : "none",
-                        opacity: saving ? 0.6 : 1, border: "none",
+                        opacity: saving ? 0.6 : 1,
                       }}
                       onClick={() => handleLink(c)}
                     >
@@ -190,6 +187,20 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
                 })}
               </div>
             ))}
+          </div>
+        )}
+        {linkError && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--red)",
+              background: "color-mix(in srgb, var(--red) 10%, white)",
+              border: "1px solid color-mix(in srgb, var(--red) 35%, white)",
+              borderRadius: 10,
+              padding: "10px 12px",
+            }}
+          >
+            {linkError}
           </div>
         )}
 

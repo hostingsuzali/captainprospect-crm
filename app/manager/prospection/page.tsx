@@ -484,6 +484,8 @@ export default function ManagerProspectionPage() {
     const [search, setSearch] = useState("");
     const [sdrFilter, setSdrFilter] = useState("");
     const [resultFilters, setResultFilters] = useState<Set<string>>(new Set());
+    const [dateFrom, setDateFrom] = useState("");
+    const [dateTo, setDateTo] = useState("");
     const [sortKey, setSortKey] = useState<SortKey>("createdAt");
     const [sortDir, setSortDir] = useState<SortDir>("desc");
     const [density, setDensity] = useState<Density>("default");
@@ -521,6 +523,8 @@ export default function ManagerProspectionPage() {
                 setSearch("");
                 setResultFilters(new Set());
                 setSdrFilter("");
+                setDateFrom("");
+                setDateTo("");
             }
         };
         window.addEventListener("keydown", handler);
@@ -660,10 +664,17 @@ export default function ManagerProspectionPage() {
 
     // ── filtered + sorted ─────────────────────────────────────────────────────
     const processed = useMemo(() => {
+        const fromTs = dateFrom ? new Date(dateFrom).getTime() : null;
+        const toTs = dateTo ? new Date(dateTo + "T23:59:59").getTime() : null;
         let rows = actions.filter(a => {
             if (sdrFilter && a.sdr?.id !== sdrFilter) return false;
             if (resultFilters.size && !resultFilters.has(a.result)) return false;
             if (search && !a._searchKey?.includes(search.toLowerCase())) return false;
+            if (fromTs || toTs) {
+                const ts = new Date((a.callbackDate as string | null) || a.createdAt).getTime();
+                if (fromTs && ts < fromTs) return false;
+                if (toTs && ts > toTs) return false;
+            }
             return true;
         });
 
@@ -685,7 +696,7 @@ export default function ManagerProspectionPage() {
             return sortDir === "asc" ? cmp : -cmp;
         });
         return rows;
-    }, [actions, sdrFilter, resultFilters, search, sortKey, sortDir]);
+    }, [actions, sdrFilter, resultFilters, search, dateFrom, dateTo, sortKey, sortDir]);
 
     const totalPages = Math.max(1, Math.ceil(processed.length / pageSize));
     const pageRows = processed.slice((page - 1) * pageSize, page * pageSize);
@@ -731,7 +742,7 @@ export default function ManagerProspectionPage() {
 
     // row padding by density
     const rowPy = density === "compact" ? "py-2" : density === "comfortable" ? "py-4" : "py-3";
-    const hasFilters = !!(search || sdrFilter || resultFilters.size);
+    const hasFilters = !!(search || sdrFilter || resultFilters.size || dateFrom || dateTo);
 
     // ─────────────────────────────────────────────────────────────────────────
     // MISSION PICKER VIEW
@@ -1070,11 +1081,33 @@ export default function ManagerProspectionPage() {
                         {sdrOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
 
+                    <div className="w-px h-7 bg-slate-100 shrink-0 hidden sm:block" aria-hidden />
+
+                    {/* Date range filter */}
+                    <div className="flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden />
+                        <input
+                            type="date"
+                            value={dateFrom}
+                            onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                            aria-label="Date de début"
+                            className="h-9 px-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 cursor-pointer"
+                        />
+                        <span className="text-xs text-slate-400 font-medium">→</span>
+                        <input
+                            type="date"
+                            value={dateTo}
+                            onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                            aria-label="Date de fin"
+                            className="h-9 px-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-indigo-400 cursor-pointer"
+                        />
+                    </div>
+
                     <div className="ml-auto flex items-center gap-2">
                         {hasFilters && (
                             <button
                                 type="button"
-                                onClick={() => { setSearch(""); setSdrFilter(""); setResultFilters(new Set()); setPage(1); }}
+                                onClick={() => { setSearch(""); setSdrFilter(""); setResultFilters(new Set()); setDateFrom(""); setDateTo(""); setPage(1); }}
                                 className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
                                 aria-label="Réinitialiser tous les filtres"
                             >
@@ -1167,7 +1200,7 @@ export default function ManagerProspectionPage() {
                         <p className="text-xs text-slate-400">Modifiez vos filtres pour voir des données.</p>
                         <button
                             type="button"
-                            onClick={() => { setSearch(""); setSdrFilter(""); setResultFilters(new Set()); }}
+                            onClick={() => { setSearch(""); setSdrFilter(""); setResultFilters(new Set()); setDateFrom(""); setDateTo(""); }}
                             className="mt-1 px-4 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-colors"
                         >
                             Réinitialiser les filtres
@@ -1245,7 +1278,7 @@ export default function ManagerProspectionPage() {
                                             {/* Checkbox */}
                                             <td
                                                 className={cn("px-4 text-center", rowPy)}
-                                                onClick={e => { e.stopPropagation(); toggleRow(row.id); }}
+                                                onClick={e => e.stopPropagation()}
                                             >
                                                 <input
                                                     type="checkbox"

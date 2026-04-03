@@ -90,7 +90,7 @@ export function Modal({
             onClick={handleOverlayClick}
         >
             {/* Overlay */}
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[4px] animate-fade-in transition-all duration-300" />
+            <div className="absolute inset-0 pointer-events-none bg-slate-900/40 backdrop-blur-[4px] animate-fade-in transition-all duration-300" />
 
             {/* Modal */}
             <div
