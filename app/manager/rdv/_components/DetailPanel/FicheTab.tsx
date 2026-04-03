@@ -2,7 +2,6 @@
 
 import type { Meeting } from "../../_types";
 import type { UseFicheRdvReturn } from "../../_hooks/useFicheRdv";
-import { transcriptToText } from "../../_lib/formatters";
 import { FileText, Check, RefreshCw } from "lucide-react";
 
 interface FicheTabProps {
@@ -35,8 +34,6 @@ export function FicheTab({ meeting, setSelectedMeeting, ficheState, updateMeetin
     saveFiche,
     triggerAutoSave,
   } = ficheState;
-
-  const hasAutoTranscript = transcriptToText(meeting.voipTranscript) !== "";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -83,20 +80,18 @@ export function FicheTab({ meeting, setSelectedMeeting, ficheState, updateMeetin
         </div>
       )}
 
-      {!hasAutoTranscript && (
-        <div>
-          <div style={{ fontSize: 12, color: "var(--ink3)", fontWeight: 600, marginBottom: 8 }}>
-            Transcription (à coller pour génération IA)
-          </div>
-          <textarea
-            className="rdv-input"
-            style={{ width: "100%", minHeight: 100, resize: "vertical" }}
-            value={ficheManualTranscript}
-            onChange={(e) => setFicheManualTranscript(e.target.value)}
-            placeholder="Collez ici la transcription complète (Agent/Prospect)…"
-          />
+      <div>
+        <div style={{ fontSize: 12, color: "var(--ink3)", fontWeight: 600, marginBottom: 8 }}>
+          Transcription (à coller pour génération IA)
         </div>
-      )}
+        <textarea
+          className="rdv-input"
+          style={{ width: "100%", minHeight: 100, resize: "vertical" }}
+          value={ficheManualTranscript}
+          onChange={(e) => setFicheManualTranscript(e.target.value)}
+          placeholder="Collez ici la transcription complète (Agent/Prospect)…"
+        />
+      </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {FICHE_FIELDS.map(([field, label]) => (

@@ -7,7 +7,7 @@ import {
   Calendar, Search, X, ThumbsUp, Minus, ThumbsDown, XCircle,
   Mail, Phone, Linkedin, Download, Check, Loader2, Eye,
   MessageSquare, Edit3, Clock, FileSpreadsheet, AlertTriangle,
-  CalendarClock, Send, Building2, MapPin, Sparkles, Trash2, Video,
+  CalendarClock, Send, Building2, MapPin, Trash2, Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getMeetingCancellationLabel, MEETING_CANCELLATION_REASONS } from "@/lib/constants/meetingCancellationReasons";
@@ -451,7 +451,6 @@ interface Meeting {
   callbackDate?: string | null;
   result?: string;
   note?: string | null;
-  voipSummary?: string | null;
   rdvFiche?: {
     contexte?: string;
     besoinsProblemes?: string;
@@ -1479,18 +1478,6 @@ function DetailModal({ m, onClose, onFeedback, onCancel, onDelete }: {
       {m.note && (
         <Sec label={`Note du commercial${m.sdr?.name?` · ${m.sdr.name}`:""}`}>
           <div className="cp-note-quote">&ldquo;{m.note}&rdquo;</div>
-        </Sec>
-      )}
-
-      {/* AI summary */}
-      {m.voipSummary && (
-        <Sec label="Résumé de l'appel (IA)">
-          <div className="cp-ai-summary">
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:tk.accentText}}>
-              <Sparkles style={{width:11,height:11}} />IA · Résumé automatique
-            </div>
-            {m.voipSummary}
-          </div>
         </Sec>
       )}
 

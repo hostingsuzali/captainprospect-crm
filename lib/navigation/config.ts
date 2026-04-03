@@ -264,17 +264,6 @@ export const SDR_NAV: NavSection[] = [
       },
     ],
   },
-  {
-    title: "Paramètres",
-    items: [
-      {
-        href: "/sdr/settings/voip",
-        icon: Phone,
-        label: "Configuration VOIP",
-        permission: "pages.action",
-      },
-    ],
-  },
 ];
 
 // ============================================

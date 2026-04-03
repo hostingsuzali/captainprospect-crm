@@ -22,8 +22,6 @@ export interface Meeting {
   meetingPhone: string | null;
   note: string | null;
   managerNote?: string | null;
-  voipSummary?: string | null;
-  voipTranscript?: unknown;
   cancellationReason: string | null;
   createdAt: string;
   duration: number | null;

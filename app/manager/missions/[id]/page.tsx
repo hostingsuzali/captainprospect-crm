@@ -348,11 +348,17 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     };
 
     useEffect(() => {
-        if (mission?.id) fetchCampaignStrategy();
-    }, [mission?.id]);
+        const firstCampaignId = mission?.campaigns?.[0]?.id;
+        if (mission?.id && firstCampaignId) {
+            fetchCampaignStrategy();
+        }
+    }, [mission?.id, mission?.campaigns?.[0]?.id]);
 
     const handleSaveStrategy = async () => {
-        if (!campaignData) return;
+        if (!campaignData) {
+            showError("Erreur", "Chargement de la campagne en cours ou introuvable. Réessayez dans un instant.");
+            return;
+        }
         setIsSavingStrategy(true);
         try {
             const res = await fetch(`/api/campaigns/${campaignData.id}`, {

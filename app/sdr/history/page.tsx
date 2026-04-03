@@ -53,10 +53,6 @@ interface HistoryAction {
     result: string;
     resultLabel: string;
     channel: string;
-    voipProvider?: string;
-    voipSummary?: string;
-    voipRecordingUrl?: string;
-    voipTranscript?: Array<{ speaker: string; text: string; startSeconds?: number }>;
     campaignName?: string;
     missionId?: string;
     missionName?: string;
@@ -121,10 +117,9 @@ const PRESET_LABELS: Record<DateRangePreset, string> = {
 // ============================================
 
 export default function SDRHistoryPage() {
-    const { error: showError, success: showSuccess } = useToast();
+    const { error: showError } = useToast();
     const [actions, setActions] = useState<HistoryAction[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isSyncingAllo, setIsSyncingAllo] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
     const [missions, setMissions] = useState<Mission[]>([]);
 
@@ -137,8 +132,6 @@ export default function SDRHistoryPage() {
     const [selectedMissionId, setSelectedMissionId] = useState<string>("");
     const [selectedResult, setSelectedResult] = useState<string>("");
     const [selectedChannel, setSelectedChannel] = useState<string>("");
-    const [selectedVoipProvider, setSelectedVoipProvider] = useState<string>("");
-
     const [unifiedDrawerOpen, setUnifiedDrawerOpen] = useState(false);
     const [unifiedDrawerContactId, setUnifiedDrawerContactId] = useState<string | null>(null);
     const [unifiedDrawerCompanyId, setUnifiedDrawerCompanyId] = useState<string>("");
@@ -146,8 +139,6 @@ export default function SDRHistoryPage() {
     const [unifiedDrawerMissionName, setUnifiedDrawerMissionName] = useState<string | undefined>();
 
     const fetchAbortRef = useRef<AbortController | null>(null);
-    const syncedAlloActionIdsRef = useRef<Set<string>>(new Set());
-
     const fetchHistory = useCallback(async () => {
         fetchAbortRef.current?.abort();
         const controller = new AbortController();
@@ -171,7 +162,6 @@ export default function SDRHistoryPage() {
             if (selectedMissionId) params.set("missionId", selectedMissionId);
             if (selectedResult) params.set("result", selectedResult);
             if (selectedChannel) params.set("channel", selectedChannel);
-            if (selectedVoipProvider) params.set("voipProvider", selectedVoipProvider);
             const res = await fetch(`/api/sdr/actions?${params.toString()}`, { signal });
             const json = await res.json();
             if (signal.aborted) return;
@@ -190,7 +180,7 @@ export default function SDRHistoryPage() {
             if (!signal.aborted) setIsLoading(false);
             if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
         }
-    }, [dateRange, selectedMissionId, selectedResult, selectedChannel, selectedVoipProvider, showError]);
+    }, [dateRange, selectedMissionId, selectedResult, selectedChannel, showError]);
 
     useEffect(() => {
         fetch("/api/sdr/missions")
@@ -205,69 +195,6 @@ export default function SDRHistoryPage() {
         fetchHistory();
         return () => fetchAbortRef.current?.abort();
     }, [fetchHistory]);
-
-    // When we show "En attente du résumé Allo", try to fetch call from Allo API and refetch
-    useEffect(() => {
-        if (!actions.length) return;
-        const waiting = actions.filter(
-            (a) =>
-                a.channel === "CALL" &&
-                a.voipProvider === "allo" &&
-                !a.voipSummary &&
-                !a.note
-        );
-        const toSync = waiting
-            .map((a) => a.id)
-            .filter((id) => !syncedAlloActionIdsRef.current.has(id));
-        toSync.forEach((id) => syncedAlloActionIdsRef.current.add(id));
-        if (toSync.length === 0) return;
-        Promise.allSettled(
-            toSync.map((actionId) =>
-                fetch("/api/voip/allo/sync-call", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ actionId }),
-                })
-            )
-        ).then(() => fetchHistory());
-    }, [actions, fetchHistory]);
-
-    const handleSyncAllo = async () => {
-        const alloActions = actions.filter(
-            (a) => a.channel === "CALL" && a.voipProvider === "allo" && !a.voipSummary
-        );
-        if (alloActions.length === 0) {
-            showError("Aucun appel Allo en attente de résumé.");
-            return;
-        }
-
-        setIsSyncingAllo(true);
-        let updatedCount = 0;
-        try {
-            await Promise.allSettled(
-                alloActions.map(async (a) => {
-                    const res = await fetch("/api/voip/allo/sync-call", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ actionId: a.id }),
-                    });
-                    const json = await res.json();
-                    if (json.ok && json.updated) updatedCount++;
-                })
-            );
-            fetchHistory();
-            if (updatedCount > 0) {
-                showSuccess(`${updatedCount} appel(s) Allo synchronisé(s) avec succès.`);
-            } else {
-                showSuccess("La synchronisation est terminée, mais aucune nouvelle donnée n'a été trouvée.");
-            }
-        } catch (err) {
-            console.error(err);
-            showError("Erreur lors de la synchronisation avec Web Allo.");
-        } finally {
-            setIsSyncingAllo(false);
-        }
-    };
 
     const openDrawer = (row: HistoryAction) => {
         if (!row.companyId) return;
@@ -360,49 +287,17 @@ export default function SDRHistoryPage() {
         },
         {
             key: "note",
-            header: "Note / Résumé appel",
+            header: "Note",
             render: (_, row) => {
-                const isVoipCall = row.channel === "CALL" && row.voipProvider;
-                const waitingForVoipInfo = isVoipCall && !row.voipSummary && !row.note;
-                const displayNote = row.voipSummary ?? row.note;
-                const isFromVoip = !!row.voipSummary;
-
-                if (waitingForVoipInfo) {
-                    const providerName = row.voipProvider === "allo" ? "Allo" : row.voipProvider === "aircall" ? "Aircall" : "Ringover";
-                    return (
-                        <div className="flex items-center gap-2 max-w-[200px] text-amber-600">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                            <span className="text-xs font-medium">
-                                En attente du résumé {providerName}…
-                            </span>
-                        </div>
-                    );
-                }
-                if (!displayNote && !row.voipRecordingUrl) {
+                const displayNote = row.note;
+                if (!displayNote) {
                     return <span className="text-xs text-slate-300">—</span>;
                 }
                 return (
-                    <div className="max-w-[200px] space-y-0.5">
-                        {isFromVoip && row.voipProvider && (
-                            <span className="text-[10px] font-medium text-emerald-600 uppercase tracking-wider">
-                                {row.voipProvider === "allo" ? "Allo" : row.voipProvider === "aircall" ? "Aircall" : "Ringover"} •
-                            </span>
-                        )}
-                        {displayNote && (
-                            <p className="text-xs text-slate-500 truncate italic" title={displayNote}>
-                                &quot;{displayNote}&quot;
-                            </p>
-                        )}
-                        {row.voipRecordingUrl && (
-                            <a
-                                href={row.voipRecordingUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[10px] text-indigo-600 hover:underline"
-                            >
-                                Écouter l&apos;enregistrement
-                            </a>
-                        )}
+                    <div className="max-w-[200px]">
+                        <p className="text-xs text-slate-500 truncate italic" title={displayNote}>
+                            &quot;{displayNote}&quot;
+                        </p>
                     </div>
                 );
             },
@@ -483,15 +378,6 @@ export default function SDRHistoryPage() {
                     <div className="flex items-center gap-3">
                         <Button
                             variant="secondary"
-                            onClick={handleSyncAllo}
-                            disabled={isSyncingAllo || actions.length === 0}
-                            className="rounded-xl border border-white/20 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 gap-2"
-                        >
-                            {isSyncingAllo ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                            Sync Web Allo
-                        </Button>
-                        <Button
-                            variant="secondary"
                             onClick={() => fetchHistory()}
                             disabled={isLoading}
                             className="rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white gap-2"
@@ -522,7 +408,7 @@ export default function SDRHistoryPage() {
                     </div>
                 </div>
                 <div className="p-5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                         <div className="relative" ref={dateFilterRef}>
                             <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">Période</label>
                             <button
@@ -591,19 +477,6 @@ export default function SDRHistoryPage() {
                                         {label}
                                     </option>
                                 ))}
-                            </select>
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">VOIP</label>
-                            <select
-                                value={selectedVoipProvider}
-                                onChange={(e) => setSelectedVoipProvider(e.target.value)}
-                                className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 cursor-pointer"
-                            >
-                                <option value="">Tous</option>
-                                <option value="allo">Allo</option>
-                                <option value="aircall">Aircall</option>
-                                <option value="ringover">Ringover</option>
                             </select>
                         </div>
                     </div>

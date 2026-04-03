@@ -12,7 +12,7 @@ import {
     Activity, Target, Send, PhoneMissed, ThumbsUp, PhoneOff,
     CalendarX, RotateCw, SlidersHorizontal, Download, Columns3,
     X, Minus, Radio, Zap, Users, Filter, ArrowUpDown,
-    Eye, EyeOff, MoreHorizontal, ExternalLink, Maximize2,
+    Eye, EyeOff, MoreHorizontal, Maximize2,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Card, Button, useToast } from "@/components/ui";
@@ -67,9 +67,6 @@ interface ActionRecord {
     createdAt: string;
     callbackDate?: string | null;
     _searchKey?: string;
-    voipProvider?: string | null;
-    voipSummary?: string | null;
-    voipRecordingUrl?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,7 +239,6 @@ const ALL_COLS = [
     { key: "result", label: "Résultat" },
     { key: "note", label: "Note / Résumé" },
     { key: "duration", label: "Durée" },
-    { key: "voip", label: "Enregistrement" },
 ] as const;
 type ColKey = (typeof ALL_COLS)[number]["key"];
 
@@ -421,7 +417,7 @@ function exportCSV(rows: ActionRecord[], mission: string) {
     const lines = rows.map(r => {
         const name = getContactName(r);
         const company = getCompanyName(r);
-        const note = (r.voipSummary ?? r.note ?? "").replace(/"/g, '""');
+        const note = (r.note ?? "").replace(/"/g, '""');
         const dateKey = (r.callbackDate as string | null) || r.createdAt;
         return [
             new Date(dateKey).toLocaleString("fr-FR"),
@@ -471,10 +467,9 @@ export default function ManagerProspectionPage() {
     const [actions, setActions] = useState<ActionRecord[]>([]);
     const [stats, setStats] = useState<Record<string, any> | null>(null);
     const [loadingData, setLoadingData] = useState(false);
-    const [isSyncingAllo, setIsSyncingAllo] = useState(false);
     const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
     const [newCount, setNewCount] = useState(0); // rows added since last manual refresh
-    const { error: showError, success: showSuccess } = useToast();
+    const { error: showError } = useToast();
     const [sdrOptions, setSdrOptions] = useState<{ id: string; name: string }[]>([]);
     const [drawerAction, setDrawerAction] = useState<ActionRecord | null>(null);
     const [drawerClientBookingUrl, setDrawerClientBookingUrl] = useState<string>("");
@@ -590,31 +585,6 @@ export default function ManagerProspectionPage() {
         }, 30_000);
         return () => { if (liveTimerRef.current) clearInterval(liveTimerRef.current); };
     }, [selectedMission, liveRefresh, fetchMissionData]);
-
-    // ── allo sync ────────────────────────────────────────────────────────────
-    const handleSyncAllo = async () => {
-        const alloActions = actions.filter(
-            a => a.channel === "CALL" && a.voipProvider === "allo" && !a.voipSummary
-        );
-        if (!alloActions.length) { showError("Aucun appel Allo en attente."); return; }
-        setIsSyncingAllo(true);
-        let updated = 0;
-        try {
-            await Promise.allSettled(alloActions.map(async a => {
-                const res = await fetch("/api/voip/allo/sync-call", {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ actionId: a.id }),
-                });
-                const j = await res.json();
-                if (j.ok && j.updated) updated++;
-            }));
-            if (selectedMission) await fetchMissionData(selectedMission.id, true);
-            showSuccess(updated > 0
-                ? `${updated} appel(s) synchronisé(s).`
-                : "Synchronisation terminée, aucune nouvelle donnée.");
-        } catch { showError("Erreur de synchronisation Allo."); }
-        finally { setIsSyncingAllo(false); }
-    };
 
     // ── derived: missions by channel ─────────────────────────────────────────
     const missionsForChannel = useMemo(() =>
@@ -896,8 +866,6 @@ export default function ManagerProspectionPage() {
     // CONTROL CENTER VIEW
     // ─────────────────────────────────────────────────────────────────────────
 
-    const alloWaitCount = actions.filter(a => a.channel === "CALL" && a.voipProvider === "allo" && !a.voipSummary).length;
-
     return (
         <div className="max-w-7xl mx-auto pb-12 space-y-5">
 
@@ -950,27 +918,6 @@ export default function ManagerProspectionPage() {
                             <Radio className={cn("w-3.5 h-3.5", liveRefresh && "animate-pulse")} aria-hidden />
                             Live
                         </button>
-
-                        {/* Allo sync */}
-                        {channel === "CALL" && (
-                            <button
-                                type="button"
-                                onClick={handleSyncAllo}
-                                disabled={isSyncingAllo}
-                                aria-label="Synchroniser avec Web Allo"
-                                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-bold hover:bg-emerald-100 transition-all disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                            >
-                                {isSyncingAllo
-                                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
-                                    : <RefreshCw className="w-3.5 h-3.5" aria-hidden />}
-                                Sync Allo
-                                {alloWaitCount > 0 && (
-                                    <span className="ml-0.5 bg-emerald-200 text-emerald-800 text-[10px] font-black px-1.5 py-0.5 rounded-md">
-                                        {alloWaitCount}
-                                    </span>
-                                )}
-                            </button>
-                        )}
 
                         {/* Manual refresh */}
                         <button
@@ -1241,11 +1188,6 @@ export default function ManagerProspectionPage() {
                                     {visibleCols.has("duration") && (
                                         <Th label="Durée" sortKey="duration" currentKey={sortKey} dir={sortDir} onSort={handleSort} />
                                     )}
-                                    {visibleCols.has("voip") && (
-                                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                            <span className="sr-only">Enregistrement</span>
-                                        </th>
-                                    )}
                                     {/* Row action */}
                                     <th className="w-10 px-2 py-3" aria-hidden />
                                 </tr>
@@ -1254,9 +1196,7 @@ export default function ManagerProspectionPage() {
                                 {pageRows.map((row, idx) => {
                                     const cfg = getCfg(row.result);
                                     const isSelected = selectedIds.has(row.id);
-                                    const displayNote = row.voipSummary ?? row.note;
-                                    const isVoip = row.channel === "CALL" && row.voipProvider;
-                                    const waitingVoip = isVoip && !row.voipSummary && !row.note;
+                                    const displayNote = row.note;
                                     const contactName = getContactName(row);
                                     const companyName = getCompanyName(row);
                                     const name = contactName || companyName || "—";
@@ -1361,19 +1301,8 @@ export default function ManagerProspectionPage() {
                                             {/* Note */}
                                             {visibleCols.has("note") && (
                                                 <td className={cn("px-4 max-w-[260px]", rowPy)}>
-                                                    {waitingVoip ? (
-                                                        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
-                                                            <Loader2 className="w-3 h-3 animate-spin shrink-0" aria-hidden />
-                                                            <span>En attente résumé…</span>
-                                                            <span className="sr-only">Chargement</span>
-                                                        </span>
-                                                    ) : displayNote ? (
+                                                    {displayNote ? (
                                                         <div>
-                                                            {isVoip && (
-                                                                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 block mb-0.5">
-                                                                    {row.voipProvider === "allo" ? "Allo AI" : row.voipProvider}
-                                                                </span>
-                                                            )}
                                                             <p className="text-xs text-slate-600 truncate" title={displayNote}>
                                                                 {displayNote}
                                                             </p>
@@ -1393,26 +1322,6 @@ export default function ManagerProspectionPage() {
                                                         </span>
                                                     ) : (
                                                         <span className="text-slate-300 text-xs">—</span>
-                                                    )}
-                                                </td>
-                                            )}
-
-                                            {/* Recording */}
-                                            {visibleCols.has("voip") && (
-                                                <td className={cn("px-4", rowPy)} onClick={e => e.stopPropagation()}>
-                                                    {row.voipRecordingUrl ? (
-                                                        <a
-                                                            href={row.voipRecordingUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            aria-label="Écouter l'enregistrement"
-                                                            className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-400 rounded"
-                                                        >
-                                                            <ExternalLink className="w-3 h-3" aria-hidden />
-                                                            Écouter
-                                                        </a>
-                                                    ) : (
-                                                        <span className="text-slate-200 text-xs">—</span>
                                                     )}
                                                 </td>
                                             )}

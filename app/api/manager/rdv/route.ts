@@ -265,8 +265,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     meetingJoinUrl: m.meetingJoinUrl,
     meetingPhone: m.meetingPhone,
     note: m.note,
-    voipSummary: m.voipSummary,
-    voipTranscript: m.voipTranscript,
     cancellationReason: m.cancellationReason,
     createdAt: m.createdAt,
     duration: m.duration,

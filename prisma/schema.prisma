@@ -94,11 +94,6 @@ enum ActionPriorityLabel {
 }
 
 // VoIP call workflow: in-progress until SDR validates
-enum ActionStatus {
-  IN_PROGRESS
-  PENDING_VALIDATION
-}
-
 enum SyncDirection {
   CRM_TO_DRIVE
   DRIVE_TO_CRM
@@ -427,11 +422,6 @@ model User {
   createdProspectRules ProspectRule[] @relation("ProspectRuleCreator")
   updatedProspectRules ProspectRule[] @relation("ProspectRuleUpdater")
   
-  // VoIP (unified layer: one provider per SDR)
-  userVoipConfig      UserVoipConfig?
-  callSessions        CallSession[]   @relation("SdrCallSessions")
-  callRecords         CallRecord[]    @relation("SdrCallRecords")
-  
   // Leexi imports
   leexiImports  LeexiCallImport[] @relation("LeexiImporter")
   
@@ -658,10 +648,6 @@ model Mission {
   // Client Portal: shareable report links
   sharedReportLinks SharedReportLink[]
 
-  // Webhook call records (WithAllo, etc.)
-  callRecords   CallRecord[]
-  callSessions  CallSession[]
-
   // API Keys scoped to this mission
   apiKeys       ApiKey[]
 
@@ -741,8 +727,6 @@ model Company {
   contacts      Contact[]
   opportunities Opportunity[]
   actions       Action[]  // Actions can be on companies too
-  callRecords   CallRecord[]
-  callSessions  CallSession[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -771,9 +755,6 @@ model Contact {
 
   // Email consent: when true, contact has unsubscribed from emails
   unsubscribed          Boolean   @default(false)
-
-  callRecords   CallRecord[]
-  callSessions  CallSession[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -815,132 +796,11 @@ model Action {
   rdvFicheUpdatedAt DateTime?
   createdAt     DateTime     @default(now())
 
-  // Call workflow: IN_PROGRESS when call started, PENDING_VALIDATION when webhook received
-  actionStatus  ActionStatus?
-
-  // VOIP Unified Layer (provider-agnostic)
-  voipProvider      String?   // 'allo' | 'aircall' | 'ringover'
-  voipCallId        String?   // Provider call id (unique per provider)
-  voipRecordingUrl  String?
-  voipSummary       String?   @db.Text
-  voipTranscript    Json?     // TranscriptSegment[] normalized
-  voipSentiment     String?   // 'positive' | 'neutral' | 'negative'
-  voipTopics        Json?     // String[]
-  voipActionItems   Json?     // String[]
-  voipEnrichedAt    DateTime?
-
   meetingFeedback   MeetingFeedback?
 
   @@index([companyId])
   @@index([contactId])
   @@index([callbackDate])
-  @@unique([voipProvider, voipCallId])
-}
-
-// Webhook call records (WithAllo, etc.) - linked to mission for automated validation
-model CallRecord {
-  id             String    @id @default(cuid())
-  missionId      String
-  mission        Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
-  contactId      String?
-  contact        Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  companyId      String?
-  company        Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  sessionId      String?
-  session        CallSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  sdrId          String?
-  sdr            User?     @relation("SdrCallRecords", fields: [sdrId], references: [id], onDelete: SetNull)
-  externalCallId String    // WithAllo call id (idempotency)
-  source         String    @default("withallo")
-  provider       String?   // Kept in sync with existing DB column to avoid data loss
-  fromNumber     String?
-  toNumber       String?
-  duration       Int?      // seconds
-  durationSeconds Int?
-  direction      String?   // INBOUND | OUTBOUND
-  summary        String?   @db.Text
-  recordingUrl   String?
-  timestamp      DateTime
-  startedAt      DateTime?
-  endedAt        DateTime?
-  rawPayload     Json?
-  transcripts    CallTranscript[]
-  createdAt      DateTime  @default(now())
-
-  @@unique([source, externalCallId])
-  @@index([provider, externalCallId])
-  @@index([sessionId])
-  @@index([sdrId])
-  @@index([missionId])
-  @@index([timestamp])
-}
-
-model CallSession {
-  id          String    @id @default(cuid())
-  missionId   String
-  mission     Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
-  contactId   String?
-  contact     Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  companyId   String?
-  company     Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  sdrId       String
-  sdr         User      @relation("SdrCallSessions", fields: [sdrId], references: [id], onDelete: Cascade)
-  phoneNumber String
-  status      String    @default("pending")
-  callRecords CallRecord[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@index([missionId])
-  @@index([sdrId])
-  @@index([phoneNumber])
-  @@index([status, createdAt])
-}
-
-model CallTranscript {
-  id           String    @id @default(cuid())
-  callRecordId String
-  callRecord   CallRecord @relation(fields: [callRecordId], references: [id], onDelete: Cascade)
-  source       String
-  text         String    @db.Text
-  startSeconds Int?
-  endSeconds   Int?
-  speaker      String?
-  createdAt    DateTime  @default(now())
-
-  @@index([callRecordId])
-}
-
-// VoIP: one provider per SDR; provider-specific ids/numbers stored here
-model UserVoipConfig {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider          String   // 'allo' | 'aircall' | 'ringover'
-  alloNumber        String?  // Allo: E.164 for SDR
-  aircallUserId     Int?     // Aircall user id
-  aircallNumberId   Int?     // Aircall preferred number
-  ringoverUserId    String?
-  ringoverNumber    String?  // E.164 for callback
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-}
-
-// VoIP: workspace-level API keys and webhook tokens (per provider)
-model VoipWorkspaceConfig {
-  id                    String   @id @default(cuid())
-  provider              String   @unique // 'allo' | 'aircall' | 'ringover'
-  alloApiKey            String?  // Allo API key (webhooks, optional verification)
-  aircallApiId          String?
-  aircallApiToken       String?
-  aircallWebhookId      Int?
-  aircallWebhookToken   String?
-  ringoverApiKey        String?
-  ringoverWebhookSecret String?
-  active                Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
 }
 
 // Config-driven action status definitions (per scope: GLOBAL, CLIENT, MISSION, CAMPAIGN)

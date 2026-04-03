@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef } from "react";
 import type { Meeting } from "../_types";
-import { transcriptToText } from "../_lib/formatters";
 
 export type FicheAutoSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -65,11 +64,10 @@ export function useFicheRdv(
 
   const generateWithAI = useCallback(
     async (meeting: Meeting, onUpdate: (m: Meeting) => void) => {
-      const auto = transcriptToText(meeting.voipTranscript);
-      const transcription = (ficheManualTranscript || auto || "").trim();
+      const transcription = ficheManualTranscript.trim();
       if (!transcription) {
         setFicheError(
-          "Aucune transcription détectée. Collez une transcription ci-dessous, puis relancez."
+          "Collez une transcription dans le champ prévu à cet effet, puis relancez."
         );
         return;
       }

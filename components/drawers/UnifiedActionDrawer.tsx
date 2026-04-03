@@ -1,13 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useSession } from "next-auth/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Drawer, Button, Badge, Select, useToast, TextSkeleton, ListSkeleton, DateTimePicker } from "@/components/ui";
-import { useVoipCall } from "@/hooks/useVoipCall";
-import { useVoipListener } from "@/hooks/useVoipListener";
-import { VoipCallValidationModal } from "@/components/voip/VoipCallValidationModal";
-import type { VoipCallCompletedEvent } from "@/hooks/useVoipListener";
 import { ACTION_RESULT_LABELS, type ActionResult } from "@/lib/types";
 import {
     Building2,
@@ -408,7 +403,6 @@ export function UnifiedActionDrawer({
 
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState<"contact" | "company">("contact");
-    const syncedAlloActionIdsRef = useRef<Set<string>>(new Set());
 
     type ActionItem = {
         id: string;
@@ -419,9 +413,6 @@ export function UnifiedActionDrawer({
         channel?: string;
         campaign?: { name: string };
         sdr?: { id: string; name: string };
-        voipProvider?: string | null;
-        voipSummary?: string | null;
-        voipRecordingUrl?: string | null;
     };
 
     // React Query: company
@@ -549,49 +540,10 @@ export function UnifiedActionDrawer({
     const [editContactData, setEditContactData] = useState<Partial<Contact>>({});
     const [editCompanyData, setEditCompanyData] = useState<Partial<Company>>({});
 
-    const [voipModalOpen, setVoipModalOpen] = useState(false);
-    const [voipModalData, setVoipModalData] = useState<VoipCallCompletedEvent | null>(null);
-    const [voipModalActionId, setVoipModalActionId] = useState<string>("");
-    const [voipEnrichmentSummary, setVoipEnrichmentSummary] = useState<string | null>(null);
-
     // ── Inline email panel (ENVOIE_MAIL) ──────────────────────────────────────
     const [emailSelectedMailboxId, setEmailSelectedMailboxId] = useState<string>("");
     const [emailSelectedTemplateId, setEmailSelectedTemplateId] = useState<string>("");
     const [emailPreviewTemplateId, setEmailPreviewTemplateId] = useState<string>("");
-
-    const { data: session } = useSession();
-    const userId = session?.user?.id ?? null;
-
-    const { state: voipState, initiateCall: voipInitiate } = useVoipCall({
-        onError: (msg) => showError("Appel", msg),
-        onSuccess: (msg) => success("Appel", msg),
-        onFallbackToTel: (phone) => {
-            window.open(`tel:${phone}`, "_self");
-            success("Appel", "Ouvrez votre téléphone pour appeler (VOIP non configuré)");
-        },
-    });
-
-    useVoipListener({
-        userId,
-        enabled: isOpen && !!userId,
-        onCallCompleted: (data) => {
-            if (data.autoValidated) {
-                success("Appel Allo", `Résumé IA enregistré pour ${data.contactName || "le contact"}`);
-                queryClient.invalidateQueries({ queryKey: actionsQueryKey });
-                onActionRecorded?.();
-                return;
-            }
-            setVoipModalActionId(data.actionId);
-            setVoipModalData(data);
-            setVoipEnrichmentSummary(null);
-            setVoipModalOpen(true);
-        },
-        onEnrichmentReady: (data) => {
-            if (data.actionId === voipModalActionId && data.summary) {
-                setVoipEnrichmentSummary(data.summary);
-            }
-        },
-    });
 
     // Auto-focus note textarea when result requiring note is selected
     useEffect(() => {
@@ -667,26 +619,6 @@ export function UnifiedActionDrawer({
             showError("Erreur", "Erreur de connexion");
         }
     };
-
-    // Allo sync: sync call summaries then invalidate actions
-    useEffect(() => {
-        if (!isOpen || !actions.length) return;
-        const toSync = actions
-            .filter((a) => a.channel === "CALL" && a.voipProvider === "allo" && !a.voipSummary && !a.note)
-            .map((a) => a.id)
-            .filter((id) => !syncedAlloActionIdsRef.current.has(id));
-        toSync.forEach((id) => syncedAlloActionIdsRef.current.add(id));
-        if (!toSync.length) return;
-        Promise.allSettled(
-            toSync.map((actionId) =>
-                fetch("/api/voip/allo/sync-call", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ actionId }),
-                })
-            )
-        ).then(() => queryClient.invalidateQueries({ queryKey: actionsQueryKey }));
-    }, [isOpen, actions, queryClient, actionsQueryKey]);
 
     // ── Email mailboxes (React Query) ──
     type Mailbox = { id: string; email: string; displayName: string | null };
@@ -1286,12 +1218,9 @@ export function UnifiedActionDrawer({
                                                 RESULT_CHIP_CONFIG.NO_RESPONSE;
                                             const Icon = cfg.icon;
                                             const isExpanded = expandedNotes.has(a.id);
-                                            const noteText = a.voipSummary || a.note;
+                                            const noteText = a.note;
                                             const hasLongNote = noteText && noteText.length > 80;
-                                            const hasContent =
-                                                a.note ||
-                                                a.voipSummary ||
-                                                (a.voipProvider && a.channel === "CALL");
+                                            const hasContent = !!a.note?.trim();
 
                                             return (
                                                 <li
@@ -1425,57 +1354,10 @@ export function UnifiedActionDrawer({
                                                         {/* Expandable note content */}
                                                         {hasContent && isExpanded && (
                                                             <div className="px-3 pb-3 pt-0 border-t border-slate-100 space-y-2">
-                                                                {a.voipProvider && !a.voipSummary && !a.note && (
-                                                                    <div className="flex items-center gap-2 py-2 text-amber-600">
-                                                                        <Loader2
-                                                                            className="w-3.5 h-3.5 animate-spin shrink-0"
-                                                                            aria-hidden="true"
-                                                                        />
-                                                                        <span className="text-xs font-medium">
-                                                                            En attente du résumé{" "}
-                                                                            {a.voipProvider === "allo"
-                                                                                ? "Allo"
-                                                                                : a.voipProvider === "aircall"
-                                                                                    ? "Aircall"
-                                                                                    : "Ringover"}
-                                                                            …
-                                                                        </span>
-                                                                        <span className="sr-only">
-                                                                            Chargement en cours
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                                {a.voipSummary && (
-                                                                    <div className="pt-2">
-                                                                        <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider mb-1">
-                                                                            {a.voipProvider === "allo"
-                                                                                ? "Résumé Allo"
-                                                                                : a.voipProvider === "aircall"
-                                                                                    ? "Résumé Aircall"
-                                                                                    : a.voipProvider === "ringover"
-                                                                                        ? "Résumé Ringover"
-                                                                                        : "Résumé appel"}
-                                                                        </p>
-                                                                        <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">
-                                                                            {a.voipSummary}
-                                                                        </p>
-                                                                    </div>
-                                                                )}
-                                                                {a.note && (!a.voipSummary || a.note !== a.voipSummary) && (
+                                                                {a.note && (
                                                                     <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed pt-2">
                                                                         {a.note}
                                                                     </p>
-                                                                )}
-                                                                {a.voipRecordingUrl && (
-                                                                    <a
-                                                                        href={a.voipRecordingUrl}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-400 rounded"
-                                                                    >
-                                                                        <ExternalLink className="w-3 h-3" aria-hidden="true" />
-                                                                        Écouter l&apos;enregistrement
-                                                                    </a>
                                                                 )}
                                                             </div>
                                                         )}
@@ -1518,43 +1400,18 @@ export function UnifiedActionDrawer({
                         {primaryPhone && (
                             <button
                                 type="button"
-                                disabled={voipState === "initiating"}
                                 aria-label={`Appeler ${primaryPhone.number}`}
-                                onClick={async () => {
-                                    const campaignId = campaigns[0]?.id;
-                                    if (campaignId && userId) {
-                                        try {
-                                            await voipInitiate({
-                                                contactId: contactId ?? undefined,
-                                                companyId: contactId ? undefined : companyId,
-                                                phone: primaryPhone.number,
-                                                campaignId,
-                                                missionId: missionId ?? undefined,
-                                            });
-                                        } catch {
-                                            window.open(`tel:${primaryPhone.number}`, "_self");
-                                        }
-                                    } else {
-                                        window.open(`tel:${primaryPhone.number}`, "_self");
-                                    }
+                                onClick={() => {
+                                    window.open(`tel:${primaryPhone.number}`, "_self");
                                 }}
-                                className="flex-1 min-w-[130px] flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:from-emerald-700 active:to-emerald-800 text-white rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 active:scale-[0.98]"
+                                className="flex-1 min-w-[130px] flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:from-emerald-700 active:to-emerald-800 text-white rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 active:scale-[0.98]"
                             >
-                                {voipState === "initiating" ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                                        <span>Connexion…</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <PhoneCall className="w-4 h-4" aria-hidden="true" />
-                                        <span>Appeler</span>
-                                        {primaryPhone.label === "Société" && (
-                                            <span className="text-xs opacity-75 font-normal">
-                                                (société)
-                                            </span>
-                                        )}
-                                    </>
+                                <PhoneCall className="w-4 h-4" aria-hidden="true" />
+                                <span>Appeler</span>
+                                {primaryPhone.label === "Société" && (
+                                    <span className="text-xs opacity-75 font-normal">
+                                        (société)
+                                    </span>
                                 )}
                             </button>
                         )}
@@ -3088,31 +2945,6 @@ export function UnifiedActionDrawer({
                 />
             )}
 
-            {userId && voipModalData && (
-                <VoipCallValidationModal
-                    isOpen={voipModalOpen}
-                    onClose={() => {
-                        setVoipModalOpen(false);
-                        setVoipModalData(null);
-                        setVoipModalActionId("");
-                        setVoipEnrichmentSummary(null);
-                        onActionRecorded?.();
-                    }}
-                    actionId={voipModalActionId}
-                    callData={voipModalData}
-                    enrichmentSummary={voipEnrichmentSummary}
-                    statusOptions={statusConfig?.statuses
-                        ?.filter((s) => s.code !== "MEETING_CANCELLED")
-                        ?.map((s) => ({
-                            value: s.code,
-                            label: s.label,
-                        }))}
-                    onValidated={() => {
-                        queryClient.invalidateQueries({ queryKey: actionsQueryKey });
-                        onActionRecorded?.();
-                    }}
-                />
-            )}
         </Drawer>
     );
 }

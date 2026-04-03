@@ -37,8 +37,6 @@ export async function GET(request: NextRequest) {
         const missionId = searchParams.get("missionId");
         const result = searchParams.get("result");
         const channel = searchParams.get("channel");
-        const voipProvider = searchParams.get("voipProvider");
-
         const sdrId = session.user.id;
         const isBooker = role === "BOOKER";
 
@@ -51,7 +49,6 @@ export async function GET(request: NextRequest) {
             campaign?: { missionId?: string };
             result?: string;
             channel?: string;
-            voipProvider?: string;
         };
         const where: Where = {};
         // Booker sees ALL actions; SDR/BD sees only their own
@@ -83,10 +80,6 @@ export async function GET(request: NextRequest) {
         if (channel) {
             where.channel = channel;
         }
-        if (voipProvider && ["allo", "aircall", "ringover"].includes(voipProvider)) {
-            where.voipProvider = voipProvider;
-        }
-
         const actions = await prisma.action.findMany({
             where: where as any,
             orderBy: { createdAt: "desc" },
@@ -132,10 +125,6 @@ export async function GET(request: NextRequest) {
                 result: a.result,
                 resultLabel: label,
                 channel: a.channel as Channel,
-                voipProvider: a.voipProvider ?? undefined,
-                voipSummary: a.voipSummary ?? undefined,
-                voipRecordingUrl: a.voipRecordingUrl ?? undefined,
-                voipTranscript: a.voipTranscript as Array<{ speaker: string; text: string; startSeconds?: number }> | undefined,
                 campaignName: a.campaign?.name,
                 missionId: a.campaign?.mission?.id,
                 missionName: a.campaign?.mission?.name,

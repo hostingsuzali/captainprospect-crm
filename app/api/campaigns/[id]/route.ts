@@ -16,8 +16,9 @@ import { z } from 'zod';
 
 const updateCampaignSchema = z.object({
     name: z.string().min(1).optional(),
-    icp: z.string().min(1).optional(),
-    pitch: z.string().min(1).optional(),
+    /** Allow empty strings so managers can save script-only edits or clear draft text without Zod rejecting the body. */
+    icp: z.string().optional(),
+    pitch: z.string().optional(),
     script: z.union([
         z.string(),
         z.object({

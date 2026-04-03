@@ -99,7 +99,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         result: a.result,
         duration: a.duration,
         note: a.note,
-        recordingUrl: a.voipRecordingUrl,
     }));
 
     return paginatedResponse(items, total, page, limit);
