@@ -17,11 +17,22 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
   const [results, setResults] = useState<LinkContactResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [linkError, setLinkError] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(meeting.company?.id ?? "");
+  const [newContact, setNewContact] = useState({
+    firstName: "",
+    lastName: "",
+    title: "",
+    email: "",
+    phone: "",
+  });
 
   const handleSearch = async (q: string) => {
     setQuery(q);
     setLinkError("");
+    setCreateError("");
     if (q.trim().length < 2) { setResults([]); return; }
     setSearching(true);
     try {
@@ -68,8 +79,59 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
     return acc;
   }, []);
 
+  const companyOptions = groups
+    .filter((g) => !!g.companyId)
+    .map((g) => ({ id: g.companyId as string, name: g.companyName }));
+
+  const canCreate =
+    !creating &&
+    !!selectedCompanyId &&
+    (!!newContact.firstName.trim() || !!newContact.lastName.trim()) &&
+    (!!newContact.email.trim() || !!newContact.phone.trim());
+
+  const handleCreateAndLink = async () => {
+    if (!canCreate) return;
+    setCreateError("");
+    setCreating(true);
+    try {
+      const payload = {
+        companyId: selectedCompanyId,
+        firstName: newContact.firstName.trim() || undefined,
+        lastName: newContact.lastName.trim() || undefined,
+        title: newContact.title.trim() || undefined,
+        email: newContact.email.trim() || undefined,
+        phone: newContact.phone.trim() || undefined,
+      };
+      const createRes = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const createJson = await createRes.json().catch(() => null);
+      const created = createJson?.data as LinkContactResult | undefined;
+      if (!createRes.ok || !createJson?.success || !created?.id) {
+        setCreateError(createJson?.error || "Impossible de créer le contact pour le moment.");
+        return;
+      }
+
+      await handleLink({
+        id: created.id,
+        firstName: created.firstName ?? payload.firstName ?? null,
+        lastName: created.lastName ?? payload.lastName ?? null,
+        email: created.email ?? payload.email ?? null,
+        phone: created.phone ?? payload.phone ?? null,
+        title: created.title ?? payload.title ?? null,
+        company: created.company ?? companyOptions.find((c) => c.id === selectedCompanyId) ?? null,
+      });
+    } catch {
+      setCreateError("Erreur réseau. Veuillez réessayer.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
-    <Modal isOpen onClose={() => !saving && onClose()} title="Lier un contact au RDV" size="md">
+    <Modal isOpen onClose={() => !(saving || creating) && onClose()} title="Lier un contact au RDV" size="md">
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ position: "relative" }}>
           <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--ink3)" }} />
@@ -131,8 +193,98 @@ export function LinkContactModal({ meeting, onClose, onLinked }: LinkContactModa
           </div>
         )}
 
+        <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", letterSpacing: "0.02em" }}>
+              Créer un contact
+            </span>
+            <span style={{ fontSize: 11, color: "var(--ink3)" }}>
+              Si le contact n&apos;existe pas
+            </span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+            <select
+              className="rdv-input"
+              value={selectedCompanyId}
+              onChange={(e) => setSelectedCompanyId(e.target.value)}
+              disabled={creating || saving}
+            >
+              <option value="">Choisir une société…</option>
+              {meeting.company?.id && (
+                <option value={meeting.company.id}>{meeting.company.name}</option>
+              )}
+              {companyOptions
+                .filter((c) => c.id !== meeting.company?.id)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+            </select>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input
+                className="rdv-input"
+                placeholder="Prénom"
+                value={newContact.firstName}
+                onChange={(e) => setNewContact((prev) => ({ ...prev, firstName: e.target.value }))}
+                disabled={creating || saving}
+              />
+              <input
+                className="rdv-input"
+                placeholder="Nom"
+                value={newContact.lastName}
+                onChange={(e) => setNewContact((prev) => ({ ...prev, lastName: e.target.value }))}
+                disabled={creating || saving}
+              />
+            </div>
+
+            <input
+              className="rdv-input"
+              placeholder="Fonction (optionnel)"
+              value={newContact.title}
+              onChange={(e) => setNewContact((prev) => ({ ...prev, title: e.target.value }))}
+              disabled={creating || saving}
+            />
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input
+                className="rdv-input"
+                placeholder="Email"
+                type="email"
+                value={newContact.email}
+                onChange={(e) => setNewContact((prev) => ({ ...prev, email: e.target.value }))}
+                disabled={creating || saving}
+              />
+              <input
+                className="rdv-input"
+                placeholder="Téléphone"
+                value={newContact.phone}
+                onChange={(e) => setNewContact((prev) => ({ ...prev, phone: e.target.value }))}
+                disabled={creating || saving}
+              />
+            </div>
+          </div>
+
+          <p style={{ fontSize: 11, color: "var(--ink3)" }}>
+            Renseignez au moins un nom (prénom/nom) et un canal (email ou téléphone).
+          </p>
+          {createError && (
+            <div style={{ fontSize: 12, color: "var(--red)" }}>{createError}</div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="rdv-btn rdv-btn-primary"
+              onClick={handleCreateAndLink}
+              disabled={!canCreate || saving}
+            >
+              {creating ? "Création…" : "Créer et lier"}
+            </button>
+          </div>
+        </div>
+
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button className="rdv-btn rdv-btn-ghost" onClick={onClose} disabled={saving}>Annuler</button>
+          <button className="rdv-btn rdv-btn-ghost" onClick={onClose} disabled={saving || creating}>Annuler</button>
         </div>
       </div>
     </Modal>
