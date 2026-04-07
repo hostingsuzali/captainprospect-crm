@@ -35,6 +35,8 @@ import type {
     BroadcastAudience,
 } from "./types";
 
+const CLIENT_SUPPORT_DISPLAY_NAME = "Equipe support";
+
 // ============================================
 // CHANNEL MANAGEMENT
 // ============================================
@@ -439,6 +441,11 @@ export async function getInboxThreads(
     pageSize = 20
 ): Promise<{ threads: CommsThreadListItem[]; total: number }> {
     const skip = (page - 1) * pageSize;
+    const currentUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+    });
+    const isClientViewer = currentUser?.role === "CLIENT";
 
     // Base where clause - user must be a participant
     const baseWhere: Prisma.CommsThreadWhereInput = {
@@ -491,7 +498,7 @@ export async function getInboxThreads(
                     orderBy: { createdAt: "desc" },
                     take: 1,
                     include: {
-                        author: { select: { name: true } },
+                        author: { select: { id: true, name: true } },
                     },
                 },
                 _count: { select: { participants: true } },
@@ -508,27 +515,42 @@ export async function getInboxThreads(
             const currentParticipant = thread.participants.find((p) => p.userId === userId);
             const otherParticipant = thread.participants.find((p) => p.userId !== userId);
             const isDirect = thread.channel.type === "DIRECT";
+            const maskedDirectForClient = isClientViewer && isDirect;
+            const lastMessage = thread.messages[0];
+            const maskedAuthorName =
+                maskedDirectForClient && lastMessage && lastMessage.author.id !== userId
+                    ? CLIENT_SUPPORT_DISPLAY_NAME
+                    : lastMessage?.author.name;
             return {
                 id: thread.id,
                 channelId: thread.channelId,
                 channelType: thread.channel.type as CommsChannelType,
-                channelName: await getChannelName(thread.channel),
-                subject: thread.subject,
+                channelName: maskedDirectForClient
+                    ? CLIENT_SUPPORT_DISPLAY_NAME
+                    : await getChannelName(thread.channel),
+                subject: maskedDirectForClient
+                    ? `Message avec ${CLIENT_SUPPORT_DISPLAY_NAME}`
+                    : thread.subject,
                 status: thread.status as CommsThreadStatus,
                 isBroadcast: thread.isBroadcast,
                 createdBy: {
                     id: thread.createdBy.id,
                     name: thread.createdBy.name,
                 },
-                ...(isDirect && otherParticipant?.user?.name != null && { otherParticipantName: otherParticipant.user.name }),
+                ...(isDirect &&
+                    (maskedDirectForClient
+                        ? { otherParticipantName: CLIENT_SUPPORT_DISPLAY_NAME }
+                        : otherParticipant?.user?.name != null
+                            ? { otherParticipantName: otherParticipant.user.name }
+                            : {})),
                 participantCount: thread._count.participants,
                 messageCount: thread.messageCount,
                 unreadCount: currentParticipant?.unreadCount ?? 0,
-                lastMessage: thread.messages[0]
+                lastMessage: lastMessage
                     ? {
-                        content: truncateContent(thread.messages[0].content, 100),
-                        authorName: thread.messages[0].author.name,
-                        createdAt: thread.messages[0].createdAt.toISOString(),
+                        content: truncateContent(lastMessage.content, 100),
+                        authorName: maskedAuthorName ?? lastMessage.author.name,
+                        createdAt: lastMessage.createdAt.toISOString(),
                     }
                     : undefined,
                 createdAt: thread.createdAt.toISOString(),
@@ -546,6 +568,12 @@ export async function getThread(
     threadId: string,
     userId: string
 ): Promise<CommsThreadView | null> {
+    const currentUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+    });
+    const isClientViewer = currentUser?.role === "CLIENT";
+
     const thread = await prisma.commsThread.findFirst({
         where: {
             id: threadId,
@@ -589,6 +617,8 @@ export async function getThread(
     });
 
     if (!thread) return null;
+    const isDirect = thread.channel.type === "DIRECT";
+    const maskedDirectForClient = isClientViewer && isDirect;
 
     // Mark as read
     await prisma.commsParticipant.update({
@@ -618,8 +648,12 @@ export async function getThread(
         id: thread.id,
         channelId: thread.channelId,
         channelType: thread.channel.type as CommsChannelType,
-        channelName: await getChannelName(thread.channel),
-        subject: thread.subject,
+        channelName: maskedDirectForClient
+            ? CLIENT_SUPPORT_DISPLAY_NAME
+            : await getChannelName(thread.channel),
+        subject: maskedDirectForClient
+            ? `Message avec ${CLIENT_SUPPORT_DISPLAY_NAME}`
+            : thread.subject,
         status: thread.status as CommsThreadStatus,
         isBroadcast: thread.isBroadcast,
         createdBy: {
@@ -634,7 +668,10 @@ export async function getThread(
         participants: thread.participants.map((p) => ({
             id: p.id,
             userId: p.user.id,
-            userName: p.user.name,
+            userName:
+                maskedDirectForClient && p.user.id !== userId
+                    ? CLIENT_SUPPORT_DISPLAY_NAME
+                    : p.user.name,
             userRole: p.user.role,
             lastReadAt: p.lastReadAt?.toISOString(),
             unreadCount: p.unreadCount,
@@ -648,9 +685,16 @@ export async function getThread(
             content: m.content,
             author: {
                 id: m.author.id,
-                name: m.author.name,
+                name:
+                    maskedDirectForClient && m.author.id !== userId
+                        ? CLIENT_SUPPORT_DISPLAY_NAME
+                        : m.author.name,
                 role: m.author.role,
-                initials: getInitials(m.author.name),
+                initials: getInitials(
+                    maskedDirectForClient && m.author.id !== userId
+                        ? CLIENT_SUPPORT_DISPLAY_NAME
+                        : m.author.name
+                ),
             },
             mentions: m.mentions.map((mention) => ({
                 userId: mention.user.id,
