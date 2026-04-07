@@ -60,8 +60,8 @@ interface MonthlySummary {
 }
 
 const MONTH_NAMES = [
-    "", "Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Aout", "Septembre", "Octobre", "Novembre", "Decembre",
+    "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
 ];
 
 export default function ClientPortalReportingPage() {

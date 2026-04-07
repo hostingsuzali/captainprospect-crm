@@ -143,6 +143,14 @@ export const GET = withErrorHandler(async (
                     email: true,
                 },
             },
+            interlocuteur: {
+                select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    title: true,
+                },
+            },
             meetingFeedback: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -207,6 +215,16 @@ export const GET = withErrorHandler(async (
         totalMeetings: meetings.length,
         byMission: Array.from(byMission.values()),
         byCampaign: Array.from(byCampaign.values()),
-        allMeetings: meetings,
+        allMeetings: meetings.map((meeting) => ({
+            ...meeting,
+            interlocuteur: meeting.interlocuteur
+                ? {
+                    id: meeting.interlocuteur.id,
+                    firstName: meeting.interlocuteur.firstName,
+                    lastName: meeting.interlocuteur.lastName,
+                    title: meeting.interlocuteur.title,
+                }
+                : null,
+        })),
     });
 });

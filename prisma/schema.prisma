@@ -388,6 +388,7 @@ model User {
   scheduleBlocks       ScheduleBlock[] @relation("SDRScheduleBlocks")
   createdScheduleBlocks ScheduleBlock[] @relation("CreatedScheduleBlocks")
   missionPlanSdrAssignments MissionPlanSdr[]
+  dailyFeedbacks      SdrDailyFeedback[]
   
   // Advanced Planning: allocations, capacity, absences
   sdrDayAllocations    SdrDayAllocation[] @relation("SdrDayAllocations")
@@ -647,6 +648,8 @@ model Mission {
 
   // Client Portal: shareable report links
   sharedReportLinks SharedReportLink[]
+  dailyFeedbacks    SdrDailyFeedback[]
+  feedbackLinks     SdrDailyFeedbackMission[]
 
   // API Keys scoped to this mission
   apiKeys       ApiKey[]
@@ -3017,6 +3020,39 @@ model MeetingFeedback {
   clientNote          String?             @db.Text
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
+}
+
+model SdrDailyFeedback {
+  id             String    @id @default(cuid())
+  sdrId          String
+  sdr            User      @relation(fields: [sdrId], references: [id], onDelete: Cascade)
+  missionId      String?   // legacy primary mission (first selected mission)
+  mission        Mission?  @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  missions       SdrDailyFeedbackMission[]
+  score          Int
+  review         String    @db.Text
+  objections     String?   @db.Text
+  missionComment String?   @db.Text
+  pagePath       String?
+  submittedAt    DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  @@index([sdrId])
+  @@index([missionId])
+  @@index([submittedAt])
+}
+
+model SdrDailyFeedbackMission {
+  id         String           @id @default(cuid())
+  feedbackId String
+  missionId  String
+  feedback   SdrDailyFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  mission    Mission          @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now())
+
+  @@unique([feedbackId, missionId])
+  @@index([missionId])
+  @@index([feedbackId])
 }
 
 // ============================================

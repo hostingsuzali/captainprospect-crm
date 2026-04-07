@@ -47,9 +47,9 @@ export function parseRdvImportDate(raw: string): Date | undefined {
         }
     }
 
-    // French: DD/MM/YYYY, separators / - .
+    // French: DD/MM/YYYY, separators / - . ; optional time HH:MM or HH:MM:SS
     const frMatch = value.match(
-        /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})(?:[ T](\d{1,2}):(\d{2}))?$/
+        /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
     );
     if (frMatch) {
         const day = parseInt(frMatch[1], 10);
@@ -57,6 +57,7 @@ export function parseRdvImportDate(raw: string): Date | undefined {
         let year = parseInt(frMatch[3], 10);
         const hours = frMatch[4] ? parseInt(frMatch[4], 10) : 0;
         const minutes = frMatch[5] ? parseInt(frMatch[5], 10) : 0;
+        const seconds = frMatch[6] ? parseInt(frMatch[6], 10) : 0;
         if (year < 100) year = 2000 + year;
         if (
             Number.isNaN(day) ||
@@ -69,7 +70,7 @@ export function parseRdvImportDate(raw: string): Date | undefined {
         ) {
             return undefined;
         }
-        const d = new Date(year, month - 1, day, hours, minutes, 0, 0);
+        const d = new Date(year, month - 1, day, hours, minutes, seconds, 0);
         return Number.isNaN(d.getTime()) ? undefined : d;
     }
 

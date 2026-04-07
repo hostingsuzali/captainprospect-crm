@@ -335,13 +335,15 @@ function InfoRow({
     return (
         <div
             className={cn(
-                "flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0 transition-colors",
-                !editing && "hover:bg-slate-50/60"
+                "flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0 transition-all duration-150",
+                !editing && "hover:bg-slate-50/60 focus-within:bg-slate-50/40"
             )}
+            role="group"
+            aria-label={label}
         >
             <div
                 className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                    "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-200",
                     iconBg
                 )}
                 aria-hidden="true"
@@ -349,7 +351,7 @@ function InfoRow({
                 <Icon className={cn("w-3.5 h-3.5", iconColor)} />
             </div>
             <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-0.5">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-0.5" id={`field-label-${label.replace(/\s/g, "-").toLowerCase()}`}>
                     {label}
                 </p>
                 {children}
@@ -1228,15 +1230,27 @@ export function UnifiedActionDrawer({
             title={displayName}
             description={missionName ? `Mission : ${missionName}` : undefined}
             size="lg"
+            className="top-2 bottom-2 right-2 rounded-[24px] border border-slate-200/80 shadow-[0_24px_64px_rgba(15,23,42,0.16)]"
         >
+            <style>{`
+                @keyframes uadSectionIn {
+                    from { opacity: 0; transform: translateY(6px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes uadPulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                }
+            `}</style>
             {loading ? (
-                <div className="space-y-5 p-1">
+                <div className="space-y-5 p-1" role="status" aria-label="Chargement des données">
                     <div className="flex gap-3">
                         <TextSkeleton lines={2} className="flex-1" />
                         <TextSkeleton lines={1} className="w-20" />
                     </div>
                     <ListSkeleton items={3} hasAvatar className="mt-2" />
                     <TextSkeleton lines={4} />
+                    <span className="sr-only">Chargement en cours...</span>
                 </div>
             ) : (companyId && !company) || (contactId && !contact) ? (
                 /* ── Error state ── */
@@ -1261,25 +1275,29 @@ export function UnifiedActionDrawer({
                     </Button>
                 </div>
             ) : (
-                <div className="flex flex-col gap-4 pb-4">
+                <div className="flex flex-col gap-4 pb-4" role="main" aria-label="Actions sur le contact">
 
                     {/* ── Unified history section (moved to top) ── */}
                     <section
                         aria-label="Historique des actions"
                         className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+                        style={{ animation: "uadSectionIn 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
                     >
                         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-white">
                             <div
-                                className="w-7 h-7 rounded-lg bg-slate-700 flex items-center justify-center shadow-sm"
+                                className="w-7 h-7 rounded-lg bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center shadow-sm"
                                 aria-hidden="true"
                             >
                                 <History className="w-3.5 h-3.5 text-white" />
                             </div>
-                            <h2 className="text-sm font-bold text-slate-900">Historique</h2>
+                            <h2 className="text-sm font-bold text-slate-900" id="history-heading">Historique</h2>
+                            {actionsLoading && (
+                                <div className="ml-1 w-3.5 h-3.5 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" aria-hidden="true" />
+                            )}
                             {actions.length > 0 && (
                                 <span
-                                    className="ml-auto text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-2.5 py-0.5"
-                                    aria-label={`${actions.length} actions`}
+                                    className="ml-auto text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full px-2.5 py-0.5 tabular-nums"
+                                    aria-label={`${actions.length} action${actions.length > 1 ? "s" : ""}`}
                                 >
                                     {actions.length}
                                 </span>
@@ -1328,14 +1346,19 @@ export function UnifiedActionDrawer({
 
                         <div className="p-4" aria-live="polite">
                             {actionsLoading ? (
-                                <ListSkeleton items={3} hasAvatar={false} className="py-1" />
+                                <div role="status" aria-label="Chargement de l'historique">
+                                    <ListSkeleton items={3} hasAvatar={false} className="py-1" />
+                                    <span className="sr-only">Chargement de l'historique...</span>
+                                </div>
                             ) : actions.length === 0 ? (
                                 <div className="flex flex-col items-center py-10 text-slate-400">
-                                    <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mb-3">
+                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-200 flex items-center justify-center mb-3 shadow-sm">
                                         <History className="w-6 h-6 text-slate-300" aria-hidden="true" />
                                     </div>
                                     <p className="text-sm font-medium text-slate-500">Aucune action enregistrée</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">Les actions apparaitront ici</p>
+                                    <p className="text-xs text-slate-400 mt-1 max-w-[200px] text-center leading-relaxed">
+                                        Utilisez le formulaire ci-dessous pour enregistrer votre première action
+                                    </p>
                                 </div>
                             ) : (
                                 <>
@@ -1529,7 +1552,8 @@ export function UnifiedActionDrawer({
                     {/* ── Quick Action Bar ── */}
                     <section
                         aria-label="Actions rapides"
-                        className="flex flex-wrap gap-2 p-3 rounded-2xl bg-gradient-to-r from-slate-50 to-slate-100/50 border border-slate-200/60"
+                        className="flex flex-wrap gap-2 p-3 rounded-2xl bg-gradient-to-r from-slate-50 via-white to-slate-50 border border-slate-200/60"
+                        style={{ animation: "uadSectionIn 250ms 50ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
                     >
                         {primaryPhone && (
                             <button
@@ -1591,17 +1615,27 @@ export function UnifiedActionDrawer({
                     {contact && (
                         <div
                             role="tablist"
-                            aria-label="Informations"
+                            aria-label="Informations contact ou société"
                             className="flex rounded-xl bg-slate-100/80 p-1 gap-1 border border-slate-200/60"
+                            style={{ animation: "uadSectionIn 250ms 100ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
+                            onKeyDown={(e) => {
+                                if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                                    e.preventDefault();
+                                    const next = activeTab === "contact" ? "company" : "contact";
+                                    setActiveTab(next);
+                                    document.getElementById(`tab-${next}`)?.focus();
+                                }
+                            }}
                         >
                             <button
                                 role="tab"
                                 id="tab-contact"
                                 aria-selected={activeTab === "contact"}
                                 aria-controls="tabpanel-contact"
+                                tabIndex={activeTab === "contact" ? 0 : -1}
                                 onClick={() => setActiveTab("contact")}
                                 className={cn(
-                                    "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400",
+                                    "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1",
                                     activeTab === "contact"
                                         ? "bg-white text-indigo-600 shadow-sm ring-1 ring-indigo-100"
                                         : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
@@ -1615,9 +1649,10 @@ export function UnifiedActionDrawer({
                                 id="tab-company"
                                 aria-selected={activeTab === "company"}
                                 aria-controls="tabpanel-company"
+                                tabIndex={activeTab === "company" ? 0 : -1}
                                 onClick={() => setActiveTab("company")}
                                 className={cn(
-                                    "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400",
+                                    "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1",
                                     activeTab === "company"
                                         ? "bg-white text-indigo-600 shadow-sm ring-1 ring-indigo-100"
                                         : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
@@ -1635,7 +1670,9 @@ export function UnifiedActionDrawer({
                             id="tabpanel-contact"
                             role="tabpanel"
                             aria-labelledby="tab-contact"
-                            className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+                            tabIndex={0}
+                            className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-1"
+                            style={{ animation: "uadSectionIn 200ms cubic-bezier(0.16, 1, 0.3, 1)" }}
                         >
                             {/* Contact header */}
                             <div className="flex items-start gap-4 p-4 border-b border-slate-100 bg-gradient-to-r from-indigo-50/40 to-transparent">
@@ -2128,7 +2165,9 @@ export function UnifiedActionDrawer({
                             id="tabpanel-company"
                             role="tabpanel"
                             aria-labelledby="tab-company"
-                            className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+                            tabIndex={0}
+                            className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-1"
+                            style={{ animation: "uadSectionIn 200ms cubic-bezier(0.16, 1, 0.3, 1)" }}
                         >
                             {/* No contact prompt */}
                             {!contact && (
@@ -2547,15 +2586,21 @@ export function UnifiedActionDrawer({
                     <section
                         aria-label="Enregistrer une action"
                         className="rounded-2xl border border-indigo-100 bg-white shadow-sm overflow-hidden ring-1 ring-indigo-50"
+                        style={{ animation: "uadSectionIn 250ms 150ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
                     >
-                        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/80 to-white">
+                        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/80 via-indigo-50/40 to-white">
                             <div
-                                className="w-7 h-7 rounded-lg bg-indigo-500 flex items-center justify-center shadow-sm"
+                                className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-sm"
                                 aria-hidden="true"
                             >
                                 <MessageSquare className="w-3.5 h-3.5 text-white" />
                             </div>
-                            <h2 className="text-sm font-bold text-slate-900">Enregistrer une action</h2>
+                            <h2 className="text-sm font-bold text-slate-900" id="record-action-heading">Enregistrer une action</h2>
+                            {newActionResult && (
+                                <span className="ml-auto text-[10px] font-semibold text-indigo-500 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                                    {statusLabels[newActionResult] ?? newActionResult}
+                                </span>
+                            )}
                         </div>
 
                         <div className="p-4">
@@ -2572,13 +2617,15 @@ export function UnifiedActionDrawer({
                                 <div className="space-y-4">
                                     {/* Outcome chips */}
                                     <fieldset>
-                                        <legend className="text-xs font-bold text-slate-700 mb-2.5 uppercase tracking-wider">
-                                            Résultat <span className="text-red-500">*</span>
+                                        <legend className="text-xs font-bold text-slate-700 mb-2.5 uppercase tracking-wider flex items-center gap-1.5">
+                                            Résultat <span className="text-red-500" aria-hidden="true">*</span>
+                                            <span className="sr-only">(obligatoire)</span>
                                         </legend>
                                         <div
                                             className="flex flex-wrap gap-2"
-                                            role="group"
+                                            role="radiogroup"
                                             aria-label="Sélectionnez le résultat de l'action"
+                                            aria-required="true"
                                         >
                                             {statusOptions.map((opt) => {
                                                 const cfg =

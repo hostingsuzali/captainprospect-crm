@@ -38,8 +38,10 @@ import {
     BarChart3,
     GripVertical,
     Pencil,
+    MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { EditMissionDialog } from "./_components/EditMissionDialog";
 import { MailboxManagerDialog } from "@/components/email/inbox/MailboxManagerDialog";
 
@@ -154,6 +156,26 @@ interface CampaignData {
     isActive: boolean;
 }
 
+interface MissionFeedbackItem {
+    id: string;
+    score: number;
+    review: string;
+    objections: string | null;
+    missionComment: string | null;
+    submittedAt: string;
+    sdr: {
+        id: string;
+        name: string;
+        email: string;
+    };
+    missions: Array<{
+        mission: {
+            id: string;
+            name: string;
+        };
+    }>;
+}
+
 // ============================================
 // CHANNEL CONFIG
 // ============================================
@@ -211,6 +233,14 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     const [isGeneratingTemplateAi, setIsGeneratingTemplateAi] = useState(false);
 
     const [activeTab, setActiveTab] = useState("general");
+    const [feedbackItems, setFeedbackItems] = useState<MissionFeedbackItem[]>([]);
+    const [feedbackLoading, setFeedbackLoading] = useState(false);
+    const [feedbackFrom, setFeedbackFrom] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 14);
+        return d.toISOString().slice(0, 10);
+    });
+    const [feedbackTo, setFeedbackTo] = useState(() => new Date().toISOString().slice(0, 10));
     const [showStatusWorkflowDrawer, setShowStatusWorkflowDrawer] = useState(false);
 
     // Inline Strategy (Campaign) state
@@ -267,9 +297,41 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
         }
     };
 
+    const fetchMissionFeedback = async () => {
+        if (!mission?.id) return;
+        setFeedbackLoading(true);
+        try {
+            const params = new URLSearchParams({
+                missionId: mission.id,
+                from: feedbackFrom,
+                to: feedbackTo,
+                limit: "300",
+            });
+            const res = await fetch(`/api/manager/sdr-feedback?${params.toString()}`);
+            const json = await res.json();
+            if (!json.success) {
+                showError("Erreur", json.error || "Impossible de charger les avis SDR");
+                setFeedbackItems([]);
+                return;
+            }
+            setFeedbackItems(json.data as MissionFeedbackItem[]);
+        } catch {
+            showError("Erreur", "Impossible de charger les avis SDR");
+            setFeedbackItems([]);
+        } finally {
+            setFeedbackLoading(false);
+        }
+    };
+
     useEffect(() => {
         fetchMission();
     }, [resolvedParams.id]);
+
+    useEffect(() => {
+        if (activeTab !== "feedback") return;
+        void fetchMissionFeedback();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, mission?.id, feedbackFrom, feedbackTo]);
 
     // Load mailboxes for mission-level default mailbox
     const refetchMailboxes = async () => {
@@ -1084,6 +1146,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                         { id: "general", label: "Général", icon: <Activity className="w-4 h-4" /> },
                         { id: "strategy", label: "Stratégie & Scripts", icon: <Target className="w-4 h-4" /> },
                         { id: "audience", label: "BDD", icon: <Users className="w-4 h-4" /> },
+                        { id: "feedback", label: "Avis SDR", icon: <MessageSquare className="w-4 h-4" /> },
                     ]}
                 />
             </div>
@@ -1891,6 +1954,119 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                             )}
                         </div>
 
+                    </div>
+                )}
+
+                {activeTab === "feedback" && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-slate-900">Feedback SDR mission</h2>
+                                    <p className="text-sm text-slate-500">
+                                        Retours des SDR assignés ayant sélectionné cette mission.
+                                    </p>
+                                </div>
+                                <div className="flex items-end gap-2">
+                                    <div>
+                                        <label className="block text-[11px] text-slate-500 mb-1">Du</label>
+                                        <input
+                                            type="date"
+                                            value={feedbackFrom}
+                                            onChange={(e) => setFeedbackFrom(e.target.value)}
+                                            className="h-9 px-2.5 rounded-lg border border-slate-200 text-xs bg-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] text-slate-500 mb-1">Au</label>
+                                        <input
+                                            type="date"
+                                            value={feedbackTo}
+                                            onChange={(e) => setFeedbackTo(e.target.value)}
+                                            className="h-9 px-2.5 rounded-lg border border-slate-200 text-xs bg-white"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => void fetchMissionFeedback()}
+                                        className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors"
+                                    >
+                                        Actualiser
+                                    </button>
+                                </div>
+                            </div>
+
+                            {feedbackLoading ? (
+                                <div className="py-16 flex items-center justify-center">
+                                    <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                                </div>
+                            ) : feedbackItems.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center">
+                                    <p className="text-sm font-medium text-slate-700">Aucun avis SDR sur cette période</p>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        Les retours apparaîtront ici dès la première soumission.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/60">
+                                            <p className="text-[11px] text-slate-500">Nombre d'avis</p>
+                                            <p className="text-2xl font-bold text-slate-900">{feedbackItems.length}</p>
+                                        </div>
+                                        <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/60">
+                                            <p className="text-[11px] text-slate-500">Score moyen</p>
+                                            <p className="text-2xl font-bold text-slate-900">
+                                                {(feedbackItems.reduce((sum, item) => sum + item.score, 0) / feedbackItems.length).toFixed(1)} / 5
+                                            </p>
+                                        </div>
+                                        <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/60">
+                                            <p className="text-[11px] text-slate-500">Avec objections</p>
+                                            <p className="text-2xl font-bold text-slate-900">
+                                                {feedbackItems.filter((item) => !!item.objections?.trim()).length}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        {feedbackItems.map((item) => (
+                                            <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <p className="text-sm font-semibold text-slate-900">{item.sdr.name}</p>
+                                                    <span className="text-slate-300">•</span>
+                                                    <p className="text-xs text-slate-500">
+                                                        {new Date(item.submittedAt).toLocaleString("fr-FR")}
+                                                    </p>
+                                                    <span className={cn(
+                                                        "ml-auto px-2 py-0.5 rounded-full text-[11px] font-semibold",
+                                                        item.score >= 4
+                                                            ? "bg-emerald-50 text-emerald-700"
+                                                            : item.score >= 3
+                                                              ? "bg-amber-50 text-amber-700"
+                                                              : "bg-red-50 text-red-700",
+                                                    )}>
+                                                        {item.score}/5
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-slate-800 whitespace-pre-wrap">{item.review}</p>
+                                                {item.objections && (
+                                                    <p className="text-xs text-slate-600 mt-2">
+                                                        <span className="font-semibold text-slate-800">Objections:</span>{" "}
+                                                        {item.objections}
+                                                    </p>
+                                                )}
+                                                {item.missionComment && (
+                                                    <p className="text-xs text-slate-600 mt-1">
+                                                        <span className="font-semibold text-slate-800">Commentaire mission:</span>{" "}
+                                                        {item.missionComment}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>

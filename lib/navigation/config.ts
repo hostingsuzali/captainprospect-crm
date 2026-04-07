@@ -134,6 +134,12 @@ export const MANAGER_NAV: NavSection[] = [
         permission: "pages.sdrs",
       },
       {
+        href: "/manager/sdr-feedback",
+        icon: MessageSquare,
+        label: "Avis SDR",
+        permission: "pages.sdrs",
+      },
+      {
         href: "/manager/planning",
         icon: Calendar,
         label: "Planning",
@@ -505,7 +511,7 @@ export const CLIENT_NAV: NavSection[] = [
       {
         href: "/client/portal/database",
         icon: Database,
-        label: "Base de donnees",
+        label: "Base de données",
         permission: "pages.dashboard",
       },
       {
@@ -534,7 +540,7 @@ export const CLIENT_NAV: NavSection[] = [
       {
         href: "/client/portal/settings",
         icon: Settings,
-        label: "Parametres",
+        label: "Paramètres",
         permission: "pages.dashboard",
       },
     ],

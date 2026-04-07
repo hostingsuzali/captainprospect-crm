@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:help.withallo.com)",
-      "Bash(npx prisma:*)"
+      "Bash(npx prisma:*)",
+      "Bash(xargs wc:*)",
+      "Bash(xargs grep:*)"
     ]
   }
 }

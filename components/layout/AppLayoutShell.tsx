@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import { UserRole } from "@prisma/client";
@@ -10,6 +10,8 @@ import { GlobalSidebar, MobileMenuButton } from "./GlobalSidebar";
 import { GlobalSearchModal } from "./GlobalSearchModal";
 import { NavSection, getNavByRole, ROLE_CONFIG } from "@/lib/navigation/config";
 import { NotificationBell } from "@/components/ui/NotificationBell";
+import { AssistantLauncher } from "@/components/ui/AssistantLauncher";
+import { Modal } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RefreshCw } from "lucide-react";
 
@@ -17,6 +19,22 @@ interface AppLayoutShellProps {
     children: React.ReactNode;
     allowedRoles: UserRole[];
     customNavigation?: NavSection[];
+}
+
+type SdrMissionOption = {
+    id: string;
+    name: string;
+    client?: { name: string };
+};
+
+const SDR_DAILY_REVIEW_HOUR = 15;
+const SDR_REVIEW_LAST_PROMPT_KEY = "sdr_daily_review_last_prompt_date";
+
+function toLocalDateKey(date: Date): string {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
 }
 
 function InnerLayout({
@@ -31,6 +49,18 @@ function InnerLayout({
 
     const userRole = session?.user?.role as UserRole | undefined;
     const roleConfig = userRole ? ROLE_CONFIG[userRole] : null;
+    const isSdrArea = userRole === UserRole.SDR && pathname.startsWith("/sdr");
+
+    const [isDailyReviewModalOpen, setIsDailyReviewModalOpen] = useState(false);
+    const [dailyReviewScore, setDailyReviewScore] = useState<number>(4);
+    const [dailyReviewText, setDailyReviewText] = useState("");
+    const [dailyReviewObjections, setDailyReviewObjections] = useState("");
+    const [dailyReviewMissionComment, setDailyReviewMissionComment] = useState("");
+    const [dailyReviewMissionIds, setDailyReviewMissionIds] = useState<string[]>([]);
+    const [dailyReviewError, setDailyReviewError] = useState<string | null>(null);
+    const [dailyReviewSubmitting, setDailyReviewSubmitting] = useState(false);
+    const [dailyReviewMissionOptions, setDailyReviewMissionOptions] = useState<SdrMissionOption[]>([]);
+    const [dailyReviewMissionsLoading, setDailyReviewMissionsLoading] = useState(false);
 
     useEffect(() => {
         if (status === "loading") return;
@@ -46,6 +76,63 @@ function InnerLayout({
             }
         }
     }, [session, status, router, allowedRoles, userRole]);
+
+    useEffect(() => {
+        if (!isSdrArea) return;
+
+        const checkAndOpenDailyReview = () => {
+            const now = new Date();
+            const todayKey = toLocalDateKey(now);
+            const lastPromptDate = localStorage.getItem(SDR_REVIEW_LAST_PROMPT_KEY);
+            if (lastPromptDate === todayKey) return;
+
+            const triggerTime = new Date(now);
+            triggerTime.setHours(SDR_DAILY_REVIEW_HOUR, 0, 0, 0);
+            if (now >= triggerTime) {
+                localStorage.setItem(SDR_REVIEW_LAST_PROMPT_KEY, todayKey);
+                setIsDailyReviewModalOpen(true);
+            }
+        };
+
+        checkAndOpenDailyReview();
+        const interval = window.setInterval(checkAndOpenDailyReview, 60 * 1000);
+        return () => window.clearInterval(interval);
+    }, [isSdrArea]);
+
+    useEffect(() => {
+        if (!isSdrArea || !isDailyReviewModalOpen) return;
+
+        const loadMissions = async () => {
+            setDailyReviewMissionsLoading(true);
+            try {
+                const res = await fetch("/api/sdr/missions");
+                const json = await res.json();
+                if (!res.ok || !json.success) {
+                    setDailyReviewMissionOptions([]);
+                    return;
+                }
+
+                const options = (json.data as SdrMissionOption[]) ?? [];
+                setDailyReviewMissionOptions(options);
+
+                const storedMissionId = localStorage.getItem("sdr_selected_mission");
+                const isStoredValid =
+                    !!storedMissionId && options.some((m) => m.id === storedMissionId);
+                setDailyReviewMissionIds((prev) => {
+                    if (prev.length > 0) return prev;
+                    if (isStoredValid && storedMissionId) return [storedMissionId];
+                    if (options[0]?.id) return [options[0].id];
+                    return [];
+                });
+            } catch {
+                setDailyReviewMissionOptions([]);
+            } finally {
+                setDailyReviewMissionsLoading(false);
+            }
+        };
+
+        void loadMissions();
+    }, [isSdrArea, isDailyReviewModalOpen]);
 
     if (status === "loading" || !session) {
         return (
@@ -100,6 +187,52 @@ function InnerLayout({
     };
     const currentPage = pageLabels[rawPage?.toLowerCase()] || rawPage;
 
+    const handleSubmitDailyReview = async () => {
+        const trimmedReview = dailyReviewText.trim();
+        if (!trimmedReview) return;
+
+        try {
+            setDailyReviewSubmitting(true);
+            setDailyReviewError(null);
+
+            const missionId = localStorage.getItem("sdr_selected_mission");
+            const res = await fetch("/api/sdr/daily-feedback", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    score: dailyReviewScore,
+                    review: trimmedReview,
+                    objections: dailyReviewObjections.trim() || null,
+                    missionComment: dailyReviewMissionComment.trim() || null,
+                    missionIds: dailyReviewMissionIds.length
+                        ? dailyReviewMissionIds
+                        : missionId
+                          ? [missionId]
+                          : [],
+                    pagePath: pathname,
+                }),
+            });
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                setDailyReviewError(json.error ?? "Impossible d'envoyer le feedback");
+                return;
+            }
+
+            setIsDailyReviewModalOpen(false);
+            setDailyReviewScore(4);
+            setDailyReviewText("");
+            setDailyReviewObjections("");
+            setDailyReviewMissionComment("");
+            setDailyReviewMissionIds(missionId ? [missionId] : []);
+            setDailyReviewError(null);
+        } catch (error) {
+            console.error("Failed to submit daily review:", error);
+            setDailyReviewError("Erreur réseau, réessayez.");
+        } finally {
+            setDailyReviewSubmitting(false);
+        }
+    };
+
     return (
         <div className="cp-layout">
             <GlobalSearchModal
@@ -132,6 +265,18 @@ function InnerLayout({
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {isSdrArea && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setDailyReviewError(null);
+                                    setIsDailyReviewModalOpen(true);
+                                }}
+                                className="h-8 px-3 rounded-lg border border-[#E8EBF0] bg-white text-[12px] font-semibold text-[#5A5A7A] hover:text-[#12122A] hover:border-[#C5C8D4] hover:bg-[#F9FAFB] transition-colors duration-150"
+                            >
+                                Donner mon avis
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={() => router.refresh()}
@@ -140,6 +285,7 @@ function InnerLayout({
                         >
                             <RefreshCw className="w-3.5 h-3.5" />
                         </button>
+                        <AssistantLauncher />
                         <NotificationBell />
                     </div>
                 </header>
@@ -156,6 +302,146 @@ function InnerLayout({
                         </div>
                     </div>
                 )}
+
+                <Modal
+                    isOpen={isDailyReviewModalOpen}
+                    onClose={() => setIsDailyReviewModalOpen(false)}
+                    title="Point SDR de fin de journée"
+                    description="Partagez rapidement votre feedback sur la journée."
+                    size="md"
+                >
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-[12px] font-semibold text-[#12122A] mb-2">
+                                Mission(s) concernée(s)
+                            </label>
+                            {dailyReviewMissionsLoading ? (
+                                <div className="text-[12px] text-[#8B8BA7]">Chargement des missions…</div>
+                            ) : dailyReviewMissionOptions.length === 0 ? (
+                                <div className="text-[12px] text-[#8B8BA7]">
+                                    Aucune mission active trouvée.
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {dailyReviewMissionOptions.map((mission) => {
+                                        const isSelected = dailyReviewMissionIds.includes(mission.id);
+                                        return (
+                                            <button
+                                                key={mission.id}
+                                                type="button"
+                                                onClick={() =>
+                                                    setDailyReviewMissionIds((prev) =>
+                                                        prev.includes(mission.id)
+                                                            ? prev.filter((id) => id !== mission.id)
+                                                            : [...prev, mission.id],
+                                                    )
+                                                }
+                                                className={cn(
+                                                    "text-left rounded-xl border px-3 py-2 transition-colors",
+                                                    isSelected
+                                                        ? "border-[#7C5CFC] bg-[#F5F3FF]"
+                                                        : "border-[#E8EBF0] bg-white hover:border-[#C5C8D4]",
+                                                )}
+                                            >
+                                                <p className="text-[12px] font-semibold text-[#12122A] truncate">
+                                                    {mission.name}
+                                                </p>
+                                                <p className="text-[11px] text-[#8B8BA7] truncate">
+                                                    {mission.client?.name ?? "Sans client"}
+                                                </p>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="block text-[12px] font-semibold text-[#12122A] mb-2">
+                                Comment s'est passée votre journée ?
+                            </label>
+                            <textarea
+                                value={dailyReviewText}
+                                onChange={(e) => setDailyReviewText(e.target.value)}
+                                placeholder="Résumez votre performance, vos difficultés et vos succès..."
+                                className="w-full min-h-[92px] rounded-xl border border-[#E8EBF0] px-3 py-2.5 text-[13px] text-[#12122A] placeholder:text-[#8B8BA7] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/25 focus:border-[#7C5CFC] resize-y"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[12px] font-semibold text-[#12122A] mb-2">
+                                Objections rencontrées aujourd'hui
+                            </label>
+                            <textarea
+                                value={dailyReviewObjections}
+                                onChange={(e) => setDailyReviewObjections(e.target.value)}
+                                placeholder="Ex: budget, timing, concurrence, pas le bon contact..."
+                                className="w-full min-h-[82px] rounded-xl border border-[#E8EBF0] px-3 py-2.5 text-[13px] text-[#12122A] placeholder:text-[#8B8BA7] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/25 focus:border-[#7C5CFC] resize-y"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[12px] font-semibold text-[#12122A] mb-2">
+                                Commentaires sur la mission (optionnel)
+                            </label>
+                            <textarea
+                                value={dailyReviewMissionComment}
+                                onChange={(e) => setDailyReviewMissionComment(e.target.value)}
+                                placeholder="Besoin de script, meilleure accroche, feedback ciblage..."
+                                className="w-full min-h-[82px] rounded-xl border border-[#E8EBF0] px-3 py-2.5 text-[13px] text-[#12122A] placeholder:text-[#8B8BA7] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/25 focus:border-[#7C5CFC] resize-y"
+                            />
+                        </div>
+
+                        <div>
+                            <p className="text-[12px] font-semibold text-[#12122A] mb-2">Ressenti global</p>
+                            <div className="flex flex-wrap gap-2">
+                                {[1, 2, 3, 4, 5].map((score) => (
+                                    <button
+                                        key={score}
+                                        type="button"
+                                        onClick={() => setDailyReviewScore(score)}
+                                        className={cn(
+                                            "h-8 px-3 rounded-lg text-[12px] font-semibold border transition-colors",
+                                            dailyReviewScore === score
+                                                ? "bg-[#7C5CFC] text-white border-[#7C5CFC]"
+                                                : "bg-white text-[#5A5A7A] border-[#E8EBF0] hover:border-[#C5C8D4]",
+                                        )}
+                                    >
+                                        {score}/5
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF1F6]">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsDailyReviewModalOpen(false);
+                                    setDailyReviewError(null);
+                                }}
+                                className="h-9 px-4 rounded-lg border border-[#E8EBF0] text-[13px] font-medium text-[#5A5A7A] hover:bg-[#F9FAFB] transition-colors"
+                            >
+                                Fermer
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleSubmitDailyReview()}
+                                disabled={
+                                    !dailyReviewText.trim() ||
+                                    dailyReviewSubmitting ||
+                                    dailyReviewMissionIds.length === 0
+                                }
+                                className="h-9 px-4 rounded-lg bg-[#7C5CFC] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {dailyReviewSubmitting ? "Envoi..." : "Envoyer mon feedback"}
+                            </button>
+                        </div>
+                        {dailyReviewError && (
+                            <p className="text-[12px] text-red-600">{dailyReviewError}</p>
+                        )}
+                    </div>
+                </Modal>
             </main>
         </div>
     );

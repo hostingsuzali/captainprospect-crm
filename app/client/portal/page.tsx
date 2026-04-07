@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/components/ui";
-import { RefreshCw, ArrowRight, Calendar, Sparkles, PhoneCall, TrendingUp, CalendarCheck, ChevronLeft, ChevronRight } from "lucide-react";
+import { RefreshCw, ArrowRight, Calendar, Sparkles, PhoneCall, TrendingUp, CalendarCheck, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { DashboardSkeleton } from "@/components/client/skeletons";
@@ -33,6 +33,12 @@ interface ClientMeeting {
         name: string;
         mission: { name: string };
     };
+    interlocuteur?: {
+        id: string;
+        firstName?: string | null;
+        lastName?: string | null;
+        title?: string | null;
+    } | null;
 }
 
 interface Mission {
@@ -52,6 +58,9 @@ const MONTH_NAMES = [
 ];
 
 function getGreeting(): string {
+    const h = new Date().getHours();
+    if (h >= 18) return "Bonsoir";
+    if (h >= 12) return "Bon après-midi";
     return "Bonjour";
 }
 
@@ -393,9 +402,16 @@ export default function ClientPortal() {
                                     </div>
 
                                     {/* Mission badge */}
-                                    <span className="hidden sm:inline-flex text-[10.5px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-[2px] rounded-full shrink-0 group-hover:bg-indigo-100/80 transition-colors duration-200">
-                                        {m.campaign?.mission?.name ?? "—"}
-                                    </span>
+                                    <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+                                        <span className="inline-flex text-[10.5px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-[2px] rounded-full group-hover:bg-indigo-100/80 transition-colors duration-200">
+                                            {m.campaign?.mission?.name ?? "—"}
+                                        </span>
+                                        {m.interlocuteur && (
+                                            <span className="inline-flex text-[10.5px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-[2px] rounded-full">
+                                                {[m.interlocuteur.firstName, m.interlocuteur.lastName].filter(Boolean).join(" ") || "Commercial assigné"}
+                                            </span>
+                                        )}
+                                    </div>
 
                                     {/* Arrow */}
                                     <div className="w-7 h-7 rounded-lg bg-[#F4F5FA] flex items-center justify-center shrink-0 group-hover:bg-gradient-to-br group-hover:from-[#7C5CFC] group-hover:to-[#A78BFA] transition-all duration-200">

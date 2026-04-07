@@ -10,8 +10,70 @@ import { Prisma } from "@prisma/client";
 import { requireRole, withErrorHandler, errorResponse, successResponse } from "@/lib/api-utils";
 import { z } from "zod";
 
-const MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions";
-const MISTRAL_MODEL = "mistral-large-latest";
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_MODEL = "gpt-4o";
+
+const analysisSchema = z.object({
+    executiveSummary: z.string().min(10),
+    keyInsights: z.array(z.string().min(3)).min(3).max(8),
+    objectionClusters: z.array(
+        z.object({
+            objection: z.string().min(2),
+            frequency: z.enum(["LOW", "MEDIUM", "HIGH"]),
+            whyItHappens: z.string().min(5),
+            recommendedResponse: z.string().min(5),
+        })
+    ).max(6),
+    disqualificationCauses: z.array(
+        z.object({
+            cause: z.string().min(2),
+            signalInNotes: z.string().min(5),
+            correctiveAction: z.string().min(5),
+        })
+    ).max(6),
+    recommendations: z.array(
+        z.object({
+            title: z.string().min(3),
+            priority: z.enum(["P1", "P2", "P3"]),
+            expectedImpact: z.string().min(3),
+            actionPlan: z.string().min(8),
+        })
+    ).min(3).max(6),
+    next7DaysPlan: z.array(z.string().min(3)).min(3).max(7),
+});
+
+type StructuredAnalysis = z.infer<typeof analysisSchema>;
+
+function toMarkdown(analysis: StructuredAnalysis): string {
+    return [
+        "## Synthèse exécutive",
+        analysis.executiveSummary,
+        "",
+        "## Points clés",
+        ...analysis.keyInsights.map((item) => `- ${item}`),
+        "",
+        "## Objections récurrentes",
+        ...analysis.objectionClusters.map(
+            (item) =>
+                `- **${item.objection}** (${item.frequency})\n  - Cause probable: ${item.whyItHappens}\n  - Réponse recommandée: ${item.recommendedResponse}`
+        ),
+        "",
+        "## Causes de disqualification",
+        ...analysis.disqualificationCauses.map(
+            (item) =>
+                `- **${item.cause}**\n  - Signal dans les notes: ${item.signalInNotes}\n  - Correctif: ${item.correctiveAction}`
+        ),
+        "",
+        "## Recommandations prioritaires",
+        ...analysis.recommendations.map(
+            (item) =>
+                `- **[${item.priority}] ${item.title}**\n  - Impact attendu: ${item.expectedImpact}\n  - Plan d'action: ${item.actionPlan}`
+        ),
+        "",
+        "## Plan 7 jours",
+        ...analysis.next7DaysPlan.map((item, index) => `${index + 1}. ${item}`),
+    ].join("\n");
+}
 
 const ACTION_RESULT_LABELS: Record<string, string> = {
     NO_RESPONSE: "Pas de réponse",
@@ -50,9 +112,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const { from, to, missionIds, sdrIds, clientIds, listIds, followUp, previousRecap } =
         parsed.data;
 
-    const apiKey = process.env.MISTRAL_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-        return errorResponse("MISTRAL_API_KEY non configurée. L'analyse IA est indisponible.", 503);
+        return errorResponse("OPENAI_API_KEY non configurée. L'analyse IA est indisponible.", 503);
     }
 
     const dateFrom = new Date(from);
@@ -207,26 +269,126 @@ Produis une synthèse IA complète : statuts, objections identifiées, causes de
         messages.push({ role: "user", content: initialUserContent });
     }
 
+    const isFollowUp = Boolean(followUp && previousRecap);
+    const basePayload = {
+        model: OPENAI_MODEL,
+        messages,
+        temperature: isFollowUp ? 0.35 : 0.3,
+        max_tokens: isFollowUp ? 1200 : 1700,
+    };
+
     try {
-        const res = await fetch(MISTRAL_API_URL, {
+        const res = await fetch(OPENAI_API_URL, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${apiKey}`,
             },
-            body: JSON.stringify({
-                model: MISTRAL_MODEL,
-                messages,
-                temperature: 0.4,
-                max_tokens: 1500,
-            }),
+            body: JSON.stringify(
+                isFollowUp
+                    ? basePayload
+                    : {
+                          ...basePayload,
+                          response_format: {
+                              type: "json_schema",
+                              json_schema: {
+                                  name: "manager_analytics_analysis",
+                                  strict: true,
+                                  schema: {
+                                      type: "object",
+                                      additionalProperties: false,
+                                      required: [
+                                          "executiveSummary",
+                                          "keyInsights",
+                                          "objectionClusters",
+                                          "disqualificationCauses",
+                                          "recommendations",
+                                          "next7DaysPlan",
+                                      ],
+                                      properties: {
+                                          executiveSummary: { type: "string" },
+                                          keyInsights: {
+                                              type: "array",
+                                              items: { type: "string" },
+                                          },
+                                          objectionClusters: {
+                                              type: "array",
+                                              items: {
+                                                  type: "object",
+                                                  additionalProperties: false,
+                                                  required: [
+                                                      "objection",
+                                                      "frequency",
+                                                      "whyItHappens",
+                                                      "recommendedResponse",
+                                                  ],
+                                                  properties: {
+                                                      objection: { type: "string" },
+                                                      frequency: {
+                                                          type: "string",
+                                                          enum: ["LOW", "MEDIUM", "HIGH"],
+                                                      },
+                                                      whyItHappens: { type: "string" },
+                                                      recommendedResponse: { type: "string" },
+                                                  },
+                                              },
+                                          },
+                                          disqualificationCauses: {
+                                              type: "array",
+                                              items: {
+                                                  type: "object",
+                                                  additionalProperties: false,
+                                                  required: [
+                                                      "cause",
+                                                      "signalInNotes",
+                                                      "correctiveAction",
+                                                  ],
+                                                  properties: {
+                                                      cause: { type: "string" },
+                                                      signalInNotes: { type: "string" },
+                                                      correctiveAction: { type: "string" },
+                                                  },
+                                              },
+                                          },
+                                          recommendations: {
+                                              type: "array",
+                                              items: {
+                                                  type: "object",
+                                                  additionalProperties: false,
+                                                  required: [
+                                                      "title",
+                                                      "priority",
+                                                      "expectedImpact",
+                                                      "actionPlan",
+                                                  ],
+                                                  properties: {
+                                                      title: { type: "string" },
+                                                      priority: {
+                                                          type: "string",
+                                                          enum: ["P1", "P2", "P3"],
+                                                      },
+                                                      expectedImpact: { type: "string" },
+                                                      actionPlan: { type: "string" },
+                                                  },
+                                              },
+                                          },
+                                          next7DaysPlan: {
+                                              type: "array",
+                                              items: { type: "string" },
+                                          },
+                                      },
+                                  },
+                              },
+                          },
+                      }
+            ),
         });
 
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            console.error("Mistral ai-recap error:", err);
+            console.error("OpenAI ai-recap error:", err);
             return errorResponse(
-                (err as { error?: { message?: string } })?.error?.message || "Erreur Mistral AI",
+                (err as { error?: { message?: string } })?.error?.message || "Erreur OpenAI",
                 res.status
             );
         }
@@ -234,19 +396,36 @@ Produis une synthèse IA complète : statuts, objections identifiées, causes de
         const json = (await res.json()) as {
             choices?: { message?: { content?: string } }[];
         };
-        const recap = json.choices?.[0]?.message?.content?.trim();
+        const rawContent = json.choices?.[0]?.message?.content?.trim();
 
-        if (!recap) {
-            return errorResponse("Réponse vide de Mistral AI", 500);
+        if (!rawContent) {
+            return errorResponse("Réponse vide de OpenAI", 500);
+        }
+
+        if (isFollowUp) {
+            return successResponse({
+                recap: rawContent,
+                suggestedFollowUps,
+                notesCount: notesWithStatus.length,
+            });
+        }
+
+        let analysis: StructuredAnalysis;
+        try {
+            analysis = analysisSchema.parse(JSON.parse(rawContent));
+        } catch (parseErr) {
+            console.error("OpenAI ai-recap JSON parsing failed:", parseErr);
+            return errorResponse("Format de réponse IA invalide", 500);
         }
 
         return successResponse({
-            recap,
+            recap: toMarkdown(analysis),
+            analysis,
             suggestedFollowUps,
             notesCount: notesWithStatus.length,
         });
     } catch (err) {
-        console.error("Mistral ai-recap request failed:", err);
-        return errorResponse("Erreur de connexion à Mistral AI", 500);
+        console.error("OpenAI ai-recap request failed:", err);
+        return errorResponse("Erreur de connexion à OpenAI", 500);
     }
 });

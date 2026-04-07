@@ -1,6 +1,19 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** Directory containing this config file (real app root). */
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
+const tailwindCssEntry = path.join(projectRoot, "node_modules", "tailwindcss", "index.css");
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: projectRoot,
+    // Bare `@import "tailwindcss"` must resolve inside this repo (not a parent folder with package-lock.json).
+    resolveAlias: {
+      tailwindcss: tailwindCssEntry,
+    },
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

@@ -237,7 +237,7 @@ export default function ClientPortalNotificationsPage() {
             <div className="flex flex-wrap items-center justify-between gap-4 animate-fade-up">
                 <div>
                     <h1 className="text-2xl font-bold text-[#12122A] tracking-tight">Notifications</h1>
-                    <p className="text-sm text-[#6B7194] mt-1">Alertes et actualites de vos missions</p>
+                    <p className="text-sm text-[#6B7194] mt-1">Alertes et actualités de vos missions</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
@@ -301,7 +301,7 @@ export default function ClientPortalNotificationsPage() {
                         {filter === "unread" ? "Aucune notification non lue" : "Aucune notification"}
                     </h3>
                     <p className="text-sm text-[#6B7194] text-center max-w-sm">
-                        {filter === "unread" ? "Vous avez tout lu." : "Les alertes (nouveau RDV, rapport, rappel) apparaitront ici."}
+                        {filter === "unread" ? "Vous avez tout lu." : "Les alertes (nouveau RDV, rapport, rappel) apparaîtront ici."}
                     </p>
                     <Link href="/client/portal" className="mt-4">
                         <Button variant="primary" size="sm" className="rounded-xl bg-gradient-to-r from-[#6C3AFF] to-[#7C5CFC] hover:from-[#5B2AEE] hover:to-[#6C4CE0] shadow-sm">

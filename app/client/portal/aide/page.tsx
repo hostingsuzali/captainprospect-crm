@@ -139,55 +139,59 @@ export default function ClientPortalAidePage() {
     const [expandedId, setExpandedId] = useState<string | null>(SECTIONS[0].id);
 
     return (
-        <div className="min-h-full bg-[#F4F6F9] p-6 space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-[22px] font-bold text-[#12122A] tracking-tight flex items-center gap-2">
-                        <HelpCircle className="w-6 h-6 text-[#7C5CFC]" />
-                        Aide
-                    </h1>
-                    <p className="text-[13px] text-[#8B8BA7] mt-0.5">
-                        Questions fréquentes et guide du portail client
-                    </p>
+        <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-4" style={{ animation: "aideFadeUp 0.35s ease both" }}>
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-md shadow-violet-200">
+                        <HelpCircle className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                        <h1 className="text-xl font-bold text-[#12122A] tracking-tight">Centre d&apos;aide</h1>
+                        <p className="text-xs text-[#6B7194] mt-0.5">Questions fréquentes et guide du portail</p>
+                    </div>
                 </div>
                 <Link href="/client/portal">
-                    <Button variant="outline" size="sm" className="gap-2">
-                        <ArrowRight className="w-4 h-4 rotate-180" />
-                        Retour au tableau de bord
+                    <Button variant="outline" size="sm" className="gap-2 text-xs">
+                        <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                        Tableau de bord
                     </Button>
                 </Link>
             </div>
 
-            <div className="bg-white rounded-2xl border border-[#E8EBF0] overflow-hidden">
-                <div className="divide-y divide-[#E8EBF0]">
-                    {SECTIONS.map((section) => {
+            <div className="bg-white rounded-2xl border border-[#E8EBF0] overflow-hidden shadow-sm" style={{ animation: "aideFadeUp 0.35s ease both", animationDelay: "50ms" }}>
+                <div className="divide-y divide-[#F0F1F7]">
+                    {SECTIONS.map((section, idx) => {
                         const isExpanded = expandedId === section.id;
                         return (
                             <div key={section.id}>
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setExpandedId(isExpanded ? null : section.id)
-                                    }
+                                    onClick={() => setExpandedId(isExpanded ? null : section.id)}
                                     className={cn(
-                                        "w-full flex items-center justify-between gap-4 px-6 py-4 text-left transition-colors",
+                                        "w-full flex items-center gap-4 px-5 py-4 text-left transition-all duration-150",
                                         isExpanded
-                                            ? "bg-[#EEF2FF] text-[#12122A]"
-                                            : "hover:bg-[#F4F6F9] text-[#12122A]"
+                                            ? "bg-indigo-50/60 text-[#12122A]"
+                                            : "hover:bg-[#FAFBFF] text-[#12122A]"
                                     )}
                                 >
-                                    <span className="font-medium text-[15px]">
-                                        {section.title}
+                                    <span className={cn(
+                                        "w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-black shrink-0 transition-colors",
+                                        isExpanded ? "bg-[#7C5CFC] text-white" : "bg-[#F0F1F7] text-[#8B8BA7]"
+                                    )}>
+                                        {String(idx + 1).padStart(2, "0")}
                                     </span>
+                                    <span className="flex-1 font-semibold text-[14px] leading-snug">{section.title}</span>
                                     {isExpanded ? (
-                                        <ChevronUp className="w-5 h-5 text-[#7C5CFC] flex-shrink-0" />
+                                        <ChevronUp className="w-4 h-4 text-[#7C5CFC] flex-shrink-0" />
                                     ) : (
-                                        <ChevronDown className="w-5 h-5 text-[#8B8BA7] flex-shrink-0" />
+                                        <ChevronDown className="w-4 h-4 text-[#A0A3BD] flex-shrink-0" />
                                     )}
                                 </button>
                                 {isExpanded && (
-                                    <div className="px-6 pb-5 pt-0 bg-white">
-                                        <div className="pl-0 border-l-0">{section.content}</div>
+                                    <div className="px-5 pb-5 pt-1 bg-white">
+                                        <div className="ml-10 border-l-2 border-[#7C5CFC]/15 pl-4">
+                                            {section.content}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -195,6 +199,13 @@ export default function ClientPortalAidePage() {
                     })}
                 </div>
             </div>
+
+            <style jsx global>{`
+                @keyframes aideFadeUp {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to { opacity: 1; transform: none; }
+                }
+            `}</style>
         </div>
     );
 }

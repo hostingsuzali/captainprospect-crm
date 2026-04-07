@@ -493,6 +493,12 @@ interface Meeting {
   } | null;
   campaign: { id: string; name: string; mission: { id: string; name: string } };
   sdr?: { id: string; name: string | null } | null;
+  interlocuteur?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    title?: string | null;
+  } | null;
   meetingFeedback?: {
     id: string;
     outcome: string;
@@ -1176,6 +1182,14 @@ function Card({
               <Pill label={`${MTY[m.meetingType].emoji} ${MTY[m.meetingType].label}`} color={tk.ink3} bg="#F3F4F6" border="rgba(0,0,0,0.07)" />
             )}
             <Pill label={m.campaign.mission.name} color={tk.accentText} bg={tk.accentLight} border="rgba(91,79,232,0.18)" />
+            {m.interlocuteur && (
+              <Pill
+                label={`Commercial: ${[m.interlocuteur.firstName, m.interlocuteur.lastName].filter(Boolean).join(" ") || "Assigné"}`}
+                color="#065F46"
+                bg="#ECFDF5"
+                border="#A7F3D0"
+              />
+            )}
             {m.rdvFiche && (
               <Pill label="Fiche RDV" color={tk.ink3} bg="#F3F4F6" border="rgba(0,0,0,0.07)" />
             )}

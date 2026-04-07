@@ -24,11 +24,9 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         });
     }
 
-    // Prisma client currently doesn't expose portal-specific flags on Client in the generated types,
-    // so we return safe defaults here to avoid runtime errors.
     return successResponse({
-        portalShowCallHistory: false,
-        portalShowDatabase: false,
+        portalShowCallHistory: (client as Record<string, unknown>).portalShowCallHistory ?? false,
+        portalShowDatabase: (client as Record<string, unknown>).portalShowDatabase ?? false,
     });
 });
 

@@ -80,89 +80,88 @@ export default function ClientPortalDatabasePage() {
     });
 
     return (
-        <div className="min-h-full bg-[#F3F4F8] p-4 md:p-6 space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl md:text-3xl font-semibold text-slate-900 tracking-tight flex items-center gap-2">
-                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-                            <Building2 className="w-4 h-4" />
-                        </span>
-                        Base de données
-                    </h1>
-                    <p className="text-sm text-slate-500 mt-1">
-                        Liste des entreprises et contacts travaillés dans vos campagnes.
-                    </p>
+        <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-5">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4" style={{ animation: "dbFadeUp 0.35s ease both" }}>
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-md shadow-emerald-200">
+                        <Building2 className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                        <h1 className="text-xl font-bold text-[#12122A] tracking-tight">Base de données</h1>
+                        <p className="text-xs text-[#6B7194] mt-0.5">Entreprises et contacts travaillés dans vos campagnes</p>
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-start md:self-auto">
+                <div className="flex items-center gap-2 p-1 bg-white border border-[#E8EBF0] rounded-xl shadow-sm self-start md:self-auto">
                     <button
                         type="button"
                         onClick={() => setViewMode("cards")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                             viewMode === "cards"
-                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                ? "bg-[#12122A] text-white shadow-sm"
+                                : "text-[#6B7194] hover:text-[#12122A]"
                         }`}
                     >
-                        Vue cartes
+                        Cartes
                     </button>
                     <button
                         type="button"
                         onClick={() => setViewMode("table")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                             viewMode === "table"
-                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                ? "bg-[#12122A] text-white shadow-sm"
+                                : "text-[#6B7194] hover:text-[#12122A]"
                         }`}
                     >
-                        Vue tableau
+                        Tableau
                     </button>
                 </div>
             </div>
 
-            <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <div className="relative max-w-sm" style={{ animation: "dbFadeUp 0.35s ease both", animationDelay: "40ms" }}>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A0A3BD]" />
                 <input
                     type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Rechercher (entreprise, contact, secteur, pays...)"
-                    className="w-full h-10 pl-9 pr-8 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    placeholder="Rechercher (entreprise, secteur, contact...)"
+                    className="w-full h-10 pl-9 pr-8 rounded-xl border border-[#E8EBF0] bg-white text-sm text-[#12122A] placeholder:text-[#A0A3BD] focus:outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400/40 shadow-sm"
                 />
                 {search && (
                     <button
                         type="button"
                         onClick={() => setSearch("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A0A3BD] hover:text-[#6B7194]"
                     >
-                        <X className="w-4 h-4" />
+                        <X className="w-3.5 h-3.5" />
                     </button>
                 )}
             </div>
 
             {isLoading ? (
-                <div className="flex items-center justify-center py-16">
-                    <div className="flex flex-col items-center gap-3 text-slate-500">
-                        <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-                        <span className="text-sm">Chargement de la base de données...</span>
+                <div className="flex items-center justify-center py-20">
+                    <div className="flex flex-col items-center gap-3">
+                        <Loader2 className="w-7 h-7 animate-spin text-emerald-500" />
+                        <span className="text-sm text-[#6B7194]">Chargement de la base de données…</span>
                     </div>
                 </div>
             ) : filteredCompanies.length === 0 ? (
-                <div className="bg-white border border-dashed border-slate-200 rounded-2xl py-16 px-6 text-center">
-                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                        <Building2 className="w-6 h-6" />
+                <div className="bg-white border-2 border-dashed border-[#E8EBF0] rounded-2xl py-16 px-6 text-center" style={{ animation: "dbFadeUp 0.35s ease both" }}>
+                    <div className="mx-auto mb-4 w-14 h-14 rounded-2xl bg-[#F4F5FA] flex items-center justify-center">
+                        <Building2 className="w-6 h-6 text-[#A0A3BD]" />
                     </div>
-                    <p className="text-sm font-medium text-slate-900">Aucune entreprise trouvée</p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="text-sm font-semibold text-[#12122A]">Aucune entreprise trouvée</p>
+                    <p className="mt-1 text-xs text-[#6B7194]">
                         Ajustez votre recherche ou réessayez plus tard.
                     </p>
                 </div>
             ) : viewMode === "table" ? (
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="bg-white rounded-2xl border border-[#E8EBF0] overflow-hidden shadow-sm" style={{ animation: "dbFadeUp 0.35s ease both", animationDelay: "60ms" }}>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 border-b border-slate-200">
-                                <tr className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                            <thead className="bg-[#FAFAFA] border-b border-[#F0F1F7]">
+                                <tr className="text-[11px] font-bold text-[#A0A3BD] uppercase tracking-wider">
                                     <th className="px-4 py-3 text-left">Entreprise</th>
                                     <th className="px-4 py-3 text-left">Secteur</th>
                                     <th className="px-4 py-3 text-left">Taille</th>
@@ -172,56 +171,54 @@ export default function ClientPortalDatabasePage() {
                                     <th className="px-4 py-3 text-left">Contacts</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-[#F5F6FA]">
                                 {filteredCompanies.map((company) => (
-                                    <tr key={company.id} className="hover:bg-emerald-50/40 transition-colors">
+                                    <tr key={company.id} className="hover:bg-emerald-50/30 transition-colors">
                                         <td className="px-4 py-3 align-top">
-                                            <div className="flex items-center gap-2 max-w-xs">
-                                                <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-700">
+                                            <div className="flex items-center gap-2.5 max-w-xs">
+                                                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
                                                     <Building2 className="w-4 h-4" />
                                                 </div>
-                                                <div>
-                                                    <p className="font-medium text-slate-900 truncate">
-                                                        {company.name}
-                                                    </p>
-                                                </div>
+                                                <p className="font-semibold text-[#12122A] truncate">
+                                                    {company.name}
+                                                </p>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 align-top text-slate-700">
-                                            {company.industry || "-"}
+                                        <td className="px-4 py-3 align-top text-sm text-[#6B7194]">
+                                            {company.industry || <span className="text-[#C4C6D4]">—</span>}
                                         </td>
-                                        <td className="px-4 py-3 align-top text-slate-700">
-                                            {company.size || "-"}
+                                        <td className="px-4 py-3 align-top text-sm text-[#6B7194]">
+                                            {company.size || <span className="text-[#C4C6D4]">—</span>}
                                         </td>
-                                        <td className="px-4 py-3 align-top text-slate-700">
-                                            {company.country || "-"}
+                                        <td className="px-4 py-3 align-top text-sm text-[#6B7194]">
+                                            {company.country || <span className="text-[#C4C6D4]">—</span>}
                                         </td>
-                                        <td className="px-4 py-3 align-top text-slate-700">
+                                        <td className="px-4 py-3 align-top text-sm text-[#6B7194]">
                                             {company.phone ? (
-                                                <span className="inline-flex items-center gap-1.5">
+                                                <a href={`tel:${company.phone}`} className="inline-flex items-center gap-1.5 hover:text-emerald-600 transition-colors">
                                                     <Phone className="w-3 h-3" />
                                                     {company.phone}
-                                                </span>
+                                                </a>
                                             ) : (
-                                                "-"
+                                                <span className="text-[#C4C6D4]">—</span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 align-top text-slate-700">
+                                        <td className="px-4 py-3 align-top text-sm text-[#6B7194]">
                                             {company.website ? (
                                                 <a
                                                     href={company.website}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700"
+                                                    className="inline-flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 transition-colors"
                                                 >
                                                     <Globe2 className="w-3 h-3" />
-                                                    {company.website.replace(/^https?:\/\//, "")}
+                                                    {company.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
                                                 </a>
                                             ) : (
-                                                "-"
+                                                <span className="text-[#C4C6D4]">—</span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 align-top text-slate-700">
+                                        <td className="px-4 py-3 align-top text-[#6B7194]">
                                             <div className="flex flex-col gap-1">
                                                 <span className="inline-flex items-center gap-1 text-xs text-slate-600">
                                                     <Users className="w-3.5 h-3.5 text-emerald-500" />
@@ -274,11 +271,12 @@ export default function ClientPortalDatabasePage() {
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                    {filteredCompanies.map((company) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" style={{ animation: "dbFadeUp 0.35s ease both", animationDelay: "60ms" }}>
+                    {filteredCompanies.map((company, idx) => (
                         <div
                             key={company.id}
-                            className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col gap-3 hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-100/60 transition-all"
+                            className="bg-white rounded-2xl border border-[#E8EBF0] p-4 flex flex-col gap-3 hover:border-emerald-300/60 hover:shadow-lg hover:shadow-emerald-100/40 transition-all duration-200"
+                            style={{ animation: "dbFadeUp 0.3s ease both", animationDelay: `${60 + idx * 25}ms` }}
                         >
                             <div className="flex items-start gap-3">
                                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 flex items-center justify-center text-emerald-700">
@@ -387,7 +385,13 @@ export default function ClientPortalDatabasePage() {
                     ))}
                 </div>
             )}
+
+            <style jsx global>{`
+                @keyframes dbFadeUp {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to { opacity: 1; transform: none; }
+                }
+            `}</style>
         </div>
     );
 }
-

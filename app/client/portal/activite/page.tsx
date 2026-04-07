@@ -686,7 +686,7 @@ export default function ClientPortalActivitePage() {
 
     return (
         <div
-            className="min-h-full bg-[#F3F4F8] p-4 md:p-6 space-y-5"
+            className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-5"
             style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
         >
             <div className="flex flex-wrap items-start justify-between gap-4">

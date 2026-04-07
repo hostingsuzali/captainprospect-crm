@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { PageHeader, Card, Button, EmptyState, useToast } from "@/components/ui";
-import { FileText, Upload, Trash2, Loader2, File } from "lucide-react";
+import { Button, useToast } from "@/components/ui";
+import { Upload, Trash2, Loader2, FileText, FileImage, FileSpreadsheet, File, FolderOpen, CloudUpload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ACCEPT: Record<string, string[]> = {
@@ -35,6 +35,16 @@ function formatDate(dateString: string) {
         month: "short",
         year: "numeric",
     });
+}
+
+function getFileIcon(name: string): { icon: React.ElementType; color: string; bg: string } {
+    const ext = name.split(".").pop()?.toLowerCase() ?? "";
+    if (["pdf"].includes(ext)) return { icon: FileText, color: "text-red-500", bg: "bg-red-50" };
+    if (["xls", "xlsx", "csv"].includes(ext)) return { icon: FileSpreadsheet, color: "text-emerald-600", bg: "bg-emerald-50" };
+    if (["doc", "docx", "txt"].includes(ext)) return { icon: FileText, color: "text-blue-500", bg: "bg-blue-50" };
+    if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return { icon: FileImage, color: "text-purple-500", bg: "bg-purple-50" };
+    if (["ppt", "pptx"].includes(ext)) return { icon: FileText, color: "text-orange-500", bg: "bg-orange-50" };
+    return { icon: File, color: "text-[#6B7194]", bg: "bg-[#F4F5FA]" };
 }
 
 export default function ClientPortalFilesPage() {
@@ -69,35 +79,22 @@ export default function ClientPortalFilesPage() {
     const onDrop = useCallback(
         async (acceptedFiles: File[]) => {
             if (acceptedFiles.length === 0) return;
-
             setUploadingCount((c) => c + acceptedFiles.length);
-
             let successCount = 0;
             let failCount = 0;
-
             for (const file of acceptedFiles) {
                 try {
                     const formData = new FormData();
                     formData.append("file", file);
-
-                    const res = await fetch("/api/files/upload", {
-                        method: "POST",
-                        body: formData,
-                    });
-
+                    const res = await fetch("/api/files/upload", { method: "POST", body: formData });
                     const json = await res.json();
-                    if (json.success) {
-                        successCount++;
-                    } else {
-                        failCount++;
-                    }
+                    if (json.success) successCount++;
+                    else failCount++;
                 } catch {
                     failCount++;
                 }
             }
-
             setUploadingCount((c) => Math.max(0, c - acceptedFiles.length));
-
             if (successCount > 0) {
                 await fetchFiles();
                 toast.success("Fichiers déposés", `${successCount} fichier(s) ajouté(s)`);
@@ -135,125 +132,138 @@ export default function ClientPortalFilesPage() {
     };
 
     return (
-        <div className="flex flex-col min-h-full space-y-6">
-            <PageHeader
-                title="Mes Fichiers"
-                subtitle="Déposez vos fichiers et partagez-les avec votre équipe"
-                icon={
-                    <span className="flex items-center gap-2 text-indigo-600">
-                        <FileText className="w-5 h-5" />
-                    </span>
-                }
-            />
+        <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-5">
+            {/* Header */}
+            <div className="flex items-center gap-3" style={{ animation: "filesFadeUp 0.35s ease both" }}>
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-200">
+                    <FolderOpen className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                    <h1 className="text-xl font-bold text-[#12122A] tracking-tight">Mes Fichiers</h1>
+                    <p className="text-xs text-[#6B7194] mt-0.5">Déposez vos fichiers pour les partager avec votre équipe</p>
+                </div>
+            </div>
 
             {/* Drop zone */}
             <div
                 {...getRootProps()}
                 className={cn(
-                    "flex flex-col items-center justify-center gap-3 p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all",
+                    "relative flex flex-col items-center justify-center gap-4 p-10 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-200 overflow-hidden",
                     isDragActive
-                        ? "border-indigo-500 bg-indigo-50"
-                        : "border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50",
+                        ? "border-[#7C5CFC] bg-indigo-50/80 scale-[1.01]"
+                        : "border-[#DDE0EC] bg-white/60 hover:border-[#7C5CFC]/40 hover:bg-white/80",
                     uploadingCount > 0 && "opacity-60 pointer-events-none"
                 )}
+                style={{ animation: "filesFadeUp 0.35s ease both", animationDelay: "50ms" }}
             >
+                {isDragActive && (
+                    <div className="absolute inset-0 bg-indigo-500/5 pointer-events-none" />
+                )}
                 <input {...getInputProps()} />
-                <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center">
+                <div className={cn(
+                    "w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-200",
+                    isDragActive ? "bg-indigo-100 shadow-lg shadow-indigo-200/60" : "bg-[#F0F1F9] border border-[#E2E4F0]"
+                )}>
                     {uploadingCount > 0 ? (
-                        <Loader2 className="w-7 h-7 text-indigo-500 animate-spin" />
+                        <Loader2 className="w-8 h-8 text-[#7C5CFC] animate-spin" />
+                    ) : isDragActive ? (
+                        <CloudUpload className="w-8 h-8 text-[#7C5CFC]" />
                     ) : (
-                        <Upload className="w-7 h-7 text-slate-400" />
+                        <Upload className="w-8 h-8 text-[#8B8DAF]" />
                     )}
                 </div>
                 <div className="text-center">
-                    <p className="text-sm font-medium text-slate-700">
+                    <p className="text-sm font-semibold text-[#12122A]">
                         {uploadingCount > 0
-                            ? "Dépose en cours..."
-                            : "Déposez vos fichiers ici"}
+                            ? `Envoi en cours (${uploadingCount} fichier${uploadingCount > 1 ? "s" : ""})…`
+                            : isDragActive
+                            ? "Relâchez pour déposer"
+                            : "Glissez-déposez vos fichiers ici"}
                     </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                        ou parcourir — PDF, DOCX, XLSX, images
+                    <p className="text-xs text-[#8B8BA7] mt-1">
+                        ou <span className="text-[#7C5CFC] font-medium">parcourir</span> — PDF, DOCX, XLSX, images · max 100 MB
                     </p>
                 </div>
             </div>
 
-            <p className="text-xs text-slate-500">
-                Ces fichiers sont accessibles par votre équipe dans le CRM.
-            </p>
-
-            {/* File table */}
-            <Card className="border-slate-200 overflow-hidden">
+            {/* File list */}
+            <div className="bg-white rounded-2xl border border-[#E8EBF0] overflow-hidden shadow-sm" style={{ animation: "filesFadeUp 0.35s ease both", animationDelay: "90ms" }}>
                 {isLoading ? (
                     <div className="flex items-center justify-center py-16">
-                        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                        <Loader2 className="w-7 h-7 text-[#7C5CFC] animate-spin" />
                     </div>
                 ) : files.length === 0 ? (
-                    <EmptyState
-                        icon={File}
-                        title="Aucun fichier déposé"
-                        description="Déposez des fichiers dans la zone ci-dessus pour les partager avec votre équipe."
-                        variant="inline"
-                    />
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="border-b border-slate-200">
-                                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                        Fichier
-                                    </th>
-                                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                        Taille
-                                    </th>
-                                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                        Déposé le
-                                    </th>
-                                    <th className="w-12" />
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {files.map((f) => (
-                                    <tr
-                                        key={f.id}
-                                        className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50"
-                                    >
-                                        <td className="py-3 px-4">
-                                            <div className="flex items-center gap-2">
-                                                <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                                                <span className="text-sm font-medium text-slate-900 truncate max-w-[240px]">
-                                                    {f.originalName}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="py-3 px-4 text-sm text-slate-500">
-                                            {f.formattedSize}
-                                        </td>
-                                        <td className="py-3 px-4 text-sm text-slate-500">
-                                            {formatDate(f.createdAt)}
-                                        </td>
-                                        <td className="py-3 px-4">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleDelete(f.id)}
-                                                disabled={deletingId === f.id}
-                                                className="text-slate-400 hover:text-red-600"
-                                                aria-label="Supprimer"
-                                            >
-                                                {deletingId === f.id ? (
-                                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                                ) : (
-                                                    <Trash2 className="w-4 h-4" />
-                                                )}
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="py-16 px-6 text-center">
+                        <div className="w-14 h-14 rounded-2xl bg-[#F4F5FA] flex items-center justify-center mx-auto mb-4">
+                            <File className="w-6 h-6 text-[#A0A3BD]" />
+                        </div>
+                        <p className="text-sm font-semibold text-[#12122A]">Aucun fichier déposé</p>
+                        <p className="text-xs text-[#6B7194] mt-1 max-w-xs mx-auto">
+                            Déposez des fichiers dans la zone ci-dessus pour les partager avec votre équipe.
+                        </p>
                     </div>
+                ) : (
+                    <>
+                        <div className="px-5 py-3 border-b border-[#F0F1F7] bg-[#FAFAFA]">
+                            <div className="grid grid-cols-[1fr,100px,140px,44px] gap-4">
+                                <span className="text-[11px] font-bold text-[#A0A3BD] uppercase tracking-wider">Fichier</span>
+                                <span className="text-[11px] font-bold text-[#A0A3BD] uppercase tracking-wider">Taille</span>
+                                <span className="text-[11px] font-bold text-[#A0A3BD] uppercase tracking-wider">Déposé le</span>
+                                <span />
+                            </div>
+                        </div>
+                        <div className="divide-y divide-[#F5F6FA]">
+                            {files.map((f, idx) => {
+                                const { icon: FileIcon, color, bg } = getFileIcon(f.originalName);
+                                return (
+                                    <div
+                                        key={f.id}
+                                        className="px-5 py-3.5 hover:bg-[#FAFBFF] transition-colors"
+                                        style={{ animation: "filesFadeUp 0.3s ease both", animationDelay: `${90 + idx * 20}ms` }}
+                                    >
+                                        <div className="grid grid-cols-[1fr,100px,140px,44px] gap-4 items-center">
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", bg)}>
+                                                    <FileIcon className={cn("w-4 h-4", color)} />
+                                                </div>
+                                                <span className="text-sm font-semibold text-[#12122A] truncate">{f.originalName}</span>
+                                            </div>
+                                            <span className="text-sm text-[#6B7194]">{f.formattedSize}</span>
+                                            <span className="text-sm text-[#6B7194]">{formatDate(f.createdAt)}</span>
+                                            <div className="flex justify-end">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleDelete(f.id)}
+                                                    disabled={deletingId === f.id}
+                                                    className="w-8 h-8 p-0 text-[#A0A3BD] hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                    aria-label="Supprimer"
+                                                >
+                                                    {deletingId === f.id ? (
+                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    ) : (
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    )}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="px-5 py-3 border-t border-[#F0F1F7] bg-[#FAFAFA]">
+                            <p className="text-xs text-[#A0A3BD]">{files.length} fichier{files.length > 1 ? "s" : ""} · Accessibles par votre équipe dans le CRM</p>
+                        </div>
+                    </>
                 )}
-            </Card>
+            </div>
+
+            <style jsx global>{`
+                @keyframes filesFadeUp {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to { opacity: 1; transform: none; }
+                }
+            `}</style>
         </div>
     );
 }

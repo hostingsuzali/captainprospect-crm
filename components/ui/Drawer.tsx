@@ -110,9 +110,10 @@ export function Drawer({
                 ref={drawerRef}
                 tabIndex={-1}
                 role="dialog"
-                aria-modal="true"
+                aria-modal={modal ? "true" : undefined}
+                aria-label={title || "Panneau latéral"}
                 className={cn(
-                    "fixed top-0 bottom-0 w-full flex flex-col bg-white shadow-2xl shadow-black/10 z-[81]",
+                    "fixed top-0 bottom-0 w-full flex flex-col bg-white shadow-2xl shadow-black/10 z-[81] outline-none",
                     side === "right"
                         ? "right-0 animate-slide-in-right"
                         : "left-0 animate-slide-in-left",
@@ -133,7 +134,8 @@ export function Drawer({
                         {showCloseButton && headerCentered && (
                             <button
                                 onClick={onClose}
-                                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 -m-1 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-150 flex-shrink-0"
+                                aria-label="Fermer le panneau"
+                                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 -m-1 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-150 flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
                             >
                                 <X className="w-5 h-5" />
                             </button>
@@ -156,7 +158,8 @@ export function Drawer({
                         {showCloseButton && !headerCentered && (
                             <button
                                 onClick={onClose}
-                                className="p-2 -m-1 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-150 flex-shrink-0"
+                                aria-label="Fermer le panneau"
+                                className="p-2 -m-1 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-150 flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
                             >
                                 <X className="w-5 h-5" />
                             </button>

@@ -22,6 +22,29 @@ const SDR_COLORS: Record<string, string> = {
 };
 const getSdrColor = (name: string) => SDR_COLORS[name] || '#94A3B8';
 
+type AiAnalysis = {
+    executiveSummary: string;
+    keyInsights: string[];
+    objectionClusters: Array<{
+        objection: string;
+        frequency: "LOW" | "MEDIUM" | "HIGH";
+        whyItHappens: string;
+        recommendedResponse: string;
+    }>;
+    disqualificationCauses: Array<{
+        cause: string;
+        signalInNotes: string;
+        correctiveAction: string;
+    }>;
+    recommendations: Array<{
+        title: string;
+        priority: "P1" | "P2" | "P3";
+        expectedImpact: string;
+        actionPlan: string;
+    }>;
+    next7DaysPlan: string[];
+};
+
 export default function AnalyticsPage() {
     // Filters State
     const [dateRange, setDateRange] = useState({
@@ -49,6 +72,7 @@ export default function AnalyticsPage() {
 
     // AI Recap State
     const [aiRecap, setAiRecap] = useState<string | null>(null);
+    const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null);
     const [aiRecapExtras, setAiRecapExtras] = useState<Array<{ id: string; label: string; answer: string }>>([]);
     const [isLoadingAiRecap, setIsLoadingAiRecap] = useState(false);
     const [isLoadingFollowUp, setIsLoadingFollowUp] = useState<string | null>(null);
@@ -329,6 +353,7 @@ export default function AnalyticsPage() {
     const fetchAiRecap = useCallback(async () => {
         setIsLoadingAiRecap(true);
         setAiRecap(null);
+        setAiAnalysis(null);
         setAiRecapExtras([]);
         setShowFullRecap(false);
         setAiPhase(1);
@@ -360,6 +385,7 @@ export default function AnalyticsPage() {
             const json = await res.json();
             if (json.success && json.data?.recap) {
                 setAiRecap(json.data.recap);
+                setAiAnalysis(json.data.analysis ?? null);
             }
         } catch (err) {
             console.error("AI recap fetch error:", err);
@@ -405,6 +431,7 @@ export default function AnalyticsPage() {
         // Quand les filtres changent, on réinitialise simplement l'analyse IA.
         // L'utilisateur doit cliquer sur le bouton pour relancer manuellement.
         setAiRecap(null);
+        setAiAnalysis(null);
         setAiRecapExtras([]);
         setIsLoadingFollowUp(null);
     }, [dateRange.from, dateRange.to, selectedMissions.join(","), selectedSdrs.join(","), selectedClients.join(","), selectedLists.join(",")]);
@@ -722,26 +749,122 @@ export default function AnalyticsPage() {
                 {/* AI Recap Result */}
                 {!isLoadingAiRecap && aiRecap ? (
                     <div className="relative z-10 space-y-5">
-                        {/* Collapsible recap text */}
-                        <div className="relative">
-                            <div
-                                className={cn(
-                                    "text-[14px] leading-relaxed text-white/90 max-w-4xl prose prose-invert prose-sm max-w-none [&_strong]:text-white [&_ul]:my-2 [&_li]:my-0.5 transition-all duration-300",
-                                    !showFullRecap && "max-h-[120px] overflow-hidden"
-                                )}
-                                dangerouslySetInnerHTML={{ __html: aiRecap.replace(/\n/g, "<br />").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }}
-                            />
-                            {!showFullRecap && (
-                                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#16103A] to-transparent pointer-events-none" />
-                            )}
-                        </div>
-                        <button
-                            onClick={() => setShowFullRecap(!showFullRecap)}
-                            className="flex items-center gap-1.5 text-[12px] font-bold text-violet-300 hover:text-violet-200 transition-colors"
-                        >
-                            {showFullRecap ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                            {showFullRecap ? "Réduire" : "Voir l'analyse complète"}
-                        </button>
+                        {aiAnalysis ? (
+                            <>
+                                <div className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-sm p-4 lg:p-5">
+                                    <div className="text-[11px] uppercase tracking-widest text-violet-200/70 font-bold mb-2">Synthèse exécutive</div>
+                                    <p className="text-[14px] leading-relaxed text-white/90">{aiAnalysis.executiveSummary}</p>
+                                    <div className="flex flex-wrap gap-2 mt-4">
+                                        {aiAnalysis.keyInsights.map((insight, idx) => (
+                                            <span key={`${insight}-${idx}`} className="px-2.5 py-1.5 rounded-lg bg-violet-500/15 border border-violet-400/30 text-violet-100 text-[11px] font-semibold">
+                                                {insight}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                                    <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                                        <div className="flex items-center gap-2 text-[12px] font-bold text-white/80 mb-3">
+                                            <AlertTriangle className="w-4 h-4 text-amber-300" />
+                                            Objections récurrentes
+                                        </div>
+                                        <div className="space-y-2.5">
+                                            {aiAnalysis.objectionClusters.slice(0, 3).map((item, idx) => (
+                                                <div key={`${item.objection}-${idx}`} className="rounded-xl bg-white/5 border border-white/10 p-3">
+                                                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                        <p className="text-[12px] font-bold text-white">{item.objection}</p>
+                                                        <span className={cn(
+                                                            "text-[10px] px-2 py-0.5 rounded-full font-bold",
+                                                            item.frequency === "HIGH" ? "bg-red-500/20 text-red-200 border border-red-400/30" :
+                                                            item.frequency === "MEDIUM" ? "bg-amber-500/20 text-amber-200 border border-amber-400/30" :
+                                                            "bg-slate-500/20 text-slate-200 border border-slate-400/30"
+                                                        )}>
+                                                            {item.frequency}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[11px] text-white/65">{item.whyItHappens}</p>
+                                                    <p className="text-[11px] text-violet-100/80 mt-1.5">Réponse: {item.recommendedResponse}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                                        <div className="flex items-center gap-2 text-[12px] font-bold text-white/80 mb-3">
+                                            <UserX className="w-4 h-4 text-rose-300" />
+                                            Causes de disqualification
+                                        </div>
+                                        <div className="space-y-2.5">
+                                            {aiAnalysis.disqualificationCauses.slice(0, 3).map((item, idx) => (
+                                                <div key={`${item.cause}-${idx}`} className="rounded-xl bg-white/5 border border-white/10 p-3">
+                                                    <p className="text-[12px] font-bold text-white mb-1">{item.cause}</p>
+                                                    <p className="text-[11px] text-white/70">{item.signalInNotes}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                                        <div className="flex items-center gap-2 text-[12px] font-bold text-white/80 mb-3">
+                                            <ThumbsUp className="w-4 h-4 text-emerald-300" />
+                                            Recommandations prioritaires
+                                        </div>
+                                        <div className="space-y-2.5">
+                                            {aiAnalysis.recommendations.slice(0, 3).map((item, idx) => (
+                                                <div key={`${item.title}-${idx}`} className="rounded-xl bg-white/5 border border-white/10 p-3">
+                                                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                        <p className="text-[12px] font-bold text-white">{item.title}</p>
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-violet-500/20 text-violet-200 border border-violet-400/30">
+                                                            {item.priority}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[11px] text-emerald-100/80">Impact attendu: {item.expectedImpact}</p>
+                                                    <p className="text-[11px] text-white/70">{item.actionPlan}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl bg-emerald-500/10 border border-emerald-400/20 p-4">
+                                    <div className="flex items-center gap-2 text-[12px] font-bold text-emerald-200 mb-2.5">
+                                        <ArrowRight className="w-4 h-4" />
+                                        Plan d'action 7 jours
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {aiAnalysis.next7DaysPlan.map((step, idx) => (
+                                            <div key={`${step}-${idx}`} className="text-[12px] text-white/90 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                                                <span className="text-emerald-200 font-bold mr-2">{idx + 1}.</span>
+                                                {step}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="relative">
+                                    <div
+                                        className={cn(
+                                            "text-[14px] leading-relaxed text-white/90 max-w-4xl prose prose-invert prose-sm max-w-none [&_strong]:text-white [&_ul]:my-2 [&_li]:my-0.5 transition-all duration-300",
+                                            !showFullRecap && "max-h-[120px] overflow-hidden"
+                                        )}
+                                        dangerouslySetInnerHTML={{ __html: aiRecap.replace(/\n/g, "<br />").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") }}
+                                    />
+                                    {!showFullRecap && (
+                                        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#16103A] to-transparent pointer-events-none" />
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => setShowFullRecap(!showFullRecap)}
+                                    className="flex items-center gap-1.5 text-[12px] font-bold text-violet-300 hover:text-violet-200 transition-colors"
+                                >
+                                    {showFullRecap ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                    {showFullRecap ? "Réduire" : "Voir l'analyse complète"}
+                                </button>
+                            </>
+                        )}
 
                         {/* Follow-up buttons */}
                         <div className="flex flex-wrap gap-2 pt-2">
