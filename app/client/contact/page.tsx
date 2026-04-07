@@ -21,7 +21,7 @@ export default function ClientContactPage() {
             <div className="mb-6 flex-shrink-0">
                 <PageHeader
                     title="Contact"
-                    subtitle="Contactez un manager"
+                    subtitle="Contactez l'equipe support"
                     icon={
                         <span className="flex items-center gap-2 text-indigo-600">
                             <MessageSquare className="w-5 h-5" />

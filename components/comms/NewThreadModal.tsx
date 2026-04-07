@@ -120,7 +120,7 @@ export function NewThreadModal({
         }
     }, [defaultChannelType, defaultAnchorId]);
 
-    // CLIENT: load missions or contactable managers when entering recipient step (no search)
+    // CLIENT: load missions or support recipients when entering recipient step (no search)
     useEffect(() => {
         if (!isOpen || userRole !== "CLIENT" || step !== "recipient" || !channelType) {
             return;
@@ -392,8 +392,8 @@ export function NewThreadModal({
                 {step === "type" && (
                     <div className="grid gap-2">
                         {availableChannelOptions.map((opt) => {
-                            const label = userRole === "CLIENT" && opt.type === "DIRECT" ? "Message direct à un manager" : opt.label;
-                            const description = userRole === "CLIENT" && opt.type === "DIRECT" ? "Contacter un manager" : opt.description;
+                            const label = userRole === "CLIENT" && opt.type === "DIRECT" ? "Message a l'equipe support" : opt.label;
+                            const description = userRole === "CLIENT" && opt.type === "DIRECT" ? "Contacter l'equipe support" : opt.description;
                             return (
                                 <button
                                     key={opt.type}
@@ -453,7 +453,7 @@ export function NewThreadModal({
                                                     <p className="text-sm text-slate-500">
                                                         {channelType === "MISSION"
                                                             ? "Aucune mission en cours."
-                                                            : "Aucun manager disponible."}
+                                                            : "Aucune equipe support disponible."}
                                                     </p>
                                                 </>
                                             ) : (
@@ -528,7 +528,7 @@ export function NewThreadModal({
                         {/* Note for mission threads */}
                         {channelType === "MISSION" && (
                             <p className="text-xs text-slate-500 bg-blue-50 text-blue-700 px-3 py-2 rounded-lg">
-                                💡 Tous les SDR et managers assignés à cette mission verront cette discussion.
+                                💡 Tous les SDR et managers assignes a cette mission verront cette discussion.
                             </p>
                         )}
 
