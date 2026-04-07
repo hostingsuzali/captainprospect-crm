@@ -42,6 +42,49 @@ function normalizePhone(raw: string | null | undefined): string | null {
   }
 }
 
+function extractPhoneCandidates(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  const text = raw.trim();
+  if (!text) return [];
+
+  // Keep permissive chunks to support "07 57 59 24 77 / +33 7 57 59 24 77" and similar.
+  const chunks = text.match(/(?:\+|00)?\d(?:[\d\s()./-]{6,}\d)?/g) ?? [];
+  if (chunks.length === 0) {
+    return [text];
+  }
+
+  const candidates = new Set<string>();
+  for (const chunk of chunks) {
+    const cleaned = chunk.replace(/[^\d+]/g, '');
+    if (!cleaned) continue;
+    candidates.add(cleaned);
+
+    // Accept numbers written as 0033... too.
+    if (cleaned.startsWith('00')) {
+      candidates.add(`+${cleaned.slice(2)}`);
+    }
+
+    // If someone stores plain FR number without separators, keep both forms.
+    const digitsOnly = cleaned.replace(/\D/g, '');
+    if (digitsOnly.length === 10 && digitsOnly.startsWith('0')) {
+      candidates.add(digitsOnly);
+      candidates.add(`+33${digitsOnly.slice(1)}`);
+    }
+    if (digitsOnly.length === 11 && digitsOnly.startsWith('33')) {
+      candidates.add(`+${digitsOnly}`);
+    }
+  }
+
+  return [...candidates];
+}
+
+function normalizePhonesFromField(raw: string | null | undefined): string[] {
+  const normalized = extractPhoneCandidates(raw)
+    .map(normalizePhone)
+    .filter((p): p is string => p !== null);
+  return [...new Set(normalized)];
+}
+
 async function collectCandidatePhones(actionId: string): Promise<string[]> {
   const action = await prisma.action.findUnique({
     where: { id: actionId },
@@ -53,9 +96,11 @@ async function collectCandidatePhones(actionId: string): Promise<string[]> {
   });
   if (!action) return [];
 
-  const normalized = [action.meetingPhone, action.contact?.phone, action.company?.phone]
-    .map(normalizePhone)
-    .filter((p): p is string => p !== null);
+  const normalized = [
+    ...normalizePhonesFromField(action.meetingPhone),
+    ...normalizePhonesFromField(action.contact?.phone),
+    ...normalizePhonesFromField(action.company?.phone),
+  ];
 
   return [...new Set(normalized)];
 }
