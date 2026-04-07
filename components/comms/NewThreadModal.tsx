@@ -23,6 +23,8 @@ interface SelectableItem {
     subtitle?: string;
 }
 
+const CLIENT_SUPPORT_TEAM_ITEM_ID = "__client_support_team__";
+
 const CHANNEL_OPTIONS: {
     type: CommsChannelType;
     label: string;
@@ -88,6 +90,7 @@ export function NewThreadModal({
 
     // For DIRECT type
     const [selectedUser, setSelectedUser] = useState<SelectableItem | null>(null);
+    const [clientSupportUserIds, setClientSupportUserIds] = useState<string[]>([]);
 
     // Searchable items for anchor selection
     const [searchQuery, setSearchQuery] = useState("");
@@ -104,6 +107,7 @@ export function NewThreadModal({
             setMessage("");
             setIsBroadcast(false);
             setSelectedUser(null);
+            setClientSupportUserIds([]);
             setSearchQuery("");
             setSearchResults([]);
         }
@@ -145,13 +149,29 @@ export function NewThreadModal({
                     const res = await fetch("/api/client/contactable-managers");
                     if (!res.ok || cancelled) return;
                     const json = await res.json();
-                    const list = json.managers || [];
-                    const items: SelectableItem[] = list.map((m: { id: string; name: string }) => ({
-                        id: m.id,
-                        name: m.name,
-                        subtitle: "Manager",
-                    }));
-                    if (!cancelled) setSearchResults(items);
+                    const supportUsers = Array.isArray(json.supportTeamUsers)
+                        ? json.supportTeamUsers
+                        : [];
+                    if (!cancelled) {
+                        setClientSupportUserIds(
+                            supportUsers
+                                .map((u: { id: string }) => u.id)
+                                .filter((id: string) => !!id),
+                        );
+                        setSearchResults(
+                            supportUsers.length > 0
+                                ? [
+                                      {
+                                          id: CLIENT_SUPPORT_TEAM_ITEM_ID,
+                                          name: "Equipe support",
+                                          subtitle: supportUsers
+                                              .map((u: { name: string }) => u.name)
+                                              .join(", "),
+                                      },
+                                  ]
+                                : [],
+                        );
+                    }
                 }
             } catch (e) {
                 if (!cancelled) setSearchResults([]);
@@ -269,8 +289,10 @@ export function NewThreadModal({
     };
 
     const handleSelectRecipient = (item: SelectableItem) => {
-        if (channelType === "DIRECT") {
+        if (channelType === "DIRECT" && item.id !== CLIENT_SUPPORT_TEAM_ITEM_ID) {
             setSelectedUser(item);
+        } else if (channelType === "DIRECT") {
+            setSelectedUser({ id: item.id, name: "Equipe support", subtitle: item.subtitle });
         }
         setAnchorId(item.id);
         setAnchorName(item.name);
@@ -297,8 +319,12 @@ export function NewThreadModal({
                 isBroadcast,
             };
 
-            if (channelType === "DIRECT" && selectedUser) {
-                request.participantIds = [selectedUser.id];
+            if (channelType === "DIRECT") {
+                if (userRole === "CLIENT") {
+                    request.participantIds = clientSupportUserIds;
+                } else if (selectedUser) {
+                    request.participantIds = [selectedUser.id];
+                }
             } else if (anchorId) {
                 request.anchorId = anchorId;
             }

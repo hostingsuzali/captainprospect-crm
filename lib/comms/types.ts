@@ -47,7 +47,7 @@ export const MESSAGE_TYPE_LABELS: Record<CommsMessageType, string> = {
 export interface CreateThreadRequest {
     channelType: CommsChannelType;
     anchorId?: string;           // missionId, clientId, campaignId, or groupId
-    participantIds?: string[];   // For DIRECT type, exactly 1 other user
+    participantIds?: string[];   // For DIRECT type, one or many recipients
     subject: string;
     initialMessage: string;
     isBroadcast?: boolean;

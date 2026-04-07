@@ -119,6 +119,37 @@ export async function getOrCreateDirectChannel(
     return channel.id;
 }
 
+/**
+ * Get or create a direct channel for a set of users.
+ * Uses sorted unique user IDs to ensure consistent lookup key.
+ */
+export async function getOrCreateDirectChannelForUsers(
+    userIds: string[]
+): Promise<string> {
+    const sortedIds = [...new Set(userIds)].sort();
+    if (sortedIds.length < 2) {
+        throw new Error("Direct channel requires at least two users");
+    }
+
+    let channel = await prisma.commsChannel.findFirst({
+        where: {
+            type: "DIRECT",
+            directUserIds: { equals: sortedIds },
+        },
+    });
+
+    if (channel) return channel.id;
+
+    channel = await prisma.commsChannel.create({
+        data: {
+            type: "DIRECT",
+            directUserIds: sortedIds,
+        },
+    });
+
+    return channel.id;
+}
+
 // ============================================
 // THREAD MANAGEMENT
 // ============================================
@@ -134,10 +165,10 @@ export async function createThread(
 
     // Get or create the appropriate channel
     if (request.channelType === "DIRECT") {
-        if (!request.participantIds || request.participantIds.length !== 1) {
-            throw new Error("Direct threads require exactly one other participant");
+        if (!request.participantIds || request.participantIds.length < 1) {
+            throw new Error("Direct threads require at least one recipient");
         }
-        channelId = await getOrCreateDirectChannel(creatorId, request.participantIds[0]);
+        channelId = await getOrCreateDirectChannelForUsers([creatorId, ...request.participantIds]);
     } else if (request.channelType === "BROADCAST") {
         // Broadcasts get their own channel or use a shared broadcast channel
         channelId = await getOrCreateChannel("BROADCAST");
@@ -152,7 +183,7 @@ export async function createThread(
     let participantIds: string[] = [creatorId];
 
     if (request.channelType === "DIRECT" && request.participantIds) {
-        participantIds = [...participantIds, ...request.participantIds];
+        participantIds = [...new Set([...participantIds, ...request.participantIds])];
     } else if (request.channelType === "MISSION" && request.anchorId) {
         // Auto-add participants for mission threads:
         // - All SDRs assigned to the mission

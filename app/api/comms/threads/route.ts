@@ -19,6 +19,8 @@ import type {
     CommsThreadStatus,
 } from "@/lib/comms/types";
 
+const CLIENT_SUPPORT_TEAM_NAME_MATCHERS = ["roeum", "hichem", "jeff", "sophie"];
+
 // GET /api/comms/threads - List threads (inbox)
 export async function GET(request: NextRequest) {
     try {
@@ -99,22 +101,42 @@ export async function POST(request: NextRequest) {
         // Client portal: direct messages only to managers (messaging is only in mission or to a manager)
         if (session.user.role === "CLIENT" && body.channelType === "DIRECT") {
             const participantIds = body.participantIds ?? [];
-            if (participantIds.length !== 1) {
+            if (participantIds.length < 1) {
                 return NextResponse.json(
-                    { error: "Un message direct doit avoir exactement un destinataire" },
+                    { error: "Un message direct doit avoir au moins un destinataire" },
                     { status: 400 }
                 );
             }
-            const recipient = await prisma.user.findUnique({
-                where: { id: participantIds[0] },
-                select: { role: true },
+
+            const supportUsers = await prisma.user.findMany({
+                where: {
+                    isActive: true,
+                    OR: CLIENT_SUPPORT_TEAM_NAME_MATCHERS.map((name) => ({
+                        name: { contains: name, mode: "insensitive" },
+                    })),
+                },
+                select: { id: true },
             });
-            if (recipient?.role !== "MANAGER") {
+            const supportIds = supportUsers.map((u) => u.id);
+            if (supportIds.length === 0) {
                 return NextResponse.json(
-                    { error: "Les clients ne peuvent envoyer de messages directs qu'à un manager" },
+                    { error: "Aucun membre de l'équipe support n'est configuré" },
+                    { status: 500 }
+                );
+            }
+
+            const dedupedParticipantIds = [...new Set(participantIds)];
+            const missingSupportMembers = supportIds.filter((id) => !dedupedParticipantIds.includes(id));
+            const hasNonSupportRecipient = dedupedParticipantIds.some((id) => !supportIds.includes(id));
+
+            if (missingSupportMembers.length > 0 || hasNonSupportRecipient) {
+                return NextResponse.json(
+                    { error: "Les clients ne peuvent envoyer ce message qu'à l'équipe support complète" },
                     { status: 403 }
                 );
             }
+
+            body.participantIds = dedupedParticipantIds;
         }
 
         const threadId = await createThread(body, session.user.id);

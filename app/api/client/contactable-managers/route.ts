@@ -8,6 +8,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const SUPPORT_TEAM_NAME_MATCHERS = ["roeum", "hichem", "jeff", "sophie"];
+
 export async function GET() {
     try {
         const session = await getServerSession(authOptions);
@@ -30,8 +32,23 @@ export async function GET() {
             orderBy: { name: "asc" },
         });
 
+        const supportTeamUsers = await prisma.user.findMany({
+            where: {
+                isActive: true,
+                OR: SUPPORT_TEAM_NAME_MATCHERS.map((name) => ({
+                    name: { contains: name, mode: "insensitive" },
+                })),
+            },
+            select: {
+                id: true,
+                name: true,
+            },
+            orderBy: { name: "asc" },
+        });
+
         return NextResponse.json({
             managers: managers.map((m) => ({ id: m.id, name: m.name })),
+            supportTeamUsers: supportTeamUsers.map((u) => ({ id: u.id, name: u.name })),
         });
     } catch (error) {
         console.error("Error fetching contactable managers:", error);
