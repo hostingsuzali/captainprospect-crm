@@ -179,6 +179,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       },
     },
     meetingFeedback: true,
+    interlocuteur: {
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        title: true,
+      },
+    },
   } satisfies Prisma.ActionInclude;
 
   // Fetch enough rows so that after excluding RDV cancelled with <10 min notice we can fill this page
@@ -306,6 +314,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     mission: { id: m.campaign.mission.id, name: m.campaign.mission.name },
     client: m.campaign.mission.client,
     sdr: m.sdr,
+    interlocuteur: m.interlocuteur
+      ? {
+          id: m.interlocuteur.id,
+          firstName: m.interlocuteur.firstName,
+          lastName: m.interlocuteur.lastName,
+          title: m.interlocuteur.title,
+        }
+      : null,
     feedback: m.meetingFeedback
       ? {
           outcome: m.meetingFeedback.outcome,

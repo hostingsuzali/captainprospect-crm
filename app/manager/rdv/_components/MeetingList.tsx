@@ -162,6 +162,22 @@ const MeetingRow = memo(function MeetingRow({
         </span>
       </div>
 
+      <div style={{ width: 120, minWidth: 120, display: "flex", alignItems: "center", gap: 6 }}>
+        {meeting.interlocuteur ? (
+          <>
+            <Avatar
+              name={[meeting.interlocuteur.firstName, meeting.interlocuteur.lastName].filter(Boolean).join(" ") || "Commercial"}
+              size={24}
+            />
+            <span style={{ fontSize: 12, color: "var(--ink2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {[meeting.interlocuteur.firstName, meeting.interlocuteur.lastName].filter(Boolean).join(" ") || "Assigné"}
+            </span>
+          </>
+        ) : (
+          <span style={{ fontSize: 11, color: "var(--ink3)", opacity: 0.65 }}>Non assigné</span>
+        )}
+      </div>
+
       <div style={{ width: 36, textAlign: "center", color: "var(--ink3)" }}>{meetingTypeIcon(meeting.meetingType)}</div>
 
       {meeting.duration ? (
@@ -299,6 +315,7 @@ export function MeetingList({
         <div style={{ flex: 1, minWidth: 80 }}>Client</div>
         <div style={{ flex: 1, minWidth: 80 }}>Mission</div>
         <div style={{ width: 100 }}>SDR</div>
+        <div style={{ width: 120 }}>Commercial</div>
         <div style={{ width: 36, textAlign: "center" }}>Type</div>
         <div style={{ width: 50, textAlign: "center" }}>Durée</div>
         <div style={{ width: 70, textAlign: "center" }}>Statut</div>

@@ -275,6 +275,23 @@ export function DetailTab({
         </div>
       </DetailRow>
 
+      <DetailRow label="Commercial client">
+        {meeting.interlocuteur ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+            <Avatar
+              name={[meeting.interlocuteur.firstName, meeting.interlocuteur.lastName].filter(Boolean).join(" ") || "Commercial"}
+              size={26}
+            />
+            <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+              {[meeting.interlocuteur.firstName, meeting.interlocuteur.lastName].filter(Boolean).join(" ") || "Assigné"}
+              {meeting.interlocuteur.title ? ` · ${meeting.interlocuteur.title}` : ""}
+            </span>
+          </div>
+        ) : (
+          <span style={{ color: "var(--ink3)" }}>Non assigné</span>
+        )}
+      </DetailRow>
+
       <DetailRow label="Client">{meeting.client?.name || "—"}</DetailRow>
       <DetailRow label="Mission">{meeting.mission.name}</DetailRow>
       <DetailRow label="Campagne">{meeting.campaign.name}</DetailRow>
