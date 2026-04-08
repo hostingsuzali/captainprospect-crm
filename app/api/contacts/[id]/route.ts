@@ -43,10 +43,7 @@ function calculateContactStatus(contact: {
 }): 'INCOMPLETE' | 'PARTIAL' | 'ACTIONABLE' {
     const hasChannel = !!(contact.phone || contact.email || contact.linkedin);
     const hasName = !!(contact.firstName || contact.lastName);
-    const hasMultipleChannels =
-        [contact.phone, contact.email, contact.linkedin].filter(Boolean).length >= 2;
-
-    if (hasChannel && hasName && hasMultipleChannels) {
+    if (hasChannel && hasName) {
         return 'ACTIONABLE';
     } else if (hasChannel || hasName) {
         return 'PARTIAL';

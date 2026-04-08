@@ -1,5 +1,5 @@
 // ============================================
-// POST /api/ai/mistral/rdv-fiche
+// POST /api/ai/openai/rdv-fiche
 // Extract structured "fiche RDV" sections from a transcription.
 // ============================================
 
@@ -17,14 +17,14 @@ const schema = z.object({
   transcription: z.string().min(20, "Transcription requise").max(120_000, "Transcription trop longue"),
 });
 
-const MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions";
-const MISTRAL_MODEL = "mistral-large-latest";
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_MODEL = "gpt-4o";
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
   await requireRole(["MANAGER"], request);
 
-  const apiKey = process.env.MISTRAL_API_KEY;
-  if (!apiKey) return errorResponse("MISTRAL_API_KEY non configurée", 503);
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return errorResponse("OPENAI_API_KEY non configurée", 503);
 
   const { transcription } = await validateRequest(request, schema);
 
@@ -50,14 +50,14 @@ ${transcription.trim()}
 
 Extrais les sections demandées. Si une section est absente, mets une chaîne vide.`;
 
-  const response = await fetch(MISTRAL_API_URL, {
+  const response = await fetch(OPENAI_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MISTRAL_MODEL,
+      model: OPENAI_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -70,24 +70,27 @@ Extrais les sections demandées. Si une section est absente, mets une chaîne vi
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    console.error("Mistral rdv-fiche error:", err);
-    return errorResponse(err.error?.message || "Erreur Mistral AI", response.status);
+    console.error("OpenAI rdv-fiche error:", err);
+    return errorResponse(
+      (err as { error?: { message?: string } })?.error?.message || "Erreur OpenAI",
+      response.status
+    );
   }
 
   const result = await response.json();
   const content = result.choices?.[0]?.message?.content?.trim();
-  if (!content) return errorResponse("Réponse vide de Mistral AI", 500);
+  if (!content) return errorResponse("Réponse vide d'OpenAI", 500);
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
-    console.error("Failed to parse Mistral response:", content);
-    return errorResponse("Impossible de parser la réponse de Mistral AI", 500);
+    console.error("Failed to parse OpenAI response:", content);
+    return errorResponse("Impossible de parser la réponse d'OpenAI", 500);
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return errorResponse("Réponse Mistral invalide", 500);
+    return errorResponse("Réponse OpenAI invalide", 500);
   }
 
   const obj = parsed as Record<string, unknown>;
@@ -101,4 +104,3 @@ Extrais les sections demandées. Si une section est absente, mets une chaîne vi
 
   return successResponse({ fiche, usage: result.usage });
 });
-

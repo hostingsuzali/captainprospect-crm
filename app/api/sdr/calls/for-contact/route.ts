@@ -16,6 +16,14 @@ function getAlloNumbers(): string[] {
   return (process.env.ALLO_NUMBERS ?? '').split(',').map((n) => n.trim()).filter(Boolean);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+const FOR_CONTACT_GAP_MS = Math.max(0, parseInt(process.env.CALL_ENRICHMENT_ALLO_LINE_GAP_MS ?? '120', 10));
+const FOR_CONTACT_429_RETRIES = Math.max(0, parseInt(process.env.CALL_ENRICHMENT_ALLO_429_RETRIES ?? '6', 10));
+const FOR_CONTACT_429_BASE_MS = Math.max(100, parseInt(process.env.CALL_ENRICHMENT_ALLO_429_BASE_MS ?? '750', 10));
+
 async function fetchAlloPage(apiKey: string, alloNumber: string, contactNumber: string) {
   const url = new URL(`${BASE_URL}/v1/api/calls`);
   url.searchParams.set('allo_number', alloNumber);
@@ -23,15 +31,24 @@ async function fetchAlloPage(apiKey: string, alloNumber: string, contactNumber: 
   url.searchParams.set('size', '20');
   url.searchParams.set('page', '0');
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: apiKey },
-    next: { revalidate: 0 },
-  });
+  for (let attempt = 0; attempt <= FOR_CONTACT_429_RETRIES; attempt++) {
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: apiKey },
+      next: { revalidate: 0 },
+    });
 
-  if (!res.ok) return [];
-  const data = await res.json();
-  const { rawCalls } = parseAlloCallsListResponse(data);
-  return rawCalls;
+    if (res.status === 429 && attempt < FOR_CONTACT_429_RETRIES) {
+      const backoff = Math.min(FOR_CONTACT_429_BASE_MS * 2 ** attempt, 30_000);
+      await sleep(backoff);
+      continue;
+    }
+
+    if (!res.ok) return [];
+    const data = await res.json();
+    const { rawCalls } = parseAlloCallsListResponse(data);
+    return rawCalls;
+  }
+  return [];
 }
 
 // GET /api/sdr/calls/for-contact?phone=+33644606054
@@ -58,19 +75,20 @@ export async function GET(req: NextRequest) {
 
   const variants = phoneVariants(phone);
 
-  // Fan out: all allo_numbers × phone variants, collect and deduplicate by call id
-  const fetches = alloNumbers.flatMap((alloNumber) =>
-    variants.map((v) => fetchAlloPage(apiKey, alloNumber, v))
-  );
-
-  const pages = await Promise.allSettled(fetches);
+  // Serial requests: parallel fan-out caused mass HTTP 429 from WithAllo (same as call-enrichment).
   const allCalls: Record<string, object> = {};
-
-  for (const p of pages) {
-    if (p.status !== 'fulfilled') continue;
-    for (const call of p.value) {
-      if (call?.id) allCalls[call.id] = call;
+  for (let li = 0; li < alloNumbers.length; li++) {
+    const alloNumber = alloNumbers[li]!;
+    for (let vi = 0; vi < variants.length; vi++) {
+      const v = variants[vi]!;
+      const rawCalls = await fetchAlloPage(apiKey, alloNumber, v);
+      for (const call of rawCalls) {
+        const id = call.id != null ? String(call.id) : '';
+        if (id) allCalls[id] = call;
+      }
+      if (vi < variants.length - 1 && FOR_CONTACT_GAP_MS > 0) await sleep(FOR_CONTACT_GAP_MS);
     }
+    if (li < alloNumbers.length - 1 && FOR_CONTACT_GAP_MS > 0) await sleep(FOR_CONTACT_GAP_MS);
   }
 
   // Sort newest first

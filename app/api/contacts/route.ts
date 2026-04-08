@@ -95,10 +95,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     let status: 'INCOMPLETE' | 'PARTIAL' | 'ACTIONABLE' = 'INCOMPLETE';
     const hasChannel = !!(data.phone || data.email || data.linkedin);
     const hasName = !!(data.firstName || data.lastName);
-    const hasMultipleChannels =
-        [data.phone, data.email, data.linkedin].filter(Boolean).length >= 2;
-
-    if (hasChannel && hasName && hasMultipleChannels) {
+    if (hasChannel && hasName) {
         status = 'ACTIONABLE';
     } else if (hasChannel || hasName) {
         status = 'PARTIAL';

@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 import { prisma } from '@/lib/prisma';
+import { ceDebug, isCallEnrichmentDebug } from './debug';
 import { callProvider } from './provider';
 
 const DEFAULT_COUNTRY = (process.env.PHONE_DEFAULT_COUNTRY ?? 'FR') as Parameters<typeof isValidPhoneNumber>[1];
@@ -96,6 +97,12 @@ async function collectCandidatePhones(actionId: string): Promise<string[]> {
   });
   if (!action) return [];
 
+  ceDebug("raw phone fields", {
+    meetingPhone: action.meetingPhone ?? null,
+    contactPhone: action.contact?.phone ?? null,
+    companyPhone: action.company?.phone ?? null,
+  });
+
   const normalized = [
     ...normalizePhonesFromField(action.meetingPhone),
     ...normalizePhonesFromField(action.contact?.phone),
@@ -135,7 +142,10 @@ export async function enrichActionFromCallProvider(
   options?: EnrichActionOptions,
 ): Promise<void> {
   const force = options?.force === true;
-  console.log(`[call-enrichment] ▶ start actionId=${actionId}${force ? ' (force)' : ''}`);
+  const hasKey = !!process.env.ALLO_API_KEY?.trim();
+  console.log(
+    `[call-enrichment] ▶ start actionId=${actionId}${force ? " (force)" : ""} ALLO_API_KEY=${hasKey ? "set" : "MISSING"} CALL_ENRICHMENT_DEBUG=${isCallEnrichmentDebug() ? "on" : "off"}`,
+  );
 
   const action = await prisma.action.findUnique({
     where: { id: actionId },
@@ -143,52 +153,74 @@ export async function enrichActionFromCallProvider(
   });
 
   if (!action) {
-    console.warn(`[call-enrichment] action not found actionId=${actionId}`);
+    console.warn(`[call-enrichment] outcome=ACTION_NOT_FOUND actionId=${actionId}`);
     return;
   }
   // Skip only if enrichment ran AND produced at least some data (summary OR recording)
   if (!force && action.callEnrichmentAt && (action.callSummary?.trim() || action.callRecordingUrl?.trim())) {
-    console.log(`[call-enrichment] already enriched, skipping actionId=${actionId}`);
+    console.log(
+      `[call-enrichment] outcome=SKIP_ALREADY_ENRICHED actionId=${actionId} ` +
+        `callEnrichmentAt=${action.callEnrichmentAt?.toISOString() ?? "null"} hasSummary=${!!action.callSummary?.trim()} hasRecording=${!!action.callRecordingUrl?.trim()} ` +
+        `(partial data: set CALL_ENRICHMENT_DEBUG=1 and re-sync; manager queue sets force when summary or recording still missing)`,
+    );
     return;
   }
 
   const phones = await collectCandidatePhones(actionId);
   const alloNumbers = getAlloNumbers();
 
-  console.log(`[call-enrichment] phones=${JSON.stringify(phones)} alloNumbers=${JSON.stringify(alloNumbers)}`);
+  console.log(
+    `[call-enrichment] phones=${JSON.stringify(phones)} alloNumbers=${JSON.stringify(alloNumbers)} actionCreatedAt=${action.createdAt.toISOString()}`,
+  );
+  ceDebug("window mode", {
+    USE_RELATIVE_WINDOW,
+    ENRICHMENT_DAY_TZ,
+    WINDOW_BEFORE_MS,
+    WINDOW_AFTER_MS,
+  });
 
   if (phones.length === 0) {
-    console.warn(`[call-enrichment] BLOCKED — no valid phone found on contact/company/meetingPhone for actionId=${actionId}`);
+    console.warn(`[call-enrichment] outcome=NO_PHONE actionId=${actionId} — no E.164-normalized number from meetingPhone / contact / company`);
     await prisma.action.update({ where: { id: actionId }, data: { callEnrichmentError: 'NO_PHONE' } });
     return;
   }
 
   if (alloNumbers.length === 0) {
-    console.warn(`[call-enrichment] BLOCKED — ALLO_NUMBERS env var is empty, no allo number to search with`);
+    console.warn(`[call-enrichment] outcome=NO_ALLO_NUMBERS actionId=${actionId} — env ALLO_NUMBERS is empty`);
     await prisma.action.update({ where: { id: actionId }, data: { callEnrichmentError: 'NO_ALLO_NUMBERS' } });
     return;
   }
 
   const { windowStart, windowEnd, logHint } = enrichmentWindowForAction(action.createdAt);
-  console.log(`[call-enrichment] window ${windowStart.toISOString()} → ${windowEnd.toISOString()} (${logHint})`);
+  console.log(
+    `[call-enrichment] window ${windowStart.toISOString()} → ${windowEnd.toISOString()} (${logHint}) actionCreatedAt=${action.createdAt.toISOString()}`,
+  );
 
   let record;
   try {
     record = await callProvider.fetchMatchingCallRecord({ phones, alloNumbers, sdrId: action.sdrId, windowStart, windowEnd });
   } catch (err) {
     const msg = err instanceof Error ? err.message.slice(0, 200) : 'PROVIDER_ERROR';
-    console.error(`[call-enrichment] provider threw error actionId=${actionId}:`, msg);
+    console.error(`[call-enrichment] outcome=PROVIDER_ERROR actionId=${actionId} message=${msg}`, err);
     await prisma.action.update({ where: { id: actionId }, data: { callEnrichmentError: msg } });
     return;
   }
 
   if (!record) {
-    console.warn(`[call-enrichment] NO_MATCH — Allo returned no call in the time window for actionId=${actionId}`);
+    const noop = !hasKey;
+    console.warn(
+      `[call-enrichment] outcome=NO_MATCH actionId=${actionId}` +
+        (noop
+          ? " — provider is NOOP (ALLO_API_KEY unset); no WithAllo request was made"
+          : " — no call matched phone + time window on any ALLO_NUMBERS line (see [allo] line reports above)"),
+    );
     await prisma.action.update({ where: { id: actionId }, data: { callEnrichmentError: 'NO_MATCH' } });
     return;
   }
 
-  console.log(`[call-enrichment] ✓ match found — summary=${!!record.summary} transcription=${!!record.transcription} recording=${!!record.recordingUrl}`);
+  console.log(
+    `[call-enrichment] match payload actionId=${actionId} summary=${!!record.summary} transcription=${!!record.transcription} recording=${!!record.recordingUrl}`,
+  );
 
   // Another writer (e.g. SDR picked a call manually) may have enriched while we were fetching — do not overwrite.
   const latest = await prisma.action.findUnique({
@@ -196,7 +228,9 @@ export async function enrichActionFromCallProvider(
     select: { callEnrichmentAt: true, callSummary: true, callRecordingUrl: true },
   });
   if (!force && latest?.callEnrichmentAt && (latest.callSummary?.trim() || latest.callRecordingUrl?.trim())) {
-    console.log(`[call-enrichment] skip — already enriched concurrently actionId=${actionId}`);
+    console.log(
+      `[call-enrichment] outcome=SKIP_RACE actionId=${actionId} — another request enriched this action while WithAllo was in flight; not overwriting`,
+    );
     return;
   }
 
@@ -211,5 +245,7 @@ export async function enrichActionFromCallProvider(
     },
   });
 
-  console.log(`[call-enrichment] ✓ done actionId=${actionId}`);
+  console.log(
+    `[call-enrichment] outcome=ENRICHED_OK actionId=${actionId} summary=${!!record.summary} transcription=${!!record.transcription} recording=${!!record.recordingUrl}`,
+  );
 }

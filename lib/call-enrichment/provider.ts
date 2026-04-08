@@ -29,7 +29,10 @@ function buildProvider(): CallProvider {
   console.warn('[call-enrichment] provider=NOOP — ALLO_API_KEY is not set, enrichment disabled');
   // No-op until env vars are set
   return {
-    fetchMatchingCallRecord: async () => null,
+    fetchMatchingCallRecord: async () => {
+      console.warn('[call-enrichment] fetchMatchingCallRecord: NOOP (set ALLO_API_KEY to call WithAllo)');
+      return null;
+    },
   };
 }
 

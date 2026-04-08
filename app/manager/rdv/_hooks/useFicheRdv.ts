@@ -74,7 +74,7 @@ export function useFicheRdv(
       setFicheLoading(true);
       setFicheError(null);
       try {
-        const res = await fetch("/api/ai/mistral/rdv-fiche", {
+        const res = await fetch("/api/ai/openai/rdv-fiche", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transcription }),

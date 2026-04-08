@@ -1108,19 +1108,32 @@ export function UnifiedActionDrawer({
                 phone: newInterlocutorContact.phone.trim() || undefined,
                 email: newInterlocutorContact.email.trim() || undefined,
             };
-            const res = await fetch("/api/contacts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
+            const isReplacingCurrentContact = !!contactId;
+            const res = await fetch(
+                isReplacingCurrentContact ? `/api/contacts/${contactId}` : "/api/contacts",
+                {
+                    method: isReplacingCurrentContact ? "PUT" : "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(
+                        isReplacingCurrentContact
+                            ? {
+                                firstName: payload.firstName ?? null,
+                                lastName: payload.lastName ?? null,
+                                phone: payload.phone ?? null,
+                                email: payload.email ?? null,
+                            }
+                            : payload
+                    ),
+                }
+            );
             const json = await res.json();
             if (!json.success || !json.data?.id) {
-                throw new Error(json.error || "Impossible de créer le contact");
+                throw new Error(json.error || "Impossible de sauvegarder le contact");
             }
             return json.data as Contact;
         },
         onSuccess: (createdContact) => {
-            success("Contact créé", "Le nouveau contact a été ajouté avec succès");
+            success("Contact sauvegardé", "Le bon interlocuteur a été enregistré avec succès");
             setNewInterlocutorContact({ firstName: "", lastName: "", phone: "", email: "" });
             setInterlocutorContactSaved(true);
             queryClient.invalidateQueries({ queryKey: sdrUnifiedDrawerCompanyKey(createdContact.companyId) });

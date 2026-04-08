@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { enrichActionFromCallProvider, enrichActionShouldUseForce } from "./enrich-action";
+import { isCallEnrichmentDebug } from "./debug";
 
 export type CallEnrichmentSyncStatus =
     | "enriched"
@@ -30,6 +31,10 @@ async function enrichOneAction(
 ): Promise<{ actionId: string; status: CallEnrichmentSyncStatus }> {
     try {
         const force = enrichActionShouldUseForce(action);
+        console.log(
+            `${logPrefix} actionId=${action.id} force=${force} ` +
+                `before: callEnrichmentAt=${action.callEnrichmentAt?.toISOString() ?? "null"} hasSummary=${!!action.callSummary?.trim()} hasRecording=${!!action.callRecordingUrl?.trim()} debug=${isCallEnrichmentDebug() ? "on" : "off"}`,
+        );
         await enrichActionFromCallProvider(action.id, { force });
         const after = await prisma.action.findUnique({
             where: { id: action.id },
@@ -42,6 +47,9 @@ async function enrichOneAction(
         });
 
         if (after?.callEnrichmentAt) {
+            console.log(
+                `${logPrefix} outcome=enriched actionId=${action.id} hasSummary=${!!after.callSummary?.trim()} hasRecording=${!!after.callRecordingUrl?.trim()} error=${after.callEnrichmentError ?? "null"}`,
+            );
             return { actionId: action.id, status: "enriched" };
         }
         if (after?.callEnrichmentError === "NO_MATCH") {
@@ -50,6 +58,23 @@ async function enrichOneAction(
         if (after?.callEnrichmentError === "NO_PHONE") {
             return { actionId: action.id, status: "no_phone" };
         }
+        if (after?.callEnrichmentError === "NO_ALLO_NUMBERS") {
+            return { actionId: action.id, status: "no_phone" };
+        }
+        if (after?.callEnrichmentError?.trim()) {
+            console.log(
+                `${logPrefix} outcome=error actionId=${action.id} callEnrichmentAt=${after?.callEnrichmentAt?.toISOString() ?? "null"} ` +
+                    `callEnrichmentError=${after.callEnrichmentError} ` +
+                    `(provider/network — not NO_MATCH; see [call-enrichment] outcome=PROVIDER_ERROR logs)`,
+            );
+            return { actionId: action.id, status: "error" };
+        }
+        console.log(
+            `${logPrefix} outcome=skipped actionId=${action.id} callEnrichmentAt=${after?.callEnrichmentAt?.toISOString() ?? "null"} ` +
+                `hasSummary=${!!after?.callSummary?.trim()} hasRecording=${!!after?.callRecordingUrl?.trim()} ` +
+                `callEnrichmentError=${after?.callEnrichmentError ?? "null"} ` +
+                `(no error field: usually enrichAction returned early e.g. SKIP_ALREADY_ENRICHED without DB write)`,
+        );
         return { actionId: action.id, status: "skipped" };
     } catch (err) {
         console.error(`${logPrefix} actionId=${action.id}`, err);
