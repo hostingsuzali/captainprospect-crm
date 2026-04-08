@@ -1724,7 +1724,6 @@ export default function SDRActionPage() {
             {
                 key: "lastAction",
                 header: "Dernière action",
-                importance: "secondary",
                 render: (_, row) => {
                     if (!row.lastAction) {
                         return (
@@ -1774,7 +1773,6 @@ export default function SDRActionPage() {
             {
                 key: "priority",
                 header: "Urgence",
-                importance: "secondary",
                 render: (_, row) => {
                     const isCallbackRow = !!row.lastAction && isCallbackResult(row.lastAction.result);
                     const callbackDateRaw = row.lastAction?.callbackDate;

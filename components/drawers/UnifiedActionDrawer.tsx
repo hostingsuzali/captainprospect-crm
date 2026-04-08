@@ -576,6 +576,7 @@ export function UnifiedActionDrawer({
 
     const [showAddContact, setShowAddContact] = useState(false);
     const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+    const notesDefaultInitializedForKeyRef = useRef<string | null>(null);
     const [historyExpanded, setHistoryExpanded] = useState(true);
     const [expandedCompanyContactId, setExpandedCompanyContactId] = useState<string | null>(null);
     const [newInterlocutorContact, setNewInterlocutorContact] = useState({
@@ -620,6 +621,24 @@ export function UnifiedActionDrawer({
             return next;
         });
     };
+
+    useEffect(() => {
+        if (!isOpen) {
+            notesDefaultInitializedForKeyRef.current = null;
+            setExpandedNotes(new Set());
+            return;
+        }
+
+        const historyTargetKey = `${companyId ?? ""}:${contactId ?? ""}`;
+        if (notesDefaultInitializedForKeyRef.current === historyTargetKey) return;
+        if (actionsLoading) return;
+
+        const noteActionIds = actions
+            .filter((action) => Boolean(action.note?.trim()))
+            .map((action) => action.id);
+        setExpandedNotes(new Set(noteActionIds));
+        notesDefaultInitializedForKeyRef.current = historyTargetKey;
+    }, [isOpen, companyId, contactId, actionsLoading, actions]);
 
     // Reset editing when drawer closes
     useEffect(() => {
