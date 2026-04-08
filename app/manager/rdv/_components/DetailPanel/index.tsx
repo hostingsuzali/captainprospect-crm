@@ -94,7 +94,6 @@ export function DetailPanel({
   const [createSaving, setCreateSaving] = useState(false);
 
   const canRenderPanel = panelOpen && (isCreateMode || !!selectedMeeting);
-  if (!canRenderPanel) return null;
 
   const status = selectedMeeting ? meetingStatus(selectedMeeting) : "upcoming";
   const sections: { key: typeof panelSection; label: string }[] = [
@@ -250,6 +249,8 @@ export function DetailPanel({
       setCreateSaving(false);
     }
   };
+
+  if (!canRenderPanel) return null;
 
   return (
     <div className={`rdv-panel rdv-scrollbar ${panelOpen ? "open" : ""}`}>

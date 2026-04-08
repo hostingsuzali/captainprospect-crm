@@ -7,13 +7,17 @@ const MAX_PAGES = Math.max(1, parseInt(process.env.CALL_ENRICHMENT_ALLO_MAX_PAGE
 /** WithAllo rate-limits hard if we hit many lines at once; keep line searches serial. */
 const LINE_GAP_MS = Math.max(0, parseInt(process.env.CALL_ENRICHMENT_ALLO_LINE_GAP_MS ?? '120', 10));
 /** Retries per page request when WithAllo returns 429. */
-const RETRIES_429 = Math.max(0, parseInt(process.env.CALL_ENRICHMENT_ALLO_429_RETRIES ?? '6', 10));
-const RETRY_429_BASE_MS = Math.max(100, parseInt(process.env.CALL_ENRICHMENT_ALLO_429_BASE_MS ?? '750', 10));
+const RETRIES_429 = Math.max(0, parseInt(process.env.CALL_ENRICHMENT_ALLO_429_RETRIES ?? '2', 10));
+const RETRY_429_BASE_MS = Math.max(100, parseInt(process.env.CALL_ENRICHMENT_ALLO_429_BASE_MS ?? '500', 10));
 /** Retries when fetch throws (connect timeout, DNS, reset). Each attempt is a new TCP handshake. */
-const NETWORK_RETRIES = Math.max(0, parseInt(process.env.CALL_ENRICHMENT_ALLO_NETWORK_RETRIES ?? '3', 10));
-const NETWORK_RETRY_BASE_MS = Math.max(200, parseInt(process.env.CALL_ENRICHMENT_ALLO_NETWORK_RETRY_MS ?? '1500', 10));
+const NETWORK_RETRIES = Math.max(0, parseInt(process.env.CALL_ENRICHMENT_ALLO_NETWORK_RETRIES ?? '1', 10));
+const NETWORK_RETRY_BASE_MS = Math.max(200, parseInt(process.env.CALL_ENRICHMENT_ALLO_NETWORK_RETRY_MS ?? '1000', 10));
 /** Overall request budget (Undici may still use ~10s connect timeout per attempt). */
-const FETCH_TIMEOUT_MS = Math.max(5_000, parseInt(process.env.CALL_ENRICHMENT_ALLO_FETCH_TIMEOUT_MS ?? '30000', 10));
+const FETCH_TIMEOUT_MS = Math.max(3_000, parseInt(process.env.CALL_ENRICHMENT_ALLO_FETCH_TIMEOUT_MS ?? '10000', 10));
+/** Hard wall-clock budget per action to avoid Vercel function timeout. */
+const TOTAL_SEARCH_BUDGET_MS = Math.max(5_000, parseInt(process.env.CALL_ENRICHMENT_ALLO_TOTAL_BUDGET_MS ?? '85000', 10));
+/** Stop scanning lines early when quota is clearly exhausted. */
+const MAX_429_LINES_BEFORE_ABORT = Math.max(1, parseInt(process.env.CALL_ENRICHMENT_ALLO_MAX_429_LINES_BEFORE_ABORT ?? '2', 10));
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -303,6 +307,7 @@ export class AlloProvider implements CallProvider {
     contactPhoneVariants: string[],
     windowStart: Date,
     windowEnd: Date,
+    deadlineAtMs: number,
   ): Promise<{ call: AlloCall | null; report: AlloLineSearchReport }> {
     const report: AlloLineSearchReport = {
       alloNumber,
@@ -317,6 +322,10 @@ export class AlloProvider implements CallProvider {
     };
 
     for (let page = 0; page < MAX_PAGES; page++) {
+      if (Date.now() >= deadlineAtMs) {
+        report.stopReason = "budget_exceeded";
+        break;
+      }
       const { calls, totalPages, httpOk, httpStatus } = await this.fetchPageForLine(alloNumber, page);
       report.pagesFetched += 1;
 
@@ -404,6 +413,8 @@ export class AlloProvider implements CallProvider {
   }
 
   async fetchMatchingCallRecord(input: CallProviderInput): Promise<CallRecord | null> {
+    const deadlineAtMs = Date.now() + TOTAL_SEARCH_BUDGET_MS;
+
     const { phones, alloNumbers, windowStart, windowEnd } = input;
 
     // Build all phone variants once
@@ -413,8 +424,29 @@ export class AlloProvider implements CallProvider {
 
     // Serial line search: parallel requests caused mass HTTP 429 from WithAllo (one burst per line).
     const lineResults: Array<{ call: AlloCall | null; report: AlloLineSearchReport }> = [];
+    let consecutive429Lines = 0;
     for (let i = 0; i < alloNumbers.length; i++) {
-      lineResults.push(await this.searchForLine(alloNumbers[i]!, contactVariants, windowStart, windowEnd));
+      if (Date.now() >= deadlineAtMs) {
+        console.warn(
+          `[call-enrichment][allo] budget exceeded after ${lineResults.length}/${alloNumbers.length} lines ` +
+            `(budget=${TOTAL_SEARCH_BUDGET_MS}ms) — returning partial line reports`,
+        );
+        break;
+      }
+      const result = await this.searchForLine(alloNumbers[i]!, contactVariants, windowStart, windowEnd, deadlineAtMs);
+      lineResults.push(result);
+      if (result.report.stopReason === "http_error_429") {
+        consecutive429Lines += 1;
+      } else {
+        consecutive429Lines = 0;
+      }
+      if (consecutive429Lines >= MAX_429_LINES_BEFORE_ABORT) {
+        console.warn(
+          `[call-enrichment][allo] early abort after ${consecutive429Lines} consecutive 429-only lines ` +
+            `(max=${MAX_429_LINES_BEFORE_ABORT}) — likely quota exhausted`,
+        );
+        break;
+      }
       if (i < alloNumbers.length - 1 && LINE_GAP_MS > 0) {
         await sleep(LINE_GAP_MS);
       }
