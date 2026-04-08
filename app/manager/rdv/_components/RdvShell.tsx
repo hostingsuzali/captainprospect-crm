@@ -127,7 +127,7 @@ export function RdvShell() {
   // ESC closes panel
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && panelState.panelOpen) panelState.closePanel();
+      if (e.key === "Escape" && panelState.panelOpen) panelState.requestClosePanel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -241,7 +241,14 @@ export function RdvShell() {
     <>
       <style>{DESIGN_TOKENS}{GLOBAL_CSS}</style>
       <div className="rdv-page">
-        <CommandBar view={view} setView={setView} filters={filters} meetings={meetings2} onRefresh={() => fetchMeetings()} />
+        <CommandBar
+          view={view}
+          setView={setView}
+          filters={filters}
+          meetings={meetings2}
+          onRefresh={() => fetchMeetings()}
+          onAddRdv={() => panelState.openCreatePanel()}
+        />
 
         <IntelligenceStrip
           aggregates={aggregates}

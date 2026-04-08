@@ -7,7 +7,6 @@ import type { ViewMode, DatePreset } from "../_types";
 import { SearchInput } from "./shared/SearchInput";
 import { downloadCSV } from "../_lib/csv-export";
 import { List, CalendarDays, Download, Plus, Upload } from "lucide-react";
-import { AddRdvModal } from "./modals/AddRdvModal";
 import { ImportRdvModal } from "./modals/ImportRdvModal";
 
 interface CommandBarProps {
@@ -16,11 +15,11 @@ interface CommandBarProps {
   filters: MeetingFiltersState;
   meetings: Meeting[];
   onRefresh?: () => void;
+  onAddRdv?: () => void;
 }
 
-export function CommandBar({ view, setView, filters, meetings, onRefresh }: CommandBarProps) {
+export function CommandBar({ view, setView, filters, meetings, onRefresh, onAddRdv }: CommandBarProps) {
   const { search, setSearch, datePreset, setDatePreset, filterSummary } = filters;
-  const [addRdvOpen, setAddRdvOpen] = useState(false);
   const [importRdvOpen, setImportRdvOpen] = useState(false);
 
   return (
@@ -77,7 +76,7 @@ export function CommandBar({ view, setView, filters, meetings, onRefresh }: Comm
           ))}
         </div>
 
-        <button className="rdv-btn rdv-btn-ghost" onClick={() => setAddRdvOpen(true)}>
+        <button className="rdv-btn rdv-btn-ghost" onClick={() => onAddRdv?.()}>
           <Plus size={14} /> Ajouter un RDV
         </button>
         <button className="rdv-btn rdv-btn-ghost" onClick={() => setImportRdvOpen(true)}>
@@ -88,11 +87,6 @@ export function CommandBar({ view, setView, filters, meetings, onRefresh }: Comm
         </button>
       </div>
 
-      <AddRdvModal
-        isOpen={addRdvOpen}
-        onClose={() => setAddRdvOpen(false)}
-        onSuccess={() => onRefresh?.()}
-      />
       <ImportRdvModal
         isOpen={importRdvOpen}
         onClose={() => setImportRdvOpen(false)}
