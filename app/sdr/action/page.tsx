@@ -748,26 +748,6 @@ export default function SDRActionPage() {
         });
     }, [queueItems, tableFilterResult, tableFilterPriority, tableFilterChannel, tableFilterType]);
 
-    const prioritizedQueueItems = useMemo(() => {
-        const now = Date.now();
-        const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-        const withRank = filteredQueueItems.map((row, idx) => {
-            const callbackDateRaw = row.lastAction?.callbackDate;
-            const callbackTs = callbackDateRaw ? new Date(callbackDateRaw).getTime() : Number.POSITIVE_INFINITY;
-            const isCallback = !!row.lastAction && isCallbackResult(row.lastAction.result);
-            const isWithin3Days = isCallback && Number.isFinite(callbackTs) && callbackTs <= now + threeDaysMs;
-            return { row, idx, isWithin3Days, callbackTs };
-        });
-
-        withRank.sort((a, b) => {
-            if (a.isWithin3Days !== b.isWithin3Days) return a.isWithin3Days ? -1 : 1;
-            if (a.isWithin3Days && b.isWithin3Days && a.callbackTs !== b.callbackTs) return a.callbackTs - b.callbackTs;
-            return a.idx - b.idx;
-        });
-
-        return withRank.map((x) => x.row);
-    }, [filteredQueueItems, isCallbackResult]);
-
     const hasTableFiltersActive = !!(tableFilterResult || tableFilterPriority || tableFilterChannel || tableFilterType);
     const clearTableFilters = () => {
         setTableFilterResult("");
@@ -1793,13 +1773,53 @@ export default function SDRActionPage() {
             },
             {
                 key: "priority",
-                header: "Priorité",
+                header: "Urgence",
                 importance: "secondary",
-                render: (v) => (
-                    <Badge className={cn("text-xs font-medium border", PRIORITY_LABELS[v as keyof typeof PRIORITY_LABELS]?.color ?? "bg-slate-100 text-slate-700 border-slate-200")}>
-                        {PRIORITY_LABELS[v as keyof typeof PRIORITY_LABELS]?.label ?? v}
-                    </Badge>
-                ),
+                render: (_, row) => {
+                    const isCallbackRow = !!row.lastAction && isCallbackResult(row.lastAction.result);
+                    const callbackDateRaw = row.lastAction?.callbackDate;
+                    const callbackTs = callbackDateRaw ? new Date(callbackDateRaw).getTime() : NaN;
+                    const now = Date.now();
+                    const oneDayMs = 24 * 60 * 60 * 1000;
+                    const threeDaysMs = 3 * oneDayMs;
+
+                    if (!isCallbackRow || !Number.isFinite(callbackTs)) {
+                        return (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200">
+                                Non planifié
+                            </span>
+                        );
+                    }
+
+                    const isOverdue = callbackTs < now;
+                    const isCritical = callbackTs <= now + oneDayMs;
+                    const isSoon = callbackTs <= now + threeDaysMs;
+                    const urgencyLabel = isOverdue ? "En retard" : isCritical ? "Urgent" : isSoon ? "Bientot" : "Planifié";
+                    const urgencyClass = isOverdue
+                        ? "bg-rose-50 text-rose-700 border-rose-200"
+                        : isCritical
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : isSoon
+                                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                : "bg-emerald-50 text-emerald-700 border-emerald-200";
+
+                    return (
+                        <div className="space-y-1">
+                            <time className="block text-[11px] font-medium text-slate-600">
+                                {new Date(callbackDateRaw as string).toLocaleDateString("fr-FR", {
+                                    day: "2-digit",
+                                    month: "short",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                })}
+                            </time>
+                            <Badge className={cn("text-xs font-medium border", urgencyClass)}>
+                                {urgencyLabel}
+                            </Badge>
+                        </div>
+                    );
+                },
             },
             {
                 key: "quickActions",
@@ -2177,7 +2197,7 @@ export default function SDRActionPage() {
                         />
                     ) : (
                         <DataTable
-                            data={prioritizedQueueItems}
+                            data={filteredQueueItems}
                             columns={queueColumns}
                             keyField={(row) => queueRowKey(row)}
                             searchable
@@ -2234,11 +2254,11 @@ export default function SDRActionPage() {
                             onValidateAndNext={() => {
                                 if (!drawerRow) return;
                                 const key = queueRowKey(drawerRow);
-                                const idx = prioritizedQueueItems.findIndex((row) => queueRowKey(row) === key);
+                                const idx = filteredQueueItems.findIndex((row) => queueRowKey(row) === key);
                                 queryClient.invalidateQueries({ queryKey: queueQueryKey });
                                 setActionsCompleted((c) => c + 1);
-                                if (idx >= 0 && idx < prioritizedQueueItems.length - 1) {
-                                    const nextRow = prioritizedQueueItems[idx + 1];
+                                if (idx >= 0 && idx < filteredQueueItems.length - 1) {
+                                    const nextRow = filteredQueueItems[idx + 1];
                                     openDrawerForRow(nextRow);
                                 } else {
                                     closeUnifiedDrawer();
