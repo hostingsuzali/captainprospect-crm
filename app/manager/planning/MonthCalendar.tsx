@@ -224,15 +224,53 @@ export function MonthCalendar() {
         return entries;
     }, [capacitySdrs, currentWeek, data]);
 
+    const weekDateSet = useMemo(() => new Set(currentWeek.map((day) => day.dateStr)), [currentWeek]);
+
     const missionTargetsByClient = useMemo(() => {
         if (!data) return [];
-        const byClient = new Map<string, { clientName: string; missions: Array<{ id: string; name: string; targetDays: number; allocatedDays: number }> }>();
+        const byClient = new Map<string, {
+            clientName: string;
+            missions: Array<{
+                id: string;
+                name: string;
+                totalContractDays: number | null;
+                totalPlannedDays: number;
+                contractRemainingDays: number | null;
+                monthTargetDays: number;
+                monthAllocatedDays: number;
+                monthRemainingDays: number;
+                weekPlacedDays: number;
+                weekRecommendedAddDays: number;
+                shouldAddThisWeek: boolean;
+            }>;
+        }>();
+
+        const monthEndDate = endOfMonthFromMonthKey(month);
+        const currentWeekStart = currentWeek[0]?.dateStr ?? `${month}-01`;
+        const weeksLeftIncludingCurrent = Math.max(1, getWeeksLeftIncludingCurrent(currentWeekStart, monthEndDate));
 
         for (const mission of data.missions) {
-            const plan = mission.missionMonthPlans.find((entry) => entry.month === month);
-            if (!plan || plan.targetDays <= 0) continue;
+            const monthPlan = mission.missionMonthPlans.find((entry) => entry.month === month);
+            const monthTargetDays = monthPlan?.targetDays ?? 0;
+            const monthAllocatedDays = monthPlan?.allocations.reduce((sum, allocation) => sum + allocation.allocatedDays, 0) ?? 0;
+            const monthRemainingDays = Math.max(0, monthTargetDays - monthAllocatedDays);
 
-            const allocatedDays = plan.allocations.reduce((sum, allocation) => sum + allocation.allocatedDays, 0);
+            const totalPlannedDays = mission.missionMonthPlans.reduce((sum, entry) => sum + entry.targetDays, 0);
+            const contractRemainingDays = mission.totalContractDays != null
+                ? Math.max(0, mission.totalContractDays - totalPlannedDays)
+                : null;
+
+            const weekPlacedDays = data.blocks
+                .filter((block) => block.mission.id === mission.id && weekDateSet.has(block.date))
+                .reduce((sum, block) => sum + getBlockDayUnits(block), 0);
+
+            const weekTargetPace = monthRemainingDays / weeksLeftIncludingCurrent;
+            const weekRecommendedAddDays = Math.max(0, weekTargetPace - weekPlacedDays);
+            const shouldAddThisWeek = monthRemainingDays > 0 && weekPlacedDays + 0.01 < weekTargetPace;
+
+            const hasPlanningSignal = monthTargetDays > 0 || totalPlannedDays > 0 || (mission.totalContractDays ?? 0) > 0;
+            if (!hasPlanningSignal) continue;
+
             const key = mission.client.id;
             if (!byClient.has(key)) {
                 byClient.set(key, { clientName: mission.client.name, missions: [] });
@@ -240,8 +278,15 @@ export function MonthCalendar() {
             byClient.get(key)?.missions.push({
                 id: mission.id,
                 name: mission.name,
-                targetDays: plan.targetDays,
-                allocatedDays,
+                totalContractDays: mission.totalContractDays ?? null,
+                totalPlannedDays,
+                contractRemainingDays,
+                monthTargetDays,
+                monthAllocatedDays,
+                monthRemainingDays,
+                weekPlacedDays,
+                weekRecommendedAddDays,
+                shouldAddThisWeek,
             });
         }
 
@@ -251,7 +296,7 @@ export function MonthCalendar() {
                 missions: entry.missions.sort((a, b) => a.name.localeCompare(b.name)),
             }))
             .sort((a, b) => a.clientName.localeCompare(b.clientName));
-    }, [data, month]);
+    }, [currentWeek, data, month, weekDateSet]);
 
     const openQuickAdd = useCallback((cell: QuickAddCell, target: HTMLElement) => {
         const rect = target.getBoundingClientRect();
@@ -1583,7 +1628,19 @@ function MissionTargetsPanel({
     month: string;
     clients: Array<{
         clientName: string;
-        missions: Array<{ id: string; name: string; targetDays: number; allocatedDays: number }>;
+        missions: Array<{
+            id: string;
+            name: string;
+            totalContractDays: number | null;
+            totalPlannedDays: number;
+            contractRemainingDays: number | null;
+            monthTargetDays: number;
+            monthAllocatedDays: number;
+            monthRemainingDays: number;
+            weekPlacedDays: number;
+            weekRecommendedAddDays: number;
+            shouldAddThisWeek: boolean;
+        }>;
     }>;
 }) {
     return (
@@ -1606,16 +1663,33 @@ function MissionTargetsPanel({
                             </div>
                             <div className="px-2 py-2 space-y-1.5">
                                 {client.missions.map((mission) => {
-                                    const statusClass =
-                                        mission.allocatedDays >= mission.targetDays
-                                            ? 'text-emerald-700 bg-emerald-50'
-                                            : 'text-amber-700 bg-amber-50';
+                                    const weeklyDecisionClass = mission.shouldAddThisWeek
+                                        ? 'text-amber-700 bg-amber-50'
+                                        : 'text-emerald-700 bg-emerald-50';
                                     return (
-                                        <div key={mission.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50">
-                                            <span className="text-[11px] text-slate-700 truncate">{mission.name}</span>
-                                            <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap', statusClass)}>
-                                                {mission.targetDays}j cible · {mission.allocatedDays}j alloués
-                                            </span>
+                                        <div key={mission.id} className="rounded-lg px-2 py-2 hover:bg-slate-50 border border-slate-100">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[11px] font-semibold text-slate-700 truncate">{mission.name}</span>
+                                                <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap', weeklyDecisionClass)}>
+                                                    {mission.shouldAddThisWeek ? `Ajouter ~${formatDayValue(mission.weekRecommendedAddDays)}` : 'OK cette semaine'}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1.5 text-[10px] text-slate-600 flex flex-wrap gap-x-2 gap-y-1">
+                                                <span>Contrat: {mission.totalContractDays != null ? `${mission.totalContractDays}j` : 'n/a'}</span>
+                                                <span>Planifiés: {mission.totalPlannedDays}j</span>
+                                                {mission.contractRemainingDays != null && (
+                                                    <span>Reste contrat: {mission.contractRemainingDays}j</span>
+                                                )}
+                                            </div>
+                                            <div className="mt-1 text-[10px] text-slate-600 flex flex-wrap gap-x-2 gap-y-1">
+                                                <span>Mois: cible {mission.monthTargetDays}j</span>
+                                                <span>alloués {mission.monthAllocatedDays}j</span>
+                                                <span>reste {mission.monthRemainingDays}j</span>
+                                            </div>
+                                            <div className="mt-1 text-[10px] text-slate-600 flex flex-wrap gap-x-2 gap-y-1">
+                                                <span>Placés cette semaine: {formatDayValue(mission.weekPlacedDays)}</span>
+                                                <span>À ajouter conseillé: {formatDayValue(mission.weekRecommendedAddDays)}</span>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -1696,4 +1770,19 @@ function toDateString(date: Date): string {
 
 function currentWeekKey(weekOffset: number, month: string): string {
     return `${month}:${weekOffset}`;
+}
+
+function endOfMonthFromMonthKey(monthKey: string): string {
+    const [year, month] = monthKey.split('-').map(Number);
+    return `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+}
+
+function getWeeksLeftIncludingCurrent(weekStartDateStr: string, monthEndDateStr: string): number {
+    const weekStart = new Date(`${weekStartDateStr}T00:00:00`);
+    const monthEnd = new Date(`${monthEndDateStr}T00:00:00`);
+    if (Number.isNaN(weekStart.getTime()) || Number.isNaN(monthEnd.getTime()) || weekStart > monthEnd) return 1;
+
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const diffDays = Math.floor((monthEnd.getTime() - weekStart.getTime()) / msPerDay);
+    return Math.floor(diffDays / 7) + 1;
 }
