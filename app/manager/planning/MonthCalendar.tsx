@@ -119,9 +119,11 @@ export function MonthCalendar() {
     const [data, setData] = useState<MonthlyData | null>(null);
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
     const [view, setView] = useState<CalendarView>('month');
     const [weekOffset, setWeekOffset] = useState(0);
+    const [weekMultiSelectEnabled, setWeekMultiSelectEnabled] = useState(false);
     const [hoveredSdrId, setHoveredSdrId] = useState<string | null>(null);
     const [highlightedSdrId, setHighlightedSdrId] = useState<string | null>(null);
     const [loadDrawerOpen, setLoadDrawerOpen] = useState(false);
@@ -158,6 +160,7 @@ export function MonthCalendar() {
     useEffect(() => {
         setWeekOffset(0);
         setSelectedDate(null);
+        setSelectedDates([]);
         setShowAddForm(false);
         setQuickAddCell(null);
         setQuickAddPosition(null);
@@ -549,6 +552,39 @@ export function MonthCalendar() {
                                 <CalendarDays className="w-3.5 h-3.5" /> Semaine
                             </button>
                         </div>
+
+                        {view === 'week' && (
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    onClick={() => setWeekMultiSelectEnabled((current) => !current)}
+                                    className={cn(
+                                        'px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                                        weekMultiSelectEnabled
+                                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
+                                    )}
+                                    title="Activer la sélection multiple des jours"
+                                >
+                                    Multi-sélection
+                                </button>
+                                {selectedDates.length > 0 && (
+                                    <>
+                                        <span className="text-[11px] text-slate-500">
+                                            {selectedDates.length} jour{selectedDates.length > 1 ? 's' : ''} sélectionné{selectedDates.length > 1 ? 's' : ''}
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                setSelectedDates([]);
+                                                setSelectedDate(null);
+                                            }}
+                                            className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
+                                        >
+                                            Effacer
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -572,7 +608,26 @@ export function MonthCalendar() {
                                     data={data}
                                     sdrs={weekSdrs}
                                     selectedDate={selectedDate}
-                                    onSelectDate={(date) => setSelectedDate((current) => current === date ? null : date)}
+                                    selectedDates={selectedDates}
+                                    onSelectDate={(date, append) => {
+                                        if (!append) {
+                                            setSelectedDate((current) => (current === date ? null : date));
+                                            setSelectedDates((current) => (current.length === 1 && current[0] === date ? [] : [date]));
+                                            return;
+                                        }
+
+                                        setSelectedDates((current) => {
+                                            const exists = current.includes(date);
+                                            const next = exists ? current.filter((d) => d !== date) : [...current, date];
+                                            if (selectedDate && !next.includes(selectedDate)) {
+                                                setSelectedDate(next[0] ?? null);
+                                            } else if (!selectedDate && next.length > 0) {
+                                                setSelectedDate(next[0]);
+                                            }
+                                            return next;
+                                        });
+                                    }}
+                                    weekMultiSelectEnabled={weekMultiSelectEnabled}
                                     hoveredSdrId={hoveredSdrId}
                                     highlightedSdrId={highlightedSdrId}
                                     dragState={dragState}
@@ -632,6 +687,7 @@ export function MonthCalendar() {
                     team={data.team}
                     missions={data.missions}
                     month={month}
+                    selectedDates={selectedDates}
                     onClose={closeQuickAdd}
                     onCreated={async () => {
                         closeQuickAdd();
@@ -793,7 +849,9 @@ function WeekView({
     data,
     sdrs,
     selectedDate,
+    selectedDates,
     onSelectDate,
+    weekMultiSelectEnabled,
     hoveredSdrId,
     highlightedSdrId,
     dragState,
@@ -812,12 +870,14 @@ function WeekView({
     data: MonthlyData | null;
     sdrs: CalTeamMember[];
     selectedDate: string | null;
+    selectedDates: string[];
     hoveredSdrId: string | null;
     highlightedSdrId: string | null;
     dragState: DragState | null;
     dragOverCell: QuickAddCell | null;
     teamLoadByDate: Record<string, number>;
-    onSelectDate: (date: string) => void;
+    onSelectDate: (date: string, append: boolean) => void;
+    weekMultiSelectEnabled: boolean;
     onSetHoveredSdrId: (id: string | null) => void;
     onSetDragState: (state: DragState | null) => void;
     onSetDragOverCell: (cell: QuickAddCell | null) => void;
@@ -837,13 +897,15 @@ function WeekView({
                     <button
                         key={day.dateStr}
                         type="button"
-                        onClick={() => onSelectDate(day.dateStr)}
+                        onClick={(event) => onSelectDate(day.dateStr, weekMultiSelectEnabled || event.ctrlKey || event.metaKey)}
                         className={cn(
                             'px-2 py-3 text-center border-r border-slate-200 last:border-r-0 transition-colors',
                             selectedDate === day.dateStr && 'bg-indigo-50',
+                            selectedDates.includes(day.dateStr) && 'ring-1 ring-inset ring-indigo-300',
                             day.isToday && 'bg-indigo-50/60',
                             index >= 5 && 'bg-slate-100/40',
                         )}
+                        title={weekMultiSelectEnabled ? 'Multi-sélection active' : 'Cliquez pour ouvrir le jour · Ctrl/Cmd+clic pour multi-sélection'}
                     >
                         <div className="text-[10px] font-semibold text-slate-500 uppercase">{DAY_LABELS_SHORT[index]}</div>
                         <div
@@ -1082,6 +1144,7 @@ interface QuickAddPopoverProps {
     team: CalTeamMember[];
     missions: SnapshotMission[];
     month: string;
+    selectedDates: string[];
     onClose: () => void;
     onCreated: () => Promise<void>;
     assignSdrToMission: (missionId: string, sdrId: string) => Promise<boolean>;
@@ -1094,6 +1157,7 @@ const QuickAddPopover = forwardRef<HTMLDivElement, QuickAddPopoverProps>(functio
         team,
         missions,
         month,
+        selectedDates,
         onClose,
         onCreated,
         assignSdrToMission,
@@ -1106,10 +1170,12 @@ const QuickAddPopover = forwardRef<HTMLDivElement, QuickAddPopoverProps>(functio
     const [startTime, setStartTime] = useState('09:00');
     const [endTime, setEndTime] = useState('12:00');
     const [submitting, setSubmitting] = useState(false);
+    const [applyToSelectedDates, setApplyToSelectedDates] = useState(true);
 
     useEffect(() => {
         setSdrId(cell.sdrId);
         setMissionId('');
+        setApplyToSelectedDates(true);
     }, [cell]);
 
     const missionOptions = useMemo(() => {
@@ -1143,6 +1209,14 @@ const QuickAddPopover = forwardRef<HTMLDivElement, QuickAddPopoverProps>(functio
 
     const selectedSdr = team.find((member) => member.id === sdrId);
     const selectedMission = [...missionOptions.allocated, ...missionOptions.others].find((entry) => entry.mission.id === missionId);
+    const effectiveSelectedDates = useMemo(() => {
+        if (!cell.sdrId) return [cell.date];
+        const dates = selectedDates.includes(cell.date) ? selectedDates : [cell.date, ...selectedDates];
+        const unique = Array.from(new Set(dates));
+        return unique.sort((a, b) => a.localeCompare(b));
+    }, [cell.date, cell.sdrId, selectedDates]);
+    const canBulkCreate = !!cell.sdrId && effectiveSelectedDates.length > 1;
+    const targetDates = canBulkCreate && applyToSelectedDates ? effectiveSelectedDates : [cell.date];
 
     async function handleSubmit(event: React.FormEvent) {
         event.preventDefault();
@@ -1159,24 +1233,34 @@ const QuickAddPopover = forwardRef<HTMLDivElement, QuickAddPopoverProps>(functio
                 }
             }
 
-            const res = await fetch('/api/planning', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sdrId,
-                    missionId,
-                    date: cell.date,
-                    startTime,
-                    endTime,
-                    ...(selectedMission?.allocationId ? { allocationId: selectedMission.allocationId } : {}),
-                }),
-            });
-            const json = await res.json();
-            if (json.success) {
-                success('Créneau créé', `${startTime}–${endTime}`);
+            let createdCount = 0;
+            let firstError: string | null = null;
+            for (const date of targetDates) {
+                const res = await fetch('/api/planning', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sdrId,
+                        missionId,
+                        date,
+                        startTime,
+                        endTime,
+                        ...(selectedMission?.allocationId ? { allocationId: selectedMission.allocationId } : {}),
+                    }),
+                });
+                const json = await res.json();
+                if (json.success) {
+                    createdCount += 1;
+                } else if (!firstError) {
+                    firstError = json.error || 'Impossible de créer le créneau';
+                }
+            }
+            if (createdCount > 0) {
+                const label = createdCount > 1 ? `${createdCount} créneaux créés` : 'Créneau créé';
+                success(label, `${startTime}–${endTime}`);
                 await onCreated();
             } else {
-                showError('Erreur', json.error || 'Impossible de créer le créneau');
+                showError('Erreur', firstError || 'Impossible de créer le créneau');
             }
         } catch {
             showError('Erreur', 'Une erreur est survenue');
@@ -1275,6 +1359,20 @@ const QuickAddPopover = forwardRef<HTMLDivElement, QuickAddPopoverProps>(functio
                         />
                     </div>
                 </div>
+
+                {canBulkCreate && (
+                    <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                        <input
+                            type="checkbox"
+                            checked={applyToSelectedDates}
+                            onChange={(event) => setApplyToSelectedDates(event.target.checked)}
+                            className="mt-0.5"
+                        />
+                        <span className="text-[11px] text-slate-600">
+                            Appliquer aux {effectiveSelectedDates.length} jours sélectionnés
+                        </span>
+                    </label>
+                )}
 
                 <div className="flex items-center justify-end gap-2 pt-1">
                     <button type="button" onClick={onClose} className="px-3 py-2 text-xs text-slate-500 hover:text-slate-700 font-medium">
