@@ -84,6 +84,14 @@ interface CellPosition {
     left: number;
 }
 
+interface DeleteConfirmPopoverState {
+    blockId: string;
+    missionName: string;
+    sdrName: string;
+    top: number;
+    left: number;
+}
+
 interface WeekDay {
     date: Date;
     dateStr: string;
@@ -98,7 +106,7 @@ interface MissionOption {
 
 const CHANNEL_ICONS: Record<string, typeof Phone> = { CALL: Phone, EMAIL: Mail, LINKEDIN: Linkedin };
 const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-const DAY_CELL_CAPACITY = 1;
+const DAY_CELL_CAPACITY = 2;
 const HOURS_PER_DAY = 8;
 
 export function MonthCalendar() {
@@ -120,6 +128,7 @@ export function MonthCalendar() {
     const [dragOverCell, setDragOverCell] = useState<QuickAddCell | null>(null);
     const [dragOverTrash, setDragOverTrash] = useState(false);
     const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
+    const [deleteConfirmPopover, setDeleteConfirmPopover] = useState<DeleteConfirmPopoverState | null>(null);
 
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -240,6 +249,7 @@ export function MonthCalendar() {
                 contractDeltaDays: number | null;
                 monthTargetDays: number;
                 monthAllocatedDays: number;
+                monthScheduledDays: number;
                 monthRemainingDays: number;
                 suggestedMonthTargetDays: number;
                 weekPlacedDays: number;
@@ -256,7 +266,11 @@ export function MonthCalendar() {
             const monthPlan = mission.missionMonthPlans.find((entry) => entry.month === month);
             const monthTargetDays = monthPlan?.targetDays ?? 0;
             const monthAllocatedDays = monthPlan?.allocations.reduce((sum, allocation) => sum + allocation.allocatedDays, 0) ?? 0;
-            const monthRemainingDays = Math.max(0, monthTargetDays - monthAllocatedDays);
+            const monthScheduledDays = data.blocks
+                .filter((block) => block.mission.id === mission.id)
+                .reduce((sum, block) => sum + getBlockDayUnits(block), 0);
+            const effectiveAllocatedDays = Math.max(monthAllocatedDays, monthScheduledDays);
+            const monthRemainingDays = Math.max(0, monthTargetDays - effectiveAllocatedDays);
 
             const totalPlannedDays = mission.missionMonthPlans.reduce((sum, entry) => sum + entry.targetDays, 0);
             const contractDeltaDays = mission.totalContractDays != null
@@ -278,7 +292,12 @@ export function MonthCalendar() {
             const weekRecommendedAddDays = Math.max(0, weekTargetPace - weekPlacedDays);
             const shouldAddThisWeek = monthRemainingDays > 0 && weekPlacedDays + 0.01 < weekTargetPace;
 
-            const hasPlanningSignal = monthTargetDays > 0 || totalPlannedDays > 0 || (mission.totalContractDays ?? 0) > 0;
+            const hasPlanningSignal =
+                monthTargetDays > 0 ||
+                totalPlannedDays > 0 ||
+                (mission.totalContractDays ?? 0) > 0 ||
+                monthScheduledDays > 0 ||
+                weekPlacedDays > 0;
             if (!hasPlanningSignal) continue;
 
             const key = mission.client.id;
@@ -294,11 +313,12 @@ export function MonthCalendar() {
                 totalPlannedDays,
                 contractDeltaDays,
                 monthTargetDays,
-                monthAllocatedDays,
+                monthAllocatedDays: effectiveAllocatedDays,
+                monthScheduledDays,
                 monthRemainingDays,
                 suggestedMonthTargetDays,
-                weekPlacedDays,
-                weekRecommendedAddDays,
+                weekPlacedDays: sanitizeDayValue(weekPlacedDays),
+                weekRecommendedAddDays: sanitizeDayValue(weekRecommendedAddDays),
                 shouldAddThisWeek,
             });
         }
@@ -436,6 +456,7 @@ export function MonthCalendar() {
 
     const handleDeleteBlock = useCallback(async (blockId: string) => {
         if (deletingBlockId) return;
+        setDeleteConfirmPopover(null);
         setDragState(null);
         setDragOverCell(null);
         setDragOverTrash(false);
@@ -601,6 +622,7 @@ export function MonthCalendar() {
                                 onOpenQuickAdd={openQuickAdd}
                                 onMoveBlock={handleBlockMove}
                                 onDeleteBlock={handleDeleteBlock}
+                                onOpenDeleteConfirm={setDeleteConfirmPopover}
                                 rowRefs={rowRefs}
                                 onSetDragOverTrash={setDragOverTrash}
                                 deletingBlockId={deletingBlockId}
@@ -674,6 +696,15 @@ export function MonthCalendar() {
                     }}
                 />
             )}
+
+            {deleteConfirmPopover && (
+                <DeleteConfirmPopover
+                    state={deleteConfirmPopover}
+                    deleting={deletingBlockId === deleteConfirmPopover.blockId}
+                    onCancel={() => setDeleteConfirmPopover(null)}
+                    onConfirm={() => void handleDeleteBlock(deleteConfirmPopover.blockId)}
+                />
+            )}
         </div>
     );
 }
@@ -697,6 +728,7 @@ function WeekView({
     onOpenQuickAdd,
     onMoveBlock,
     onDeleteBlock,
+    onOpenDeleteConfirm,
     rowRefs,
     onSetDragOverTrash,
     deletingBlockId,
@@ -719,6 +751,7 @@ function WeekView({
     onOpenQuickAdd: (cell: QuickAddCell, target: HTMLElement) => void;
     onMoveBlock: (blockId: string, newDate: string, newSdrId: string) => Promise<void>;
     onDeleteBlock: (blockId: string) => Promise<void>;
+    onOpenDeleteConfirm: (state: DeleteConfirmPopoverState | null) => void;
     rowRefs: MutableRefObject<Record<string, HTMLDivElement | null>>;
     onSetDragOverTrash: (active: boolean) => void;
     deletingBlockId: string | null;
@@ -823,7 +856,7 @@ function WeekView({
                                             key={day.dateStr}
                                             type="button"
                                             onClick={(event) => {
-                                                if (dayBlocks.length > 0) return;
+                                                if (remainingCapacity <= 0) return;
                                                 if (weekMultiSelectEnabled || event.ctrlKey || event.metaKey) {
                                                     onSelectDate(day.dateStr, true);
                                                 } else {
@@ -864,10 +897,18 @@ function WeekView({
                                                     return (
                                                         <div
                                                             key={block.id}
+                                                            onClick={(event) => event.stopPropagation()}
                                                             onContextMenu={(event) => {
                                                                 event.preventDefault();
+                                                                event.stopPropagation();
                                                                 if (isDeleting || deletingBlockId) return;
-                                                                void onDeleteBlock(block.id);
+                                                                onOpenDeleteConfirm({
+                                                                    blockId: block.id,
+                                                                    missionName: block.mission.name,
+                                                                    sdrName: block.sdr.name,
+                                                                    top: event.clientY,
+                                                                    left: event.clientX,
+                                                                });
                                                             }}
                                                             draggable={!isDeleting && !deletingBlockId}
                                                             onDragStart={(event: DragEvent<HTMLDivElement>) => {
@@ -943,6 +984,54 @@ function WeekView({
                         );
                     })
                 )}
+            </div>
+        </div>
+    );
+}
+
+function DeleteConfirmPopover({
+    state,
+    deleting,
+    onCancel,
+    onConfirm,
+}: {
+    state: DeleteConfirmPopoverState;
+    deleting: boolean;
+    onCancel: () => void;
+    onConfirm: () => void;
+}) {
+    const top = Math.min(window.innerHeight - 160, Math.max(16, state.top + 8));
+    const left = Math.min(window.innerWidth - 300, Math.max(16, state.left + 8));
+    return (
+        <div className="fixed inset-0 z-[70]" onClick={onCancel}>
+            <div
+                className="absolute w-[280px] rounded-xl border border-slate-200 bg-white shadow-2xl p-3"
+                style={{ top, left }}
+                onClick={(event) => event.stopPropagation()}
+            >
+                <p className="text-xs font-semibold text-slate-800">Supprimer ce créneau ?</p>
+                <p className="text-[11px] text-slate-500 mt-1 truncate">
+                    {state.sdrName} · {state.missionName}
+                </p>
+                <div className="mt-3 flex justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                        disabled={deleting}
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        disabled={deleting}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                    >
+                        {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                        Supprimer
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -1651,6 +1740,7 @@ function MissionTargetsPanel({
             contractDeltaDays: number | null;
             monthTargetDays: number;
             monthAllocatedDays: number;
+            monthScheduledDays: number;
             monthRemainingDays: number;
             suggestedMonthTargetDays: number;
             weekPlacedDays: number;
@@ -1713,6 +1803,7 @@ function MissionTargetsPanel({
                                             <div className="mt-1 text-[10px] text-slate-600 flex flex-wrap gap-x-2 gap-y-1">
                                                 <span>Mois: cible {mission.monthTargetDays > 0 ? mission.monthTargetDays : mission.suggestedMonthTargetDays}j</span>
                                                 <span>alloués {mission.monthAllocatedDays}j</span>
+                                                {mission.monthScheduledDays > 0 && <span>placés {formatDayValue(mission.monthScheduledDays)}</span>}
                                                 <span>reste {mission.monthRemainingDays}j</span>
                                             </div>
                                             <div className="mt-1 text-[10px] text-slate-600 flex flex-wrap gap-x-2 gap-y-1">
@@ -1768,6 +1859,11 @@ function findAllocationIdForMission(
 function formatDayValue(value: number): string {
     if (Number.isInteger(value)) return `${value}j`;
     return `${value.toFixed(1).replace('.', ',')}j`;
+}
+
+function sanitizeDayValue(value: number): number {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.round(value * 10) / 10);
 }
 
 function formatFullDate(date: string): string {

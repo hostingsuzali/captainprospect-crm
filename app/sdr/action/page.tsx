@@ -637,10 +637,24 @@ export default function SDRActionPage() {
                     setMissions(allMissions);
 
                     const saved = localStorage.getItem("sdr_selected_mission");
-                    const missionId = (saved && allMissions.some((m: Mission) => m.id === saved))
+                    const allowedMissionIds = (() => {
+                        if (!todayJson.success || !todayJson.data) return new Set(allMissions.map((m: Mission) => m.id));
+                        const planningData = todayJson.data as {
+                            hasBlocksToday: boolean;
+                            todayMissionIds: string[];
+                            weekBlocks: Array<{ mission: { id: string } }>;
+                        };
+                        if (planningData.hasBlocksToday && planningData.todayMissionIds.length > 0) {
+                            return new Set(planningData.todayMissionIds);
+                        }
+                        const weekIds = planningData.weekBlocks.map((b) => b.mission.id);
+                        return weekIds.length > 0 ? new Set(weekIds) : new Set<string>();
+                    })();
+                    const availableMissions = allMissions.filter((m: Mission) => allowedMissionIds.has(m.id));
+                    const missionId = (saved && availableMissions.some((m: Mission) => m.id === saved))
                         ? saved
-                        : allMissions.length > 0
-                            ? allMissions[0].id
+                        : availableMissions.length > 0
+                            ? availableMissions[0].id
                             : null;
                     if (missionId) setSelectedMissionId(missionId);
                     if (listsJson.success && missionId) {
@@ -666,6 +680,19 @@ export default function SDRActionPage() {
         loadFilters();
         return () => controller.abort();
     }, [showError]);
+
+    useEffect(() => {
+        if (selectedMissionId && selectableMissions.some((m) => m.id === selectedMissionId)) return;
+        if (selectableMissions.length === 0) {
+            setSelectedMissionId(null);
+            setSelectedListId(null);
+            return;
+        }
+        const nextMissionId = selectableMissions[0].id;
+        setSelectedMissionId(nextMissionId);
+        const firstList = lists.find((l) => l.mission.id === nextMissionId);
+        setSelectedListId(firstList?.id ?? null);
+    }, [selectedMissionId, selectableMissions, lists, setSelectedListId]);
 
     // Fetch status config: global on mount, mission-specific when mission selected
     useEffect(() => {
@@ -728,6 +755,21 @@ export default function SDRActionPage() {
         ["INTERESTED", "CALLBACK_REQUESTED", "ENVOIE_MAIL"].includes(code)
         , [statusConfig]);
 
+    const selectableMissionIds = useMemo(() => {
+        if (!todayBlocksData) return null;
+        if (todayBlocksData.hasBlocksToday && todayBlocksData.todayMissionIds.length > 0) {
+            return new Set(todayBlocksData.todayMissionIds);
+        }
+        const weekIds = todayBlocksData.weekBlocks.map((block) => block.mission.id);
+        if (weekIds.length > 0) return new Set(weekIds);
+        return new Set<string>();
+    }, [todayBlocksData]);
+
+    const selectableMissions = useMemo(() => {
+        if (!selectableMissionIds) return missions;
+        return missions.filter((mission) => selectableMissionIds.has(mission.id));
+    }, [missions, selectableMissionIds]);
+
     const filteredLists = selectedMissionId
         ? lists.filter((l) => l.mission.id === selectedMissionId)
         : lists;
@@ -763,6 +805,13 @@ export default function SDRActionPage() {
                 icon: AlertCircle,
                 title: "Aucune mission active",
                 description: "Vous n'avez aucune mission active assignée. Contactez votre manager pour être assigné à une mission et voir la file d'actions.",
+            };
+        }
+        if (selectableMissions.length === 0) {
+            return {
+                icon: AlertCircle,
+                title: "Aucune mission planifiée",
+                description: "Vous ne pouvez travailler que sur vos missions planifiées (aujourd'hui ou cette semaine).",
             };
         }
         if (!selectedMissionId) {
@@ -805,7 +854,7 @@ export default function SDRActionPage() {
             title: "Aucun contact affiché",
             description: "Aucun contact ne correspond aux critères actuels. Réinitialisez les filtres ou la recherche.",
         };
-    }, [missions.length, selectedMissionId, filteredLists.length, tableSearchApi, hasTableFiltersActive, queueItems.length, filteredQueueItems.length]);
+    }, [missions.length, selectableMissions.length, selectedMissionId, filteredLists.length, tableSearchApi, hasTableFiltersActive, queueItems.length, filteredQueueItems.length]);
 
     // Debounce mission search so we don't refetch on every keystroke
     useEffect(() => {
@@ -2011,7 +2060,7 @@ export default function SDRActionPage() {
                                     onChange={handleMissionChange}
                                     className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-shadow cursor-pointer"
                                 >
-                                    {missions.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                    {selectableMissions.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                                 </select>
                             </div>
                             {/* Liste */}
@@ -2459,7 +2508,7 @@ export default function SDRActionPage() {
                                         const firstList = lists.find((l) => l.mission.id === id);
                                         setSelectedListId(firstList?.id ?? null);
                                     }}
-                                    options={missions.map((m) => ({ value: m.id, label: m.name }))}
+                                    options={selectableMissions.map((m) => ({ value: m.id, label: m.name }))}
                                     placeholder="Mission"
                                     className="min-w-[180px]"
                                 />
@@ -2488,6 +2537,8 @@ export default function SDRActionPage() {
                         description={
                             missions.length === 0
                                 ? "Aucune mission active assignée. Contactez votre manager pour être assigné à une mission."
+                                : selectableMissions.length === 0
+                                    ? "Aucune mission planifiée (aujourd'hui ou cette semaine). Vous ne pouvez travailler que sur vos missions planifiées."
                                 : !selectedMissionId
                                     ? "Sélectionnez une mission ci-dessus pour afficher le prochain contact à contacter."
                                     : (currentAction?.message || "Aucun contact disponible pour le moment (listes vides, contacts sans téléphone/email/LinkedIn, ou tous en cooldown 24h).")
@@ -2580,7 +2631,7 @@ export default function SDRActionPage() {
                                     const firstList = lists.find((l) => l.mission.id === id);
                                     setSelectedListId(firstList?.id ?? null);
                                 }}
-                                options={missions.map((m) => ({ value: m.id, label: m.name }))}
+                                options={selectableMissions.map((m) => ({ value: m.id, label: m.name }))}
                                 placeholder="Mission"
                                 className="min-w-[180px]"
                             />
