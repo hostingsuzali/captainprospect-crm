@@ -294,7 +294,6 @@ export function CSVImportDialog({ isOpen, onClose, onSuccess, missions }: Import
             showError("Champs manquants", "Veuillez sélectionner une mission et renseigner un nom de liste");
             return;
         }
-
         setIsImporting(true);
         setImportProgress(null);
 
@@ -311,6 +310,14 @@ export function CSVImportDialog({ isOpen, onClose, onSuccess, missions }: Import
                 method: "POST",
                 body: formData,
             });
+
+            if (res.status === 413) {
+                showError(
+                    "Fichier trop volumineux",
+                    "Import refuse par le serveur (413). Decoupez le CSV en plus petits fichiers (environ 4MB max)."
+                );
+                return;
+            }
 
             if (!res.ok || !res.body) {
                 const json = await res.json().catch(() => ({}));
@@ -424,7 +431,7 @@ export function CSVImportDialog({ isOpen, onClose, onSuccess, missions }: Import
             <FileUpload
                 label="Fichier CSV *"
                 accept=".csv"
-                maxSize={50}
+                maxSize={200}
                 onFilesSelected={handleFileSelected}
             />
 

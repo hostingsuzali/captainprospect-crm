@@ -101,6 +101,10 @@ interface PreviewRow {
     [key: string]: string;
 }
 
+// Keep each request payload below typical serverless limits (e.g. Vercel 413).
+const IMPORT_CHUNK_THRESHOLD_BYTES = 4 * 1024 * 1024;
+const IMPORT_CHUNK_TARGET_BYTES = 3.5 * 1024 * 1024;
+
 function splitMultiActionCell(raw: string): string[] {
     if (!raw) return [];
     const trimmed = raw.trim();
@@ -175,6 +179,38 @@ async function countFileLines(file: File): Promise<number> {
     }
     if (buffer.trim()) count++;
     return Math.max(0, count - 1);
+}
+
+function splitCsvIntoChunks(csvText: string, targetBytes: number): string[] {
+    const lines = csvText.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    if (lines.length <= 1) return [csvText];
+
+    const header = lines[0];
+    const rows = lines.slice(1);
+    const encoder = new TextEncoder();
+    const chunks: string[] = [];
+
+    let currentRows: string[] = [];
+    let currentBytes = encoder.encode(`${header}\n`).length;
+
+    for (const row of rows) {
+        const rowBytes = encoder.encode(`${row}\n`).length;
+        const wouldExceed = currentRows.length > 0 && currentBytes + rowBytes > targetBytes;
+        if (wouldExceed) {
+            chunks.push([header, ...currentRows].join("\n"));
+            currentRows = [row];
+            currentBytes = encoder.encode(`${header}\n${row}\n`).length;
+        } else {
+            currentRows.push(row);
+            currentBytes += rowBytes;
+        }
+    }
+
+    if (currentRows.length > 0) {
+        chunks.push([header, ...currentRows].join("\n"));
+    }
+
+    return chunks.length > 0 ? chunks : [csvText];
 }
 
 // ============================================
@@ -890,84 +926,149 @@ export default function ImportListPage() {
 
         try {
             const totalRows = await countFileLines(file);
-            const formData = new FormData();
-            formData.append("file", file);
-            if (importMode === "existing" && listId) {
-                formData.append("listId", listId);
-                formData.append("whenAlreadyWorkedOn", whenAlreadyWorkedOn);
-            } else {
-                formData.append("missionId", missionId);
-                formData.append("listName", listName);
-            }
-            formData.append("mappings", JSON.stringify(mappings));
-            formData.append("importType", importType);
-            formData.append("importActions", String(importActions));
-            formData.append("actionColumnMapping", JSON.stringify(actionColumnMapping));
-            if (actionColumnMode === "multi-column") {
-                formData.append("actionColumnMode", actionColumnMode);
-                formData.append("actionColumnGroups", JSON.stringify(actionColumnGroups));
-            }
-            formData.append("statusMappings", JSON.stringify(statusMappings));
-            formData.append("channelMappings", JSON.stringify(channelMappings));
-            if (totalRows > 0) formData.append("totalRows", String(totalRows));
+            type ImportDoneData = { listId?: string; companiesCreated: number; contactsCreated: number; actionsCreated?: number; errors: number };
+            const uploadChunk = async (
+                uploadFile: File,
+                opts: { existingListId?: string; chunkRows?: number; processedRowsBefore?: number; totalRowsAll?: number }
+            ): Promise<{ data?: ImportDoneData; error?: string }> => {
+                const formData = new FormData();
+                formData.append("file", uploadFile);
+                if (opts.existingListId) {
+                    formData.append("listId", opts.existingListId);
+                    formData.append("whenAlreadyWorkedOn", whenAlreadyWorkedOn);
+                } else if (importMode === "existing" && listId) {
+                    formData.append("listId", listId);
+                    formData.append("whenAlreadyWorkedOn", whenAlreadyWorkedOn);
+                } else {
+                    formData.append("missionId", missionId);
+                    formData.append("listName", listName);
+                }
+                formData.append("mappings", JSON.stringify(mappings));
+                formData.append("importType", importType);
+                formData.append("importActions", String(importActions));
+                formData.append("actionColumnMapping", JSON.stringify(actionColumnMapping));
+                if (actionColumnMode === "multi-column") {
+                    formData.append("actionColumnMode", actionColumnMode);
+                    formData.append("actionColumnGroups", JSON.stringify(actionColumnGroups));
+                }
+                formData.append("statusMappings", JSON.stringify(statusMappings));
+                formData.append("channelMappings", JSON.stringify(channelMappings));
+                if ((opts.chunkRows ?? 0) > 0) formData.append("totalRows", String(opts.chunkRows));
 
-            const res = await fetch("/api/lists/import", {
-                method: "POST",
-                body: formData,
-            });
+                const res = await fetch("/api/lists/import", { method: "POST", body: formData });
+                if (!res.ok || !res.body) {
+                    const json = await res.json().catch(() => ({}));
+                    if (res.status === 413) return { error: "Le fichier est trop gros pour un envoi unique." };
+                    return { error: (json as { error?: string }).error || "L'import a échoué" };
+                }
 
-            if (!res.ok || !res.body) {
-                const json = await res.json().catch(() => ({}));
-                showError("Erreur", (json as { error?: string }).error || "L'import a échoué");
+                const reader = res.body.getReader();
+                const dec = new TextDecoder();
+                let buffer = "";
+                let doneData: ImportDoneData | undefined;
+                let errorMsg: string | undefined;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += dec.decode(value, { stream: true });
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop() ?? "";
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed) continue;
+                        try {
+                            const msg = JSON.parse(trimmed) as { type: string; percent?: number; data?: ImportDoneData; error?: string };
+                            if (msg.type === "progress" && msg.percent != null) {
+                                if (opts.totalRowsAll && opts.chunkRows && opts.processedRowsBefore != null) {
+                                    const processedThisChunk = Math.round((msg.percent / 100) * opts.chunkRows);
+                                    const globalPercent = Math.min(
+                                        100,
+                                        Math.round(((opts.processedRowsBefore + processedThisChunk) / opts.totalRowsAll) * 100)
+                                    );
+                                    setImportProgress(globalPercent);
+                                } else {
+                                    setImportProgress(msg.percent);
+                                }
+                            }
+                            if (msg.type === "done" && msg.data) doneData = msg.data;
+                            if (msg.type === "error" && msg.error) errorMsg = msg.error;
+                        } catch {
+                            // ignore malformed lines
+                        }
+                    }
+                }
+
+                if (errorMsg) return { error: errorMsg };
+                if (!doneData) return { error: "Réponse invalide" };
+                return { data: doneData };
+            };
+
+            const shouldChunk = file.size > IMPORT_CHUNK_THRESHOLD_BYTES;
+            if (!shouldChunk) {
+                const single = await uploadChunk(file, { chunkRows: totalRows, processedRowsBefore: 0, totalRowsAll: totalRows });
+                if (single.error || !single.data) {
+                    showError("Erreur", single.error || "L'import a échoué");
+                    return;
+                }
+                setImportProgress(100);
+                setImportResult({
+                    companies: single.data.companiesCreated,
+                    contacts: single.data.contactsCreated,
+                    actions: single.data.actionsCreated,
+                    errors: single.data.errors,
+                });
+                setStep(5);
+                success("Import réussi", `${single.data.companiesCreated} sociétés et ${single.data.contactsCreated} contacts importés`);
                 return;
             }
 
-            const reader = res.body.getReader();
-            const dec = new TextDecoder();
-            let buffer = "";
-            let doneData: { companiesCreated: number; contactsCreated: number; actionsCreated?: number; errors: number } | null = null;
-            let errorMsg: string | null = null;
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += dec.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() ?? "";
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed) continue;
-                    try {
-                        const msg = JSON.parse(trimmed) as {
-                            type: string;
-                            percent?: number;
-                            data?: { companiesCreated: number; contactsCreated: number; actionsCreated?: number; errors: number };
-                            error?: string;
-                        };
-                        if (msg.type === "progress" && msg.percent != null) setImportProgress(msg.percent);
-                        if (msg.type === "done" && msg.data) doneData = msg.data;
-                        if (msg.type === "error" && msg.error) errorMsg = msg.error;
-                    } catch {
-                        // ignore malformed lines
-                    }
-                }
+            const csvText = await file.text();
+            const csvChunks = splitCsvIntoChunks(csvText, IMPORT_CHUNK_TARGET_BYTES);
+            if (csvChunks.length === 0) {
+                showError("Erreur", "Le fichier CSV est vide");
+                return;
             }
 
-            if (errorMsg) {
-                showError("Erreur", errorMsg);
-            } else if (doneData) {
-                setImportProgress(100);
-                setImportResult({
-                    companies: doneData.companiesCreated,
-                    contacts: doneData.contactsCreated,
-                    actions: doneData.actionsCreated,
-                    errors: doneData.errors,
+            let targetListId = importMode === "existing" ? listId : "";
+            let companiesTotal = 0;
+            let contactsTotal = 0;
+            let actionsTotal = 0;
+            let errorsTotal = 0;
+            let processedRowsBefore = 0;
+
+            for (let i = 0; i < csvChunks.length; i++) {
+                const chunkText = csvChunks[i];
+                const chunkRows = Math.max(0, chunkText.split(/\r?\n/).filter((line) => line.trim().length > 0).length - 1);
+                const chunkFile = new File([chunkText], `${file.name.replace(/\.csv$/i, "")}-part-${i + 1}.csv`, { type: "text/csv" });
+                const result = await uploadChunk(chunkFile, {
+                    existingListId: targetListId || undefined,
+                    chunkRows,
+                    processedRowsBefore,
+                    totalRowsAll: totalRows,
                 });
-                setStep(5);
-                success("Import réussi", `${doneData.companiesCreated} sociétés et ${doneData.contactsCreated} contacts importés`);
-            } else {
-                showError("Erreur", "Réponse invalide");
+                if (result.error || !result.data) {
+                    showError("Erreur", result.error || "L'import a échoué");
+                    return;
+                }
+                targetListId = result.data.listId || targetListId;
+                companiesTotal += result.data.companiesCreated;
+                contactsTotal += result.data.contactsCreated;
+                actionsTotal += result.data.actionsCreated ?? 0;
+                errorsTotal += result.data.errors;
+                processedRowsBefore += chunkRows;
+                setImportProgress(Math.min(100, Math.round((processedRowsBefore / Math.max(totalRows, 1)) * 100)));
             }
+
+            setImportProgress(100);
+            setImportResult({
+                companies: companiesTotal,
+                contacts: contactsTotal,
+                actions: actionsTotal,
+                errors: errorsTotal,
+            });
+            setStep(5);
+            success("Import réussi", `${companiesTotal} sociétés et ${contactsTotal} contacts importés`);
         } catch (err) {
             console.error("Import failed:", err);
             showError("Erreur", "L'import a échoué");
@@ -1141,7 +1242,7 @@ export default function ImportListPage() {
                         <FileUpload
                             label="Fichier CSV *"
                             accept=".csv"
-                            maxSize={50}
+                            maxSize={200}
                             onFilesSelected={handleFileSelected}
                         />
 
