@@ -15,7 +15,6 @@ import {
     Mail,
     Linkedin,
     CalendarDays,
-    LayoutGrid,
     Trash2,
     Users,
     Lock,
@@ -33,7 +32,7 @@ import {
     getSdrStatus,
     SDR_STATUS_CONFIG,
 } from './planning-utils';
-import { useToast, Tooltip } from '@/components/ui';
+import { useToast } from '@/components/ui';
 
 interface CalBlock {
     id: string;
@@ -92,36 +91,24 @@ interface WeekDay {
     isCurrentMonth: boolean;
 }
 
-interface MonthCell {
-    date: string;
-    day: number;
-    isToday: boolean;
-    isCurrentMonth: boolean;
-}
-
 interface MissionOption {
     mission: SnapshotMission;
     allocationId: string | null;
 }
 
-type CalendarView = 'month' | 'week';
-
 const CHANNEL_ICONS: Record<string, typeof Phone> = { CALL: Phone, EMAIL: Mail, LINKEDIN: Linkedin };
-const DAY_LABELS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const DAY_CELL_CAPACITY = 1;
 const HOURS_PER_DAY = 8;
 
 export function MonthCalendar() {
-    const { month, setMonth, snapshot, assignSdrToMission } = usePlanningMonth();
+    const { month, setMonth, snapshot, loading: monthLoading, reload, backgroundSync, assignSdrToMission } = usePlanningMonth();
     const { success, error: showError } = useToast();
 
     const [data, setData] = useState<MonthlyData | null>(null);
-    const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
-    const [view, setView] = useState<CalendarView>('month');
     const [weekOffset, setWeekOffset] = useState(0);
     const [weekMultiSelectEnabled, setWeekMultiSelectEnabled] = useState(false);
     const [hoveredSdrId, setHoveredSdrId] = useState<string | null>(null);
@@ -137,25 +124,13 @@ export function MonthCalendar() {
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-    const fetchMonthly = useCallback(async () => {
-        setLoading(true);
-        try {
-            const res = await fetch(`/api/planning/month?month=${month}`);
-            const json = await res.json();
-            if (json.success) {
-                setData(normalizeMonthlyData(json.data as MonthlyData));
-            }
-            else showError('Erreur', json.error || 'Impossible de charger');
-        } catch {
-            showError('Erreur', 'Impossible de charger le calendrier');
-        } finally {
-            setLoading(false);
-        }
-    }, [month, showError]);
-
     useEffect(() => {
-        void fetchMonthly();
-    }, [fetchMonthly]);
+        if (!snapshot) {
+            if (monthLoading) setData(null);
+            return;
+        }
+        setData(normalizeMonthlyData(snapshot as unknown as MonthlyData));
+    }, [snapshot, monthLoading]);
 
     useEffect(() => {
         setWeekOffset(0);
@@ -183,67 +158,15 @@ export function MonthCalendar() {
         };
     }, [quickAddCell]);
 
-    const weekScrollKey = useMemo(() => currentWeekKey(view, weekOffset, month), [view, weekOffset, month]);
+    const weekScrollKey = useMemo(() => currentWeekKey(weekOffset, month), [weekOffset, month]);
 
     useEffect(() => {
-        if (view !== 'week' || !highlightedSdrId) return;
+        if (!highlightedSdrId) return;
         const timeout = window.setTimeout(() => {
             rowRefs.current[highlightedSdrId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 50);
         return () => window.clearTimeout(timeout);
-    }, [highlightedSdrId, view, weekScrollKey]);
-
-    const calendarGrid = useMemo(() => {
-        if (!data) return [];
-        const [year, mon] = month.split('-').map(Number);
-        let startDow = new Date(year, mon - 1, 1).getDay() - 1;
-        if (startDow < 0) startDow = 6;
-
-        const cells: MonthCell[] = [];
-        const prevMonthDays = new Date(year, mon - 1, 0).getDate();
-        for (let i = startDow - 1; i >= 0; i--) {
-            const d = prevMonthDays - i;
-            const pm = mon - 1 <= 0 ? 12 : mon - 1;
-            const py = mon - 1 <= 0 ? year - 1 : year;
-            cells.push({
-                date: `${py}-${String(pm).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
-                day: d,
-                isToday: false,
-                isCurrentMonth: false,
-            });
-        }
-
-        const today = new Date();
-        const todayStr = toDateString(today);
-        for (let d = 1; d <= data.daysInMonth; d++) {
-            const dateStr = `${year}-${String(mon).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            cells.push({ date: dateStr, day: d, isToday: dateStr === todayStr, isCurrentMonth: true });
-        }
-
-        const remaining = 7 - (cells.length % 7);
-        if (remaining < 7) {
-            for (let d = 1; d <= remaining; d++) {
-                const nm = mon + 1 > 12 ? 1 : mon + 1;
-                const ny = mon + 1 > 12 ? year + 1 : year;
-                cells.push({
-                    date: `${ny}-${String(nm).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
-                    day: d,
-                    isToday: false,
-                    isCurrentMonth: false,
-                });
-            }
-        }
-
-        return cells;
-    }, [data, month]);
-
-    const weeks = useMemo(() => {
-        const result: MonthCell[][] = [];
-        for (let i = 0; i < calendarGrid.length; i += 7) {
-            result.push(calendarGrid.slice(i, i + 7));
-        }
-        return result;
-    }, [calendarGrid]);
+    }, [highlightedSdrId, weekScrollKey]);
 
     const currentWeek = useMemo(() => {
         const [year, mon] = month.split('-').map(Number);
@@ -369,7 +292,7 @@ export function MonthCalendar() {
                 if (!json.success) {
                     showError('Erreur', json.error || 'Déplacement échoué');
                     setData(previousData);
-                    await fetchMonthly();
+                    await reload();
                 }
                 return;
             }
@@ -380,7 +303,7 @@ export function MonthCalendar() {
                 const ok = await assignSdrToMission(sourceBlock.mission.id, newSdrId);
                 if (!ok) {
                     setData(previousData);
-                    await fetchMonthly();
+                    await reload();
                     return;
                 }
             }
@@ -402,7 +325,7 @@ export function MonthCalendar() {
             if (!createJson.success) {
                 showError('Erreur', createJson.error || 'Déplacement échoué');
                 setData(previousData);
-                await fetchMonthly();
+                backgroundSync();
                 return;
             }
 
@@ -416,13 +339,13 @@ export function MonthCalendar() {
                 showError('Erreur', cancelJson.error || 'Déplacement échoué');
             }
 
-            await fetchMonthly();
+            backgroundSync();
         } catch {
             showError('Erreur', 'Déplacement échoué');
             setData(previousData);
-            await fetchMonthly();
+            await reload();
         }
-    }, [assignSdrToMission, data, dragState, fetchMonthly, month, showError]);
+    }, [assignSdrToMission, backgroundSync, data, dragState, month, reload, showError]);
 
     const handleDeleteBlock = useCallback(async (blockId: string) => {
         if (deletingBlockId) return;
@@ -446,29 +369,17 @@ export function MonthCalendar() {
         } catch {
             showError('Erreur', 'Suppression échouée');
         } finally {
-            await fetchMonthly();
             setDeletingBlockId(null);
+            backgroundSync();
         }
-    }, [deletingBlockId, fetchMonthly, showError, success]);
+    }, [backgroundSync, deletingBlockId, showError, success]);
 
     function prevNav() {
-        if (view === 'week') {
-            setWeekOffset((current) => current - 1);
-            return;
-        }
-        const [year, mon] = month.split('-').map(Number);
-        const date = new Date(year, mon - 2, 1);
-        setMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+        setWeekOffset((current) => current - 1);
     }
 
     function nextNav() {
-        if (view === 'week') {
-            setWeekOffset((current) => current + 1);
-            return;
-        }
-        const [year, mon] = month.split('-').map(Number);
-        const date = new Date(year, mon, 1);
-        setMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+        setWeekOffset((current) => current + 1);
     }
 
     function goToToday() {
@@ -478,11 +389,10 @@ export function MonthCalendar() {
     }
 
     function handleDrawerRowClick(sdrId: string) {
-        setView('week');
         setHighlightedSdrId(sdrId);
     }
 
-    if (loading && !data) {
+    if (monthLoading && !data) {
         return (
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
@@ -499,7 +409,7 @@ export function MonthCalendar() {
                             <ChevronLeft className="w-5 h-5" />
                         </button>
                         <h2 className="text-sm font-bold text-slate-800 capitalize min-w-[200px] text-center">
-                            {view === 'month' ? formatMonthLabel(month) : weekLabel}
+                            {weekLabel}
                         </h2>
                         <button onClick={nextNav} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors">
                             <ChevronRight className="w-5 h-5" />
@@ -532,140 +442,103 @@ export function MonthCalendar() {
                             Charge équipe
                         </button>
 
-                        <div className="flex bg-slate-100 rounded-lg p-0.5">
+                        <div className="flex items-center gap-1.5">
                             <button
-                                onClick={() => setView('month')}
+                                onClick={() => setWeekMultiSelectEnabled((current) => !current)}
                                 className={cn(
-                                    'flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all',
-                                    view === 'month' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+                                    'px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                                    weekMultiSelectEnabled
+                                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
                                 )}
+                                title="Activer la sélection multiple des jours"
                             >
-                                <LayoutGrid className="w-3.5 h-3.5" /> Mois
+                                Multi-sélection
                             </button>
-                            <button
-                                onClick={() => setView('week')}
-                                className={cn(
-                                    'flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all',
-                                    view === 'week' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700',
-                                )}
-                            >
-                                <CalendarDays className="w-3.5 h-3.5" /> Semaine
-                            </button>
+                            {selectedDates.length > 0 && (
+                                <>
+                                    <span className="text-[11px] text-slate-500">
+                                        {selectedDates.length} jour{selectedDates.length > 1 ? 's' : ''} sélectionné{selectedDates.length > 1 ? 's' : ''}
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedDates([]);
+                                            setSelectedDate(null);
+                                        }}
+                                        className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
+                                    >
+                                        Effacer
+                                    </button>
+                                </>
+                            )}
                         </div>
-
-                        {view === 'week' && (
-                            <div className="flex items-center gap-1.5">
-                                <button
-                                    onClick={() => setWeekMultiSelectEnabled((current) => !current)}
-                                    className={cn(
-                                        'px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors',
-                                        weekMultiSelectEnabled
-                                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
-                                    )}
-                                    title="Activer la sélection multiple des jours"
-                                >
-                                    Multi-sélection
-                                </button>
-                                {selectedDates.length > 0 && (
-                                    <>
-                                        <span className="text-[11px] text-slate-500">
-                                            {selectedDates.length} jour{selectedDates.length > 1 ? 's' : ''} sélectionné{selectedDates.length > 1 ? 's' : ''}
-                                        </span>
-                                        <button
-                                            onClick={() => {
-                                                setSelectedDates([]);
-                                                setSelectedDate(null);
-                                            }}
-                                            className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors"
-                                        >
-                                            Effacer
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        )}
                     </div>
                 </div>
 
                 <div className="flex-1 min-h-0 flex overflow-hidden">
                     <div className="flex-1 min-w-0 flex overflow-hidden">
                         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-                            {view === 'month' ? (
-                                <MonthView
-                                    weeks={weeks}
-                                    data={data}
-                                    onOpenQuickAdd={openQuickAdd}
-                                    onOpenDayDetails={(date) => {
-                                        setSelectedDate(date);
-                                        setShowAddForm(false);
-                                        setView('week');
-                                    }}
-                                />
-                            ) : (
-                                <WeekView
-                                    days={currentWeek}
-                                    data={data}
-                                    sdrs={weekSdrs}
-                                    selectedDate={selectedDate}
-                                    selectedDates={selectedDates}
-                                    onSelectDate={(date, append) => {
-                                        if (!append) {
-                                            setSelectedDate((current) => (current === date ? null : date));
-                                            setSelectedDates((current) => (current.length === 1 && current[0] === date ? [] : [date]));
-                                            return;
-                                        }
+                            <WeekView
+                                days={currentWeek}
+                                data={data}
+                                sdrs={weekSdrs}
+                                selectedDate={selectedDate}
+                                selectedDates={selectedDates}
+                                onSelectDate={(date, append) => {
+                                    if (!append) {
+                                        setSelectedDate((current) => (current === date ? null : date));
+                                        setSelectedDates((current) => (current.length === 1 && current[0] === date ? [] : [date]));
+                                        return;
+                                    }
 
-                                        setSelectedDates((current) => {
-                                            const exists = current.includes(date);
-                                            const next = exists ? current.filter((d) => d !== date) : [...current, date];
-                                            if (selectedDate && !next.includes(selectedDate)) {
-                                                setSelectedDate(next[0] ?? null);
-                                            } else if (!selectedDate && next.length > 0) {
-                                                setSelectedDate(next[0]);
-                                            }
-                                            return next;
-                                        });
-                                    }}
-                                    weekMultiSelectEnabled={weekMultiSelectEnabled}
-                                    hoveredSdrId={hoveredSdrId}
-                                    highlightedSdrId={highlightedSdrId}
-                                    dragState={dragState}
-                                    dragOverCell={dragOverCell}
-                                    teamLoadByDate={teamLoadByDate}
-                                    onSetHoveredSdrId={setHoveredSdrId}
-                                    onSetDragState={setDragState}
-                                    onSetDragOverCell={setDragOverCell}
-                                    onOpenQuickAdd={openQuickAdd}
-                                    onMoveBlock={handleBlockMove}
-                                    rowRefs={rowRefs}
-                                    onSetDragOverTrash={setDragOverTrash}
-                                    deletingBlockId={deletingBlockId}
+                                    setSelectedDates((current) => {
+                                        const exists = current.includes(date);
+                                        const next = exists ? current.filter((d) => d !== date) : [...current, date];
+                                        if (selectedDate && !next.includes(selectedDate)) {
+                                            setSelectedDate(next[0] ?? null);
+                                        } else if (!selectedDate && next.length > 0) {
+                                            setSelectedDate(next[0]);
+                                        }
+                                        return next;
+                                    });
+                                }}
+                                weekMultiSelectEnabled={weekMultiSelectEnabled}
+                                hoveredSdrId={hoveredSdrId}
+                                highlightedSdrId={highlightedSdrId}
+                                dragState={dragState}
+                                dragOverCell={dragOverCell}
+                                teamLoadByDate={teamLoadByDate}
+                                onSetHoveredSdrId={setHoveredSdrId}
+                                onSetDragState={setDragState}
+                                onSetDragOverCell={setDragOverCell}
+                                onOpenQuickAdd={openQuickAdd}
+                                onMoveBlock={handleBlockMove}
+                                onDeleteBlock={handleDeleteBlock}
+                                rowRefs={rowRefs}
+                                onSetDragOverTrash={setDragOverTrash}
+                                deletingBlockId={deletingBlockId}
+                            />
+                        </div>
+
+                        <div
+                            className={cn(
+                                'border-l border-slate-200 bg-white flex flex-col transition-all duration-300 overflow-hidden flex-shrink-0',
+                                selectedDate ? 'w-[380px]' : 'w-0',
+                            )}
+                        >
+                            {selectedDate && (
+                                <DaySidebar
+                                    date={selectedDate}
+                                    blocks={selectedBlocks}
+                                    team={data?.team ?? []}
+                                    missions={data?.missions ?? []}
+                                    onClose={() => setSelectedDate(null)}
+                                    showAddForm={showAddForm}
+                                    setShowAddForm={setShowAddForm}
+                                    onReload={reload}
                                 />
                             )}
                         </div>
-
-                        {view === 'week' && (
-                            <div
-                                className={cn(
-                                    'border-l border-slate-200 bg-white flex flex-col transition-all duration-300 overflow-hidden flex-shrink-0',
-                                    selectedDate ? 'w-[380px]' : 'w-0',
-                                )}
-                            >
-                                {selectedDate && (
-                                    <DaySidebar
-                                        date={selectedDate}
-                                        blocks={selectedBlocks}
-                                        team={data?.team ?? []}
-                                        missions={data?.missions ?? []}
-                                        onClose={() => setSelectedDate(null)}
-                                        showAddForm={showAddForm}
-                                        setShowAddForm={setShowAddForm}
-                                        onReload={fetchMonthly}
-                                    />
-                                )}
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>
@@ -691,13 +564,13 @@ export function MonthCalendar() {
                     onClose={closeQuickAdd}
                     onCreated={async () => {
                         closeQuickAdd();
-                        await fetchMonthly();
+                        await reload();
                     }}
                     assignSdrToMission={assignSdrToMission}
                 />
             )}
 
-            {view === 'week' && dragState && (
+            {dragState && (
                 <TrashDropZone
                     isOver={dragOverTrash}
                     isDeleting={!!deletingBlockId}
@@ -715,132 +588,6 @@ export function MonthCalendar() {
                 />
             )}
         </div>
-    );
-}
-
-function MonthView({
-    weeks,
-    data,
-    onOpenQuickAdd,
-    onOpenDayDetails,
-}: {
-    weeks: MonthCell[][];
-    data: MonthlyData | null;
-    onOpenQuickAdd: (cell: QuickAddCell, target: HTMLElement) => void;
-    onOpenDayDetails: (date: string) => void;
-}) {
-    return (
-        <>
-            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/80 flex-shrink-0">
-                {DAY_LABELS.map((label, index) => (
-                    <div
-                        key={label}
-                        className={cn(
-                            'text-center text-[11px] font-semibold uppercase tracking-wider py-2.5',
-                            index >= 5 ? 'text-slate-400' : 'text-slate-600',
-                        )}
-                    >
-                        {label}
-                    </div>
-                ))}
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-                <div className="grid h-full" style={{ gridTemplateRows: `repeat(${weeks.length}, minmax(120px, 1fr))` }}>
-                    {weeks.map((week, weekIndex) => (
-                        <div key={weekIndex} className="grid grid-cols-7 border-b border-slate-100">
-                            {week.map((cell, cellIndex) => {
-                                const cellDateKey = normalizeDateKey(cell.date);
-                                const dateBlocks = data?.blocksByDate[cellDateKey]
-                                    ?? data?.blocks.filter((block) => {
-                                        const blockDateKey = normalizeDateKey(String(block.date).slice(0, 10));
-                                        return blockDateKey === cellDateKey;
-                                    })
-                                    ?? [];
-                                const segments = buildMonthSegments(dateBlocks);
-                                const isWeekend = cellIndex >= 5;
-
-                                return (
-                                    <button
-                                        key={cell.date}
-                                        type="button"
-                                        onClick={(event) => {
-                                            if (!cell.isCurrentMonth) return;
-                                            if (dateBlocks.length > 0) {
-                                                onOpenDayDetails(cellDateKey);
-                                                return;
-                                            }
-                                            onOpenQuickAdd({ sdrId: '', date: cellDateKey }, event.currentTarget);
-                                        }}
-                                        className={cn(
-                                            'relative text-left px-3 py-2 border-r border-slate-100 last:border-r-0 transition-colors group',
-                                            cell.isCurrentMonth ? 'bg-white hover:bg-slate-50/80' : 'bg-slate-50/30',
-                                            isWeekend && cell.isCurrentMonth && 'bg-slate-50/40',
-                                        )}
-                                        title={cell.isCurrentMonth ? `Planifier le ${cellDateKey}` : undefined}
-                                    >
-                                        <div className="flex items-center justify-between mb-3">
-                                            <span
-                                                className={cn(
-                                                    'text-xs font-semibold w-7 h-7 flex items-center justify-center rounded-full transition-colors',
-                                                    cell.isToday && 'bg-indigo-600 text-white shadow-sm',
-                                                    !cell.isToday && cell.isCurrentMonth && 'text-slate-800',
-                                                    !cell.isToday && !cell.isCurrentMonth && 'text-slate-300',
-                                                )}
-                                            >
-                                                {cell.day}
-                                            </span>
-
-                                            {dateBlocks.length > 0 ? (
-                                                <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full">
-                                                    {dateBlocks.length}
-                                                </span>
-                                            ) : (
-                                                <span className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-indigo-400">
-                                                    <Plus className="w-3.5 h-3.5" />
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <div className="border-t border-slate-100 pt-3">
-                                            <div className="bg-slate-100 rounded-full overflow-hidden flex" style={{ height: '6px', width: '100%' }}>
-                                                {segments.length === 0 ? (
-                                                    <div style={{ width: '100%', height: '100%' }} />
-                                                ) : (
-                                                    segments.map((segment) => (
-                                                        <Tooltip
-                                                            key={segment.block.id}
-                                                            content={
-                                                                <div className="text-xs">
-                                                                    <p className="font-semibold text-white">{segment.block.sdr.name}</p>
-                                                                    <p>{segment.block.mission.name}</p>
-                                                                    <p className="text-slate-200">{segment.block.startTime}–{segment.block.endTime}</p>
-                                                                </div>
-                                                            }
-                                                            position="top"
-                                                        >
-                                                            <div
-                                                                className="transition-opacity hover:opacity-80"
-                                                                style={{
-                                                                    width: `${segment.width}%`,
-                                                                    height: '100%',
-                                                                    display: 'inline-block',
-                                                                    backgroundColor: segment.color.hex,
-                                                                }}
-                                                            />
-                                                        </Tooltip>
-                                                    ))
-                                                )}
-                                            </div>
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </>
     );
 }
 
@@ -862,6 +609,7 @@ function WeekView({
     onSetDragOverCell,
     onOpenQuickAdd,
     onMoveBlock,
+    onDeleteBlock,
     rowRefs,
     onSetDragOverTrash,
     deletingBlockId,
@@ -883,6 +631,7 @@ function WeekView({
     onSetDragOverCell: (cell: QuickAddCell | null) => void;
     onOpenQuickAdd: (cell: QuickAddCell, target: HTMLElement) => void;
     onMoveBlock: (blockId: string, newDate: string, newSdrId: string) => Promise<void>;
+    onDeleteBlock: (blockId: string) => Promise<void>;
     rowRefs: MutableRefObject<Record<string, HTMLDivElement | null>>;
     onSetDragOverTrash: (active: boolean) => void;
     deletingBlockId: string | null;
@@ -1023,6 +772,11 @@ function WeekView({
                                                     return (
                                                         <div
                                                             key={block.id}
+                                                            onContextMenu={(event) => {
+                                                                event.preventDefault();
+                                                                if (isDeleting || deletingBlockId) return;
+                                                                void onDeleteBlock(block.id);
+                                                            }}
                                                             draggable={!isDeleting && !deletingBlockId}
                                                             onDragStart={(event: DragEvent<HTMLDivElement>) => {
                                                                 if (isDeleting || deletingBlockId) {
@@ -1802,16 +1556,6 @@ function getBlockDayUnits(block: Pick<CalBlock, 'startTime' | 'endTime'>): numbe
     return hours / HOURS_PER_DAY;
 }
 
-function buildMonthSegments(blocks: CalBlock[]) {
-    if (blocks.length === 0) return [];
-    const total = blocks.length;
-    return blocks.map((block) => {
-        const color = getMissionColor(block.mission.id);
-        const width = total > 0 ? (1 / total) * 100 : 0;
-        return { block, color, width };
-    });
-}
-
 function getMonthlyCapacity(sdr: SnapshotSdr): number {
     return sdr.sdrMonthCapacities[0]?.effectiveAvailableDays ?? 0;
 }
@@ -1862,6 +1606,6 @@ function toDateString(date: Date): string {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function currentWeekKey(view: CalendarView, weekOffset: number, month: string): string {
-    return `${view}:${month}:${weekOffset}`;
+function currentWeekKey(weekOffset: number, month: string): string {
+    return `${month}:${weekOffset}`;
 }

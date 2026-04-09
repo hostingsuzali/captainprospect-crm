@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { useToast } from '@/components/ui';
 
 // ── Types mirroring /api/planning/month response ───────────────────────
@@ -202,17 +202,9 @@ export function PlanningMonthProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    const prevMonth = useRef(month);
-    if (prevMonth.current !== month) {
-        prevMonth.current = month;
-        reload();
-    }
-
-    const didMount = useRef(false);
-    if (!didMount.current) {
-        didMount.current = true;
-        reload();
-    }
+    useEffect(() => {
+        void reload();
+    }, [month, reload]);
 
     // ── updateAllocation: optimistic day change ────────────────────────
     const updateAllocation = useCallback(async (allocationId: string, newDays: number) => {
