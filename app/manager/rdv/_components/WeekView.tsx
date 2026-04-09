@@ -9,6 +9,13 @@ interface WeekViewProps {
   openPanel: (m: Meeting) => void;
 }
 
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function WeekView({ calendarDate, calendarMeetings, openPanel }: WeekViewProps) {
   const weekStart = new Date(calendarDate);
   const day = weekStart.getDay();
@@ -31,9 +38,9 @@ export function WeekView({ calendarDate, calendarMeetings, openPanel }: WeekView
         ))}
       </div>
       {days.map((d) => {
-        const key = d.toISOString().slice(0, 10);
+        const key = toLocalDateKey(d);
         const dayMeetings = calendarMeetings.get(key) || [];
-        const isToday = key === new Date().toISOString().slice(0, 10);
+        const isToday = key === toLocalDateKey(new Date());
         return (
           <div key={key} style={{ flex: 1, minWidth: 110, borderLeft: "1px solid var(--border)" }}>
             <div style={{ height: 48, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: isToday ? 700 : 400, color: isToday ? "var(--accent)" : "var(--ink2)" }}>

@@ -35,6 +35,7 @@ interface DetailTabProps {
   detailSaving: boolean;
   setDetailSaving: (v: boolean) => void;
   updateMeeting: (id: string, data: Record<string, unknown>) => Promise<void>;
+  updateLocalMeeting: (id: string, patch: Partial<Meeting>) => void;
   onOpenEditContact: () => void;
   onOpenEditCompany: () => void;
   onOpenLinkContact: () => void;
@@ -59,6 +60,7 @@ export function DetailTab({
   detailSaving,
   setDetailSaving,
   updateMeeting,
+  updateLocalMeeting,
   onOpenEditContact,
   onOpenEditCompany,
   onOpenLinkContact,
@@ -66,19 +68,23 @@ export function DetailTab({
   const handleSave = async () => {
     setDetailSaving(true);
     const payload: Record<string, unknown> = {};
-    if (detailForm.callbackDate) payload.callbackDate = new Date(detailForm.callbackDate).toISOString();
+    payload.callbackDate = detailForm.callbackDate ? new Date(detailForm.callbackDate).toISOString() : null;
     if (detailForm.meetingType) payload.meetingType = detailForm.meetingType;
     payload.meetingAddress = detailForm.meetingAddress;
     payload.meetingJoinUrl = detailForm.meetingJoinUrl;
     payload.meetingPhone = detailForm.meetingPhone;
     await updateMeeting(meeting.id, payload);
-    setSelectedMeeting({
-      ...meeting,
-      callbackDate: detailForm.callbackDate ? new Date(detailForm.callbackDate).toISOString() : meeting.callbackDate,
+    const localPatch: Partial<Meeting> = {
+      callbackDate: detailForm.callbackDate ? new Date(detailForm.callbackDate).toISOString() : null,
       meetingType: (detailForm.meetingType as Meeting["meetingType"]) || meeting.meetingType,
       meetingAddress: detailForm.meetingAddress || null,
       meetingJoinUrl: detailForm.meetingJoinUrl || null,
       meetingPhone: detailForm.meetingPhone || null,
+    };
+    updateLocalMeeting(meeting.id, localPatch);
+    setSelectedMeeting({
+      ...meeting,
+      ...localPatch,
     });
     setEditMode(false);
     setDetailSaving(false);

@@ -224,6 +224,7 @@ export function DetailPanel({
             detailSaving={panelState.detailSaving}
             setDetailSaving={panelState.setDetailSaving}
             updateMeeting={updateMeeting}
+            updateLocalMeeting={updateLocalMeeting}
             onOpenEditContact={onOpenEditContact}
             onOpenEditCompany={onOpenEditCompany}
             onOpenLinkContact={onOpenLinkContact}

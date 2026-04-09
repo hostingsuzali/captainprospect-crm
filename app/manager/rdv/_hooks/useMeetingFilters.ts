@@ -42,7 +42,7 @@ export function useMeetingFilters(): MeetingFiltersState {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [confirmationFilter, setConfirmationFilter] = useState<ConfirmationFilter>("all");
-  const [datePreset, setDatePreset] = useState<DatePreset>("30days");
+  const [datePreset, setDatePreset] = useState<DatePreset>("3months");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selectedClients, setSelectedClients] = useState<Set<string>>(new Set());
@@ -79,7 +79,7 @@ export function useMeetingFilters(): MeetingFiltersState {
     setSearch("");
     setStatusFilter("all");
     setConfirmationFilter("all");
-    setDatePreset("30days");
+    setDatePreset("3months");
     setDateFrom("");
     setDateTo("");
     setSelectedClients(new Set());

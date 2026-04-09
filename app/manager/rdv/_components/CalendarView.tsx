@@ -14,6 +14,13 @@ interface CalendarViewProps {
   updateLocalMeeting: (id: string, patch: Partial<Meeting>) => void;
 }
 
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function CalendarView({ meetings, openPanel, updateMeeting, updateLocalMeeting }: CalendarViewProps) {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<"month" | "week">("month");
@@ -22,7 +29,7 @@ export function CalendarView({ meetings, openPanel, updateMeeting, updateLocalMe
   const calendarMeetings = useMemo(() => buildCalendarMeetings(meetings), [meetings]);
   const calendarDays = useMemo(() => buildCalendarDays(calendarDate), [calendarDate]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateKey(new Date());
 
   return (
     <div style={{ flex: 1, padding: 24, overflowY: "auto" }}>
@@ -73,7 +80,7 @@ export function CalendarView({ meetings, openPanel, updateMeeting, updateLocalMe
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
             {calendarDays.map(({ date, inMonth }, i) => {
-              const key = date.toISOString().slice(0, 10);
+              const key = toLocalDateKey(date);
               const dayMeetings = calendarMeetings.get(key) || [];
               const isToday = key === today;
               const isExpanded = expandedDay === key;

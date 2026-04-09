@@ -233,12 +233,15 @@ export function MonthCalendar() {
             missions: Array<{
                 id: string;
                 name: string;
+                startDate: string;
+                endDate: string;
                 totalContractDays: number | null;
                 totalPlannedDays: number;
-                contractRemainingDays: number | null;
+                contractDeltaDays: number | null;
                 monthTargetDays: number;
                 monthAllocatedDays: number;
                 monthRemainingDays: number;
+                suggestedMonthTargetDays: number;
                 weekPlacedDays: number;
                 weekRecommendedAddDays: number;
                 shouldAddThisWeek: boolean;
@@ -256,9 +259,16 @@ export function MonthCalendar() {
             const monthRemainingDays = Math.max(0, monthTargetDays - monthAllocatedDays);
 
             const totalPlannedDays = mission.missionMonthPlans.reduce((sum, entry) => sum + entry.targetDays, 0);
-            const contractRemainingDays = mission.totalContractDays != null
-                ? Math.max(0, mission.totalContractDays - totalPlannedDays)
+            const contractDeltaDays = mission.totalContractDays != null
+                ? mission.totalContractDays - totalPlannedDays
                 : null;
+
+            const activeMonthsLeft = Math.max(1, countActiveMonthsFrom(month, mission.endDate.slice(0, 10)));
+            const suggestedMonthTargetDays = monthTargetDays > 0
+                ? monthTargetDays
+                : mission.totalContractDays != null
+                    ? Math.max(0, Math.ceil((mission.totalContractDays - totalPlannedDays) / activeMonthsLeft))
+                    : 0;
 
             const weekPlacedDays = data.blocks
                 .filter((block) => block.mission.id === mission.id && weekDateSet.has(block.date))
@@ -278,12 +288,15 @@ export function MonthCalendar() {
             byClient.get(key)?.missions.push({
                 id: mission.id,
                 name: mission.name,
+                startDate: mission.startDate,
+                endDate: mission.endDate,
                 totalContractDays: mission.totalContractDays ?? null,
                 totalPlannedDays,
-                contractRemainingDays,
+                contractDeltaDays,
                 monthTargetDays,
                 monthAllocatedDays,
                 monthRemainingDays,
+                suggestedMonthTargetDays,
                 weekPlacedDays,
                 weekRecommendedAddDays,
                 shouldAddThisWeek,
@@ -1631,12 +1644,15 @@ function MissionTargetsPanel({
         missions: Array<{
             id: string;
             name: string;
+            startDate: string;
+            endDate: string;
             totalContractDays: number | null;
             totalPlannedDays: number;
-            contractRemainingDays: number | null;
+            contractDeltaDays: number | null;
             monthTargetDays: number;
             monthAllocatedDays: number;
             monthRemainingDays: number;
+            suggestedMonthTargetDays: number;
             weekPlacedDays: number;
             weekRecommendedAddDays: number;
             shouldAddThisWeek: boolean;
@@ -1666,6 +1682,13 @@ function MissionTargetsPanel({
                                     const weeklyDecisionClass = mission.shouldAddThisWeek
                                         ? 'text-amber-700 bg-amber-50'
                                         : 'text-emerald-700 bg-emerald-50';
+                                    const contractDeltaClass = mission.contractDeltaDays == null
+                                        ? 'text-slate-600 bg-slate-100'
+                                        : mission.contractDeltaDays > 0
+                                            ? 'text-amber-700 bg-amber-50'
+                                            : mission.contractDeltaDays < 0
+                                                ? 'text-red-700 bg-red-50'
+                                                : 'text-emerald-700 bg-emerald-50';
                                     return (
                                         <div key={mission.id} className="rounded-lg px-2 py-2 hover:bg-slate-50 border border-slate-100">
                                             <div className="flex items-center justify-between gap-2">
@@ -1677,18 +1700,27 @@ function MissionTargetsPanel({
                                             <div className="mt-1.5 text-[10px] text-slate-600 flex flex-wrap gap-x-2 gap-y-1">
                                                 <span>Contrat: {mission.totalContractDays != null ? `${mission.totalContractDays}j` : 'n/a'}</span>
                                                 <span>Planifiés: {mission.totalPlannedDays}j</span>
-                                                {mission.contractRemainingDays != null && (
-                                                    <span>Reste contrat: {mission.contractRemainingDays}j</span>
+                                                {mission.contractDeltaDays != null && (
+                                                    <span className={cn('px-1.5 py-0.5 rounded-full font-medium', contractDeltaClass)}>
+                                                        {mission.contractDeltaDays > 0
+                                                            ? `Sous-planifié: ${mission.contractDeltaDays}j`
+                                                            : mission.contractDeltaDays < 0
+                                                                ? `Sur-planifié: ${Math.abs(mission.contractDeltaDays)}j`
+                                                                : 'Contrat équilibré'}
+                                                    </span>
                                                 )}
                                             </div>
                                             <div className="mt-1 text-[10px] text-slate-600 flex flex-wrap gap-x-2 gap-y-1">
-                                                <span>Mois: cible {mission.monthTargetDays}j</span>
+                                                <span>Mois: cible {mission.monthTargetDays > 0 ? mission.monthTargetDays : mission.suggestedMonthTargetDays}j</span>
                                                 <span>alloués {mission.monthAllocatedDays}j</span>
                                                 <span>reste {mission.monthRemainingDays}j</span>
                                             </div>
                                             <div className="mt-1 text-[10px] text-slate-600 flex flex-wrap gap-x-2 gap-y-1">
                                                 <span>Placés cette semaine: {formatDayValue(mission.weekPlacedDays)}</span>
                                                 <span>À ajouter conseillé: {formatDayValue(mission.weekRecommendedAddDays)}</span>
+                                            </div>
+                                            <div className="mt-1 text-[10px] text-slate-500">
+                                                Période: {formatShortDate(mission.startDate)} → {formatShortDate(mission.endDate)}
                                             </div>
                                         </div>
                                     );
@@ -1785,4 +1817,19 @@ function getWeeksLeftIncludingCurrent(weekStartDateStr: string, monthEndDateStr:
     const msPerDay = 24 * 60 * 60 * 1000;
     const diffDays = Math.floor((monthEnd.getTime() - weekStart.getTime()) / msPerDay);
     return Math.floor(diffDays / 7) + 1;
+}
+
+function countActiveMonthsFrom(monthKey: string, missionEndDateStr: string): number {
+    const [year, month] = monthKey.split('-').map(Number);
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(`${missionEndDateStr}T00:00:00`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 1;
+
+    return ((end.getFullYear() - start.getFullYear()) * 12) + (end.getMonth() - start.getMonth()) + 1;
+}
+
+function formatShortDate(dateLike: string): string {
+    const d = new Date(dateLike);
+    if (Number.isNaN(d.getTime())) return dateLike;
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }

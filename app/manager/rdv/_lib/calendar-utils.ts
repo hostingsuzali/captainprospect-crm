@@ -1,10 +1,17 @@
 import type { Meeting } from "../_types";
 
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function buildCalendarMeetings(meetings: Meeting[]): Map<string, Meeting[]> {
   const map = new Map<string, Meeting[]>();
   for (const m of meetings) {
     if (!m.callbackDate) continue;
-    const key = m.callbackDate.slice(0, 10);
+    const key = toLocalDateKey(new Date(m.callbackDate));
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(m);
   }

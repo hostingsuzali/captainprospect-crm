@@ -89,6 +89,16 @@ export function FicheTab({ meeting, setSelectedMeeting, ficheState, updateMeetin
           style={{ width: "100%", minHeight: 100, resize: "vertical" }}
           value={ficheManualTranscript}
           onChange={(e) => setFicheManualTranscript(e.target.value)}
+          onKeyDown={(e) => {
+            // Keep paste shortcut local to this field and avoid global hotkey interception.
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+              e.stopPropagation();
+            }
+          }}
+          onPaste={(e) => {
+            // Some global listeners can interfere with paste; prevent bubbling from this textarea.
+            e.stopPropagation();
+          }}
           placeholder="Collez ici la transcription complète (Agent/Prospect)…"
         />
       </div>
