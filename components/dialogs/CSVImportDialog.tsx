@@ -252,7 +252,8 @@ export function CSVImportDialog({ isOpen, onClose, onSuccess, missions }: Import
                 setListName(name);
             }
 
-            setStep(2);
+            // Keep user on step 1 so required fields (mission/list name) are always confirmed
+            // before moving to mapping/import.
         };
         reader.readAsText(file);
     }, [listName, showError]);
@@ -289,6 +290,10 @@ export function CSVImportDialog({ isOpen, onClose, onSuccess, missions }: Import
 
     const handleImport = async () => {
         if (!file || !validateMappings()) return;
+        if (!missionId || !listName.trim()) {
+            showError("Champs manquants", "Veuillez sélectionner une mission et renseigner un nom de liste");
+            return;
+        }
 
         setIsImporting(true);
         setImportProgress(null);
