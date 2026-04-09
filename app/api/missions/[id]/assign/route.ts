@@ -45,7 +45,7 @@ export const PATCH = withErrorHandler(async (request: NextRequest, { params }: R
 
     const assignment = await prisma.sDRAssignment.upsert({
         where: {
-            sdrId_missionId: {
+            missionId_sdrId: {
                 sdrId: data.sdrId,
                 missionId: id,
             },

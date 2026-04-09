@@ -49,7 +49,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     await prisma.sDRAssignment.upsert({
         where: {
-            sdrId_missionId: {
+            missionId_sdrId: {
                 sdrId: data.sdrId,
                 missionId: plan.missionId,
             },
