@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { Meeting } from "../_types";
 import type { MeetingFiltersState } from "../_hooks/useMeetingFilters";
 import type { ViewMode, DatePreset } from "../_types";
 import { SearchInput } from "./shared/SearchInput";
 import { downloadCSV } from "../_lib/csv-export";
 import { List, CalendarDays, Download, Plus, Upload } from "lucide-react";
+import { AddRdvModal } from "./modals/AddRdvModal";
 import { ImportRdvModal } from "./modals/ImportRdvModal";
 
 interface CommandBarProps {
@@ -15,11 +16,11 @@ interface CommandBarProps {
   filters: MeetingFiltersState;
   meetings: Meeting[];
   onRefresh?: () => void;
-  onAddRdv?: () => void;
 }
 
-export function CommandBar({ view, setView, filters, meetings, onRefresh, onAddRdv }: CommandBarProps) {
+export const CommandBar = memo(function CommandBar({ view, setView, filters, meetings, onRefresh }: CommandBarProps) {
   const { search, setSearch, datePreset, setDatePreset, filterSummary } = filters;
+  const [addRdvOpen, setAddRdvOpen] = useState(false);
   const [importRdvOpen, setImportRdvOpen] = useState(false);
 
   return (
@@ -76,7 +77,7 @@ export function CommandBar({ view, setView, filters, meetings, onRefresh, onAddR
           ))}
         </div>
 
-        <button className="rdv-btn rdv-btn-ghost" onClick={() => onAddRdv?.()}>
+        <button className="rdv-btn rdv-btn-ghost" onClick={() => setAddRdvOpen(true)}>
           <Plus size={14} /> Ajouter un RDV
         </button>
         <button className="rdv-btn rdv-btn-ghost" onClick={() => setImportRdvOpen(true)}>
@@ -87,6 +88,11 @@ export function CommandBar({ view, setView, filters, meetings, onRefresh, onAddR
         </button>
       </div>
 
+      <AddRdvModal
+        isOpen={addRdvOpen}
+        onClose={() => setAddRdvOpen(false)}
+        onSuccess={() => onRefresh?.()}
+      />
       <ImportRdvModal
         isOpen={importRdvOpen}
         onClose={() => setImportRdvOpen(false)}
@@ -94,4 +100,4 @@ export function CommandBar({ view, setView, filters, meetings, onRefresh, onAddR
       />
     </div>
   );
-}
+});

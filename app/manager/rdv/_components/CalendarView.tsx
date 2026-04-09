@@ -11,10 +11,10 @@ interface CalendarViewProps {
   meetings: Meeting[];
   openPanel: (m: Meeting) => void;
   updateMeeting: (id: string, data: Record<string, unknown>) => Promise<void>;
-  setMeetings: (fn: (prev: Meeting[]) => Meeting[]) => void;
+  updateLocalMeeting: (id: string, patch: Partial<Meeting>) => void;
 }
 
-export function CalendarView({ meetings, openPanel, updateMeeting, setMeetings }: CalendarViewProps) {
+export function CalendarView({ meetings, openPanel, updateMeeting, updateLocalMeeting }: CalendarViewProps) {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<"month" | "week">("month");
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
@@ -130,7 +130,10 @@ export function CalendarView({ meetings, openPanel, updateMeeting, setMeetings }
                                 style={{ fontSize: 10, padding: "4px 8px", background: "var(--greenLight)", color: "var(--green)", border: "1px solid rgba(5,150,105,0.2)" }}
                                 onClick={() => {
                                   updateMeeting(m.id, { confirmationStatus: "CONFIRMED" });
-                                  setMeetings((prev) => prev.map((x) => x.id === m.id ? { ...x, confirmationStatus: "CONFIRMED" as const, confirmedAt: new Date().toISOString() } : x));
+                                  updateLocalMeeting(m.id, {
+                                    confirmationStatus: "CONFIRMED",
+                                    confirmedAt: new Date().toISOString(),
+                                  });
                                 }}
                               >
                                 <Check size={10} /> Confirmer
@@ -143,7 +146,11 @@ export function CalendarView({ meetings, openPanel, updateMeeting, setMeetings }
                                 style={{ fontSize: 10, padding: "4px 8px", background: "var(--redLight)", color: "var(--red)", border: "1px solid rgba(220,38,38,0.2)" }}
                                 onClick={() => {
                                   updateMeeting(m.id, { confirmationStatus: "CANCELLED" });
-                                  setMeetings((prev) => prev.map((x) => x.id === m.id ? { ...x, confirmationStatus: "CANCELLED" as const, confirmedAt: null, confirmedById: null } : x));
+                                  updateLocalMeeting(m.id, {
+                                    confirmationStatus: "CANCELLED",
+                                    confirmedAt: null,
+                                    confirmedById: null,
+                                  });
                                 }}
                               >
                                 <X size={10} /> Annuler

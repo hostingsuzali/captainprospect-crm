@@ -419,7 +419,7 @@ export function CSVImportDialog({ isOpen, onClose, onSuccess, missions }: Import
             <FileUpload
                 label="Fichier CSV *"
                 accept=".csv"
-                maxSize={10}
+                maxSize={50}
                 onFilesSelected={handleFileSelected}
             />
 

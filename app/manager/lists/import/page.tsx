@@ -1141,7 +1141,7 @@ export default function ImportListPage() {
                         <FileUpload
                             label="Fichier CSV *"
                             accept=".csv"
-                            maxSize={10}
+                            maxSize={50}
                             onFilesSelected={handleFileSelected}
                         />
 

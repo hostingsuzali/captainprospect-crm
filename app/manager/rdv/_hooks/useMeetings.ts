@@ -12,6 +12,8 @@ export interface UseMeetingsReturn {
   loadingMore: boolean;
   fetchMeetings: (page?: number, append?: boolean) => Promise<void>;
   loadMore: () => void;
+  updateLocalMeeting: (id: string, patch: Partial<Meeting>) => void;
+  updateLocalMeetings: (updater: (prev: Meeting[]) => Meeting[]) => void;
   listRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -108,5 +110,24 @@ export function useMeetings(filters: MeetingFiltersState): UseMeetingsReturn {
     fetchMeetings(pg.page + 1, true);
   }, [fetchMeetings]);
 
-  return { meetings, aggregates, pagination, loading, loadingMore, fetchMeetings, loadMore, listRef };
+  const updateLocalMeeting = useCallback((id: string, patch: Partial<Meeting>) => {
+    setMeetings((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+  }, []);
+
+  const updateLocalMeetings = useCallback((updater: (prev: Meeting[]) => Meeting[]) => {
+    setMeetings((prev) => updater(prev));
+  }, []);
+
+  return {
+    meetings,
+    aggregates,
+    pagination,
+    loading,
+    loadingMore,
+    fetchMeetings,
+    loadMore,
+    updateLocalMeeting,
+    updateLocalMeetings,
+    listRef,
+  };
 }

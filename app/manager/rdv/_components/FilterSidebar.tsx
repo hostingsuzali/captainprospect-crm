@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { MeetingFiltersState } from "../_hooks/useMeetingFilters";
 import type { MeetingTypeFilter, MeetingCategoryFilter, OutcomeFilter, ConfirmationFilter, DatePreset } from "../_types";
 import { Filter, ChevronLeft } from "lucide-react";
@@ -26,7 +27,7 @@ interface FilterSidebarProps {
   onOpen: () => void;
 }
 
-export function FilterSidebar({ filters, sidebarOpen, onClose, onOpen }: FilterSidebarProps) {
+export const FilterSidebar = memo(function FilterSidebar({ filters, sidebarOpen, onClose, onOpen }: FilterSidebarProps) {
   const {
     datePreset, setDatePreset, dateFrom, setDateFrom, dateTo, setDateTo,
     clientOptions, selectedClients, setSelectedClients,
@@ -294,4 +295,4 @@ export function FilterSidebar({ filters, sidebarOpen, onClose, onOpen }: FilterS
       )}
     </div>
   );
-}
+});

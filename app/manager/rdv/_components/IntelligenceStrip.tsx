@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { Aggregates } from "../_types";
 import type { StatusFilter, DatePreset } from "../_types";
 import { Skeleton } from "./shared/Skeleton";
@@ -14,7 +15,7 @@ interface IntelligenceStripProps {
   onSetDatePreset: (v: DatePreset) => void;
 }
 
-export function IntelligenceStrip({
+export const IntelligenceStrip = memo(function IntelligenceStrip({
   aggregates,
   loading,
   statusFilter,
@@ -95,4 +96,4 @@ export function IntelligenceStrip({
           ))}
     </div>
   );
-}
+});

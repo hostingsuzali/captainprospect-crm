@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import type { Meeting } from "../_types";
+import { useState, useCallback } from "react";
+import type { Meeting, PanelTab } from "../_types";
 
 export interface DetailFormState {
   callbackDate: string;
@@ -15,19 +15,10 @@ export interface UseDetailPanelReturn {
   selectedMeeting: Meeting | null;
   setSelectedMeeting: React.Dispatch<React.SetStateAction<Meeting | null>>;
   panelOpen: boolean;
-  panelSection: "overview" | "scheduling" | "participant" | "outcome" | "internal";
-  setPanelSection: (t: "overview" | "scheduling" | "participant" | "outcome" | "internal") => void;
-  internalTab: "fiche" | "note" | "history";
-  setInternalTab: (t: "fiche" | "note" | "history") => void;
-  isCreateMode: boolean;
+  panelTab: PanelTab;
+  setPanelTab: (t: PanelTab) => void;
   openPanel: (m: Meeting, allMeetings: Meeting[]) => void;
-  openCreatePanel: () => void;
   closePanel: () => void;
-  requestClosePanel: () => boolean;
-  setIsDirty: (v: boolean) => void;
-  isDirty: boolean;
-  saveState: "idle" | "saving" | "saved" | "error";
-  setSaveState: (v: "idle" | "saving" | "saved" | "error") => void;
   detailEditMode: boolean;
   setDetailEditMode: (v: boolean) => void;
   detailForm: DetailFormState;
@@ -43,11 +34,7 @@ export interface UseDetailPanelReturn {
 export function useDetailPanel(): UseDetailPanelReturn {
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [panelSection, setPanelSection] = useState<"overview" | "scheduling" | "participant" | "outcome" | "internal">("overview");
-  const [internalTab, setInternalTab] = useState<"fiche" | "note" | "history">("fiche");
-  const [isCreateMode, setIsCreateMode] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [panelTab, setPanelTab] = useState<PanelTab>("detail");
   const [detailEditMode, setDetailEditMode] = useState(false);
   const [detailForm, setDetailForm] = useState<DetailFormState>({
     callbackDate: "",
@@ -62,13 +49,9 @@ export function useDetailPanel(): UseDetailPanelReturn {
   const openPanel = useCallback((m: Meeting, allMeetings: Meeting[]) => {
     const resolved = allMeetings.find((x) => x.id === m.id) ?? m;
     setSelectedMeeting(resolved);
-    setPanelSection("overview");
-    setInternalTab("fiche");
+    setPanelTab("detail");
     setPanelOpen(true);
-    setIsCreateMode(false);
     setDetailEditMode(false);
-    setIsDirty(false);
-    setSaveState("idle");
     setDetailForm({
       callbackDate: resolved.callbackDate
         ? new Date(resolved.callbackDate).toISOString().slice(0, 16)
@@ -80,51 +63,9 @@ export function useDetailPanel(): UseDetailPanelReturn {
     });
   }, []);
 
-  const openCreatePanel = useCallback(() => {
-    setSelectedMeeting(null);
-    setPanelSection("overview");
-    setInternalTab("fiche");
-    setPanelOpen(true);
-    setIsCreateMode(true);
-    setDetailEditMode(false);
-    setIsDirty(false);
-    setSaveState("idle");
-    setDetailForm({
-      callbackDate: "",
-      meetingType: "VISIO",
-      meetingAddress: "",
-      meetingJoinUrl: "",
-      meetingPhone: "",
-    });
-  }, []);
-
   const closePanel = useCallback(() => {
     setPanelOpen(false);
   }, []);
-
-  const requestClosePanel = useCallback(() => {
-    if (!isDirty) {
-      setPanelOpen(false);
-      return true;
-    }
-    const confirmed = window.confirm("Vous avez des modifications non enregistrées. Fermer sans sauvegarder ?");
-    if (confirmed) {
-      setPanelOpen(false);
-      setIsDirty(false);
-      return true;
-    }
-    return false;
-  }, [isDirty]);
-
-  useEffect(() => {
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!isDirty || !panelOpen) return;
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [isDirty, panelOpen]);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -150,19 +91,10 @@ export function useDetailPanel(): UseDetailPanelReturn {
     selectedMeeting,
     setSelectedMeeting,
     panelOpen,
-    panelSection,
-    setPanelSection,
-    internalTab,
-    setInternalTab,
-    isCreateMode,
+    panelTab,
+    setPanelTab,
     openPanel,
-    openCreatePanel,
     closePanel,
-    requestClosePanel,
-    setIsDirty,
-    isDirty,
-    saveState,
-    setSaveState,
     detailEditMode,
     setDetailEditMode,
     detailForm,

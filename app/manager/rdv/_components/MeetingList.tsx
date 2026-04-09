@@ -38,7 +38,7 @@ interface MeetingListProps {
   onOpen: (m: Meeting) => void;
   onLoadMore: () => void;
   updateMeeting: (id: string, data: Record<string, unknown>) => Promise<void>;
-  onSetMeetings: (fn: (prev: Meeting[]) => Meeting[]) => void;
+  updateLocalMeeting: (id: string, patch: Partial<Meeting>) => void;
 }
 
 const MeetingRow = memo(function MeetingRow({
@@ -47,14 +47,14 @@ const MeetingRow = memo(function MeetingRow({
   onToggleSelect,
   onOpen,
   updateMeeting,
-  onSetMeetings,
+  updateLocalMeeting,
 }: {
   meeting: Meeting;
   selected: boolean;
   onToggleSelect: (id: string) => void;
   onOpen: (m: Meeting) => void;
   updateMeeting: (id: string, data: Record<string, unknown>) => Promise<void>;
-  onSetMeetings: (fn: (prev: Meeting[]) => Meeting[]) => void;
+  updateLocalMeeting: (id: string, patch: Partial<Meeting>) => void;
 }) {
   const status = meetingStatus(meeting);
   const date = formatDateShort(meeting.createdAt);
@@ -65,17 +65,20 @@ const MeetingRow = memo(function MeetingRow({
   const handleInlineConfirm = (e: React.MouseEvent) => {
     e.stopPropagation();
     updateMeeting(meeting.id, { confirmationStatus: "CONFIRMED" });
-    onSetMeetings((prev) =>
-      prev.map((m) => m.id === meeting.id ? { ...m, confirmationStatus: "CONFIRMED" as const, confirmedAt: new Date().toISOString() } : m)
-    );
+    updateLocalMeeting(meeting.id, {
+      confirmationStatus: "CONFIRMED",
+      confirmedAt: new Date().toISOString(),
+    });
   };
 
   const handleInlineCancel = (e: React.MouseEvent) => {
     e.stopPropagation();
     updateMeeting(meeting.id, { confirmationStatus: "CANCELLED" });
-    onSetMeetings((prev) =>
-      prev.map((m) => m.id === meeting.id ? { ...m, confirmationStatus: "CANCELLED" as const, confirmedAt: null, confirmedById: null } : m)
-    );
+    updateLocalMeeting(meeting.id, {
+      confirmationStatus: "CANCELLED",
+      confirmedAt: null,
+      confirmedById: null,
+    });
   };
 
   return (
@@ -132,7 +135,10 @@ const MeetingRow = memo(function MeetingRow({
           {(meeting.company?.name || "?")[0]}
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>
+          <div
+            style={{ fontSize: 13, color: "var(--ink3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}
+            title={meeting.company?.name || ""}
+          >
             {meeting.company?.name || "—"}
           </div>
           {meeting.company?.industry && (
@@ -191,7 +197,7 @@ const MeetingRow = memo(function MeetingRow({
       )}
 
       <div style={{ width: 70, textAlign: "center" }}>
-        <span className="rdv-pill" style={{ background: statusBg(status), color: statusColor(status), padding: "4px 10px" }}>
+        <span className="status-badge" style={{ background: statusBg(status), color: statusColor(status) }}>
           {statusLabel(status)}
         </span>
       </div>
@@ -199,12 +205,10 @@ const MeetingRow = memo(function MeetingRow({
       <div style={{ width: 100, textAlign: "center" }}>
         {meeting.confirmationStatus ? (
           <span
-            className="rdv-pill"
+            className="status-badge"
             style={{
               background: confirmationBg(meeting.confirmationStatus as ConfirmationFilter),
               color: confirmationColor(meeting.confirmationStatus as ConfirmationFilter),
-              padding: "4px 10px",
-              border: `1px solid ${confirmationColor(meeting.confirmationStatus as ConfirmationFilter)}`,
             }}
           >
             {confirmationLabel(meeting.confirmationStatus as ConfirmationFilter)}
@@ -274,7 +278,7 @@ export function MeetingList({
   onOpen,
   onLoadMore,
   updateMeeting,
-  onSetMeetings,
+  updateLocalMeeting,
 }: MeetingListProps) {
   const scrollContainerRef = listRef as React.RefObject<HTMLDivElement>;
 
@@ -293,11 +297,12 @@ export function MeetingList({
   return (
     <>
       <div
+        className="rdv-list-header"
         style={{
           display: "flex", alignItems: "center", padding: "10px 24px",
           borderBottom: "1px solid var(--border)", fontSize: 11, fontWeight: 600,
           color: "var(--ink3)", textTransform: "uppercase", letterSpacing: "0.06em",
-          flexShrink: 0, gap: 12, background: "var(--surface)",
+          flexShrink: 0, gap: 12, background: "rgba(255,255,255,0.88)",
         }}
       >
         <div style={{ width: 36 }}>
@@ -357,7 +362,7 @@ export function MeetingList({
               onToggleSelect={onToggleSelect}
               onOpen={onOpen}
               updateMeeting={updateMeeting}
-              onSetMeetings={onSetMeetings}
+              updateLocalMeeting={updateLocalMeeting}
             />
           ))
         )}
