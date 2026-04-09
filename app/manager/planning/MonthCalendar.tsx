@@ -224,6 +224,35 @@ export function MonthCalendar() {
         return entries;
     }, [capacitySdrs, currentWeek, data]);
 
+    const missionTargetsByClient = useMemo(() => {
+        if (!data) return [];
+        const byClient = new Map<string, { clientName: string; missions: Array<{ id: string; name: string; targetDays: number; allocatedDays: number }> }>();
+
+        for (const mission of data.missions) {
+            const plan = mission.missionMonthPlans.find((entry) => entry.month === month);
+            if (!plan || plan.targetDays <= 0) continue;
+
+            const allocatedDays = plan.allocations.reduce((sum, allocation) => sum + allocation.allocatedDays, 0);
+            const key = mission.client.id;
+            if (!byClient.has(key)) {
+                byClient.set(key, { clientName: mission.client.name, missions: [] });
+            }
+            byClient.get(key)?.missions.push({
+                id: mission.id,
+                name: mission.name,
+                targetDays: plan.targetDays,
+                allocatedDays,
+            });
+        }
+
+        return [...byClient.values()]
+            .map((entry) => ({
+                ...entry,
+                missions: entry.missions.sort((a, b) => a.name.localeCompare(b.name)),
+            }))
+            .sort((a, b) => a.clientName.localeCompare(b.clientName));
+    }, [data, month]);
+
     const openQuickAdd = useCallback((cell: QuickAddCell, target: HTMLElement) => {
         const rect = target.getBoundingClientRect();
         const popoverWidth = 320;
@@ -476,6 +505,8 @@ export function MonthCalendar() {
                 </div>
 
                 <div className="flex-1 min-h-0 flex overflow-hidden">
+                    <MissionTargetsPanel month={month} clients={missionTargetsByClient} />
+
                     <div className="flex-1 min-w-0 flex overflow-hidden">
                         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
                             <WeekView
@@ -485,21 +516,19 @@ export function MonthCalendar() {
                                 selectedDate={selectedDate}
                                 selectedDates={selectedDates}
                                 onSelectDate={(date, append) => {
-                                    if (!append) {
-                                        setSelectedDate((current) => (current === date ? null : date));
-                                        setSelectedDates((current) => (current.length === 1 && current[0] === date ? [] : [date]));
-                                        return;
-                                    }
-
                                     setSelectedDates((current) => {
+                                        if (!append) {
+                                            const isSingleSelection = current.length === 1 && current[0] === date;
+                                            const next = isSingleSelection ? [] : [date];
+                                            setSelectedDate(next[0] ?? null);
+                                            return next;
+                                        }
+
                                         const exists = current.includes(date);
                                         const next = exists ? current.filter((d) => d !== date) : [...current, date];
-                                        if (selectedDate && !next.includes(selectedDate)) {
-                                            setSelectedDate(next[0] ?? null);
-                                        } else if (!selectedDate && next.length > 0) {
-                                            setSelectedDate(next[0]);
-                                        }
-                                        return next;
+                                        const normalized = [...new Set(next)].sort((a, b) => a.localeCompare(b));
+                                        setSelectedDate(normalized[0] ?? null);
+                                        return normalized;
                                     });
                                 }}
                                 weekMultiSelectEnabled={weekMultiSelectEnabled}
@@ -737,6 +766,11 @@ function WeekView({
                                             type="button"
                                             onClick={(event) => {
                                                 if (dayBlocks.length > 0) return;
+                                                if (weekMultiSelectEnabled || event.ctrlKey || event.metaKey) {
+                                                    onSelectDate(day.dateStr, true);
+                                                } else {
+                                                    onSelectDate(day.dateStr, false);
+                                                }
                                                 onOpenQuickAdd({ sdrId: sdr.id, date: day.dateStr }, event.currentTarget);
                                             }}
                                             onDragOver={(event) => {
@@ -922,7 +956,7 @@ const QuickAddPopover = forwardRef<HTMLDivElement, QuickAddPopoverProps>(functio
     const [sdrId, setSdrId] = useState(cell.sdrId);
     const [missionId, setMissionId] = useState('');
     const [startTime, setStartTime] = useState('09:00');
-    const [endTime, setEndTime] = useState('12:00');
+    const [endTime, setEndTime] = useState('17:00');
     const [submitting, setSubmitting] = useState(false);
     const [applyToSelectedDates, setApplyToSelectedDates] = useState(true);
 
@@ -930,6 +964,8 @@ const QuickAddPopover = forwardRef<HTMLDivElement, QuickAddPopoverProps>(functio
         setSdrId(cell.sdrId);
         setMissionId('');
         setApplyToSelectedDates(true);
+        setStartTime('09:00');
+        setEndTime('17:00');
     }, [cell]);
 
     const missionOptions = useMemo(() => {
@@ -1435,7 +1471,7 @@ function AddBlockForm({
     const [sdrId, setSdrId] = useState('');
     const [missionId, setMissionId] = useState('');
     const [startTime, setStartTime] = useState('09:00');
-    const [endTime, setEndTime] = useState('12:00');
+    const [endTime, setEndTime] = useState('17:00');
     const [submitting, setSubmitting] = useState(false);
 
     const filteredMissions = missions;
@@ -1537,6 +1573,58 @@ function AddBlockForm({
                 </button>
             </div>
         </form>
+    );
+}
+
+function MissionTargetsPanel({
+    month,
+    clients,
+}: {
+    month: string;
+    clients: Array<{
+        clientName: string;
+        missions: Array<{ id: string; name: string; targetDays: number; allocatedDays: number }>;
+    }>;
+}) {
+    return (
+        <aside className="w-[320px] flex-shrink-0 border-r border-slate-200 bg-white overflow-y-auto">
+            <div className="px-4 py-3 border-b border-slate-200">
+                <h3 className="text-sm font-semibold text-slate-900">Clients & missions</h3>
+                <p className="text-[11px] text-slate-500 mt-1">Objectif du mois: {formatMonthLabel(month)}</p>
+            </div>
+
+            <div className="px-3 py-3 space-y-3">
+                {clients.length === 0 ? (
+                    <div className="text-xs text-slate-500 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        Aucun objectif mission défini pour ce mois.
+                    </div>
+                ) : (
+                    clients.map((client) => (
+                        <div key={client.clientName} className="rounded-xl border border-slate-200 bg-white">
+                            <div className="px-3 py-2 border-b border-slate-100">
+                                <p className="text-xs font-semibold text-slate-800 truncate">{client.clientName}</p>
+                            </div>
+                            <div className="px-2 py-2 space-y-1.5">
+                                {client.missions.map((mission) => {
+                                    const statusClass =
+                                        mission.allocatedDays >= mission.targetDays
+                                            ? 'text-emerald-700 bg-emerald-50'
+                                            : 'text-amber-700 bg-amber-50';
+                                    return (
+                                        <div key={mission.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50">
+                                            <span className="text-[11px] text-slate-700 truncate">{mission.name}</span>
+                                            <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap', statusClass)}>
+                                                {mission.targetDays}j cible · {mission.allocatedDays}j alloués
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        </aside>
     );
 }
 
