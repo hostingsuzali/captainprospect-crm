@@ -1423,6 +1423,7 @@ function DaySidebar({
 
     const [cancelling, setCancelling] = useState<string | null>(null);
     const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
+    const [updatingMissionId, setUpdatingMissionId] = useState<string | null>(null);
 
     async function handleCancel(blockId: string) {
         setCancelling(blockId);
@@ -1444,6 +1445,28 @@ function DaySidebar({
         } finally {
             setCancelling(null);
             setPendingCancelId(null);
+        }
+    }
+
+    async function handleUpdateMission(blockId: string, missionId: string) {
+        setUpdatingMissionId(blockId);
+        try {
+            const res = await fetch(`/api/planning/${blockId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ missionId }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success('Mission mise à jour', 'Le créneau a été réaffecté.');
+                await onReload();
+            } else {
+                showError('Erreur', json.error || 'Impossible de modifier la mission');
+            }
+        } catch {
+            showError('Erreur', 'Une erreur est survenue');
+        } finally {
+            setUpdatingMissionId(null);
         }
     }
 
@@ -1521,6 +1544,7 @@ function DaySidebar({
                             {sdrBlocks.map((block) => {
                                 const color = getMissionColor(block.mission.id);
                                 const Icon = CHANNEL_ICONS[block.mission.channel] || Phone;
+                                const isUpdatingMission = updatingMissionId === block.id;
 
                                 return (
                                     <div
@@ -1537,6 +1561,27 @@ function DaySidebar({
                                                     <span className="text-xs font-bold text-slate-800 truncate">{block.mission.name}</span>
                                                 </div>
                                                 <p className="text-[11px] text-slate-400 mt-0.5 ml-6">{block.mission.client.name}</p>
+                                                <div className="mt-2 ml-6">
+                                                    <label className="block text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1">
+                                                        Mission
+                                                    </label>
+                                                    <select
+                                                        value={block.mission.id}
+                                                        disabled={isUpdatingMission || cancelling === block.id}
+                                                        onChange={(event) => {
+                                                            const nextMissionId = event.target.value;
+                                                            if (!nextMissionId || nextMissionId === block.mission.id) return;
+                                                            void handleUpdateMission(block.id, nextMissionId);
+                                                        }}
+                                                        className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-100 outline-none disabled:opacity-60"
+                                                    >
+                                                        {missions.map((mission) => (
+                                                            <option key={mission.id} value={mission.id}>
+                                                                {mission.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                             </div>
                                             <button
                                                 onClick={() => {
@@ -1567,6 +1612,12 @@ function DaySidebar({
                                                 <Clock className="w-3 h-3 text-slate-400" />
                                                 <span className="font-medium">{block.startTime} – {block.endTime}</span>
                                             </div>
+                                            {isUpdatingMission && (
+                                                <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-indigo-600">
+                                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                                    Mise à jour...
+                                                </span>
+                                            )}
                                             {block.suggestionStatus && (
                                                 <span
                                                     className={cn(
@@ -1587,6 +1638,16 @@ function DaySidebar({
                                     </div>
                                 );
                             })}
+                        </div>
+                        <div className="px-3 pb-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowAddForm(true)}
+                                className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg py-2 transition-colors"
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                Ajouter mission
+                            </button>
                         </div>
                     </div>
                 ))}
