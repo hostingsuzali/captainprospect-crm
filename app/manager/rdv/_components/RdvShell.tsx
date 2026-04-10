@@ -91,7 +91,7 @@ export function RdvShell() {
     ficheState.initFiche(resolved);
     feedbackState.initFeedback(resolved);
     noteState.initNote((resolved as any).managerNote ?? resolved.note ?? "");
-  }, [panelState.selectedMeeting, ficheState, feedbackState, noteState]);
+  }, [panelState.selectedMeeting?.id, ficheState.initFiche, feedbackState.initFeedback, noteState.initNote]);
 
   const handleContactSaved = useCallback(
     (patch: { firstName: string | null; lastName: string | null; title: string | null; email: string | null; phone: string | null; linkedin: string | null }) => {
