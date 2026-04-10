@@ -83,6 +83,11 @@ interface PortalUser {
     email: string;
     role: string;
     createdAt: string;
+    isActive?: boolean;
+    lastSignInAt?: string | null;
+    lastSignInIp?: string | null;
+    lastSignInCountry?: string | null;
+    lastConnectedAt?: string | null;
 }
 
 interface IntBookingLink {
@@ -243,6 +248,15 @@ const SESSION_MARKDOWN_CLASS =
 
 const CHANNEL_LABELS = { CALL: "Appel", EMAIL: "Email", LINKEDIN: "LinkedIn" };
 
+function generateRandomPassword(length = 14): string {
+    const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%";
+    let out = "";
+    for (let i = 0; i < length; i++) {
+        out += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return out;
+}
+
 // ============================================================
 // HELPER — ChatGPT prompt builder
 // ============================================================
@@ -354,6 +368,19 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [userFormData, setUserFormData] = useState({ name: "", email: "", password: "" });
     const [showPortalAccess, setShowPortalAccess] = useState(false);
     const [isSavingPortalSettings, setIsSavingPortalSettings] = useState(false);
+
+    // Manage Access Dialog
+    const [showManageAccessDialog, setShowManageAccessDialog] = useState(false);
+    const [manageAccessSelectedId, setManageAccessSelectedId] = useState<string | null>(null);
+    const [manageAccessMode, setManageAccessMode] = useState<"view" | "new">("view");
+    const [manageAccessForm, setManageAccessForm] = useState({ name: "", email: "", password: "" });
+    const [isSavingAccessUser, setIsSavingAccessUser] = useState(false);
+    const [isTogglingAccessActive, setIsTogglingAccessActive] = useState(false);
+    const [accessNewPassword, setAccessNewPassword] = useState("");
+    const [isResettingAccessPassword, setIsResettingAccessPassword] = useState(false);
+    const [resetPasswordResult, setResetPasswordResult] = useState<{ email: string; password: string } | null>(null);
+    const [accessUserDetails, setAccessUserDetails] = useState<PortalUser | null>(null);
+    const [isLoadingAccessDetails, setIsLoadingAccessDetails] = useState(false);
 
     // Interlocuteurs
     const [interlocuteurs, setInterlocuteurs] = useState<ClientInterlocuteur[]>([]);
@@ -1031,6 +1058,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             const json = await res.json();
             if (json.success) {
                 success("Accès révoqué", `L'accès de ${userToDelete.name} a été supprimé`);
+                if (manageAccessSelectedId === userToDelete.id) {
+                    setManageAccessSelectedId(null);
+                    setAccessUserDetails(null);
+                    setManageAccessMode("view");
+                }
                 await fetchClient();
             } else showError("Erreur", json.error);
         } catch { showError("Erreur", "Une erreur est survenue"); }
@@ -1065,6 +1097,179 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         } finally {
             setIsSavingPortalSettings(false);
         }
+    };
+
+    // ============================================================
+    // MANAGE ACCESS DIALOG
+    // ============================================================
+
+    const openManageAccessDialog = () => {
+        setShowManageAccessDialog(true);
+        setResetPasswordResult(null);
+        setAccessNewPassword("");
+        const firstClientUser = client?.users?.find((u) => u.role === "CLIENT") || client?.users?.[0];
+        if (firstClientUser) {
+            setManageAccessMode("view");
+            setManageAccessSelectedId(firstClientUser.id);
+            void loadAccessUserDetails(firstClientUser.id);
+        } else {
+            setManageAccessMode("new");
+            setManageAccessSelectedId(null);
+            setManageAccessForm({ name: "", email: "", password: "" });
+        }
+    };
+
+    const closeManageAccessDialog = () => {
+        if (isSavingAccessUser || isResettingAccessPassword || isTogglingAccessActive) return;
+        setShowManageAccessDialog(false);
+        setManageAccessSelectedId(null);
+        setAccessUserDetails(null);
+        setResetPasswordResult(null);
+        setAccessNewPassword("");
+        setManageAccessForm({ name: "", email: "", password: "" });
+    };
+
+    const loadAccessUserDetails = async (userId: string) => {
+        setIsLoadingAccessDetails(true);
+        try {
+            const res = await fetch(`/api/users/${userId}`);
+            const json = await res.json();
+            if (json.success) {
+                setAccessUserDetails(json.data);
+                setManageAccessForm({ name: json.data.name || "", email: json.data.email || "", password: "" });
+            }
+        } catch {
+            // fallback to data from client.users list
+            const fallback = client?.users?.find((u) => u.id === userId) || null;
+            if (fallback) {
+                setAccessUserDetails(fallback);
+                setManageAccessForm({ name: fallback.name, email: fallback.email, password: "" });
+            }
+        } finally {
+            setIsLoadingAccessDetails(false);
+        }
+    };
+
+    const handleSelectAccessUser = (userId: string) => {
+        setManageAccessMode("view");
+        setManageAccessSelectedId(userId);
+        setResetPasswordResult(null);
+        setAccessNewPassword("");
+        void loadAccessUserDetails(userId);
+    };
+
+    const handleStartNewAccess = () => {
+        setManageAccessMode("new");
+        setManageAccessSelectedId(null);
+        setAccessUserDetails(null);
+        setResetPasswordResult(null);
+        setAccessNewPassword("");
+        setManageAccessForm({ name: "", email: "", password: "" });
+    };
+
+    const handleSaveAccessProfile = async () => {
+        if (!manageAccessSelectedId) return;
+        if (!manageAccessForm.name.trim() || !manageAccessForm.email.trim()) {
+            showError("Erreur", "Le nom et l'email sont requis");
+            return;
+        }
+        setIsSavingAccessUser(true);
+        try {
+            const res = await fetch(`/api/users/${manageAccessSelectedId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: manageAccessForm.name, email: manageAccessForm.email }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success("Profil mis à jour", "Les informations ont été sauvegardées");
+                await fetchClient();
+                await loadAccessUserDetails(manageAccessSelectedId);
+            } else showError("Erreur", json.error || "Impossible de mettre à jour");
+        } catch { showError("Erreur", "Une erreur est survenue"); }
+        finally { setIsSavingAccessUser(false); }
+    };
+
+    const handleToggleAccessActive = async () => {
+        if (!manageAccessSelectedId || !accessUserDetails) return;
+        const next = !(accessUserDetails.isActive ?? true);
+        setIsTogglingAccessActive(true);
+        try {
+            const res = await fetch(`/api/users/${manageAccessSelectedId}/status`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ isActive: next }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success(next ? "Accès réactivé" : "Accès révoqué", json.data?.message || "");
+                await fetchClient();
+                await loadAccessUserDetails(manageAccessSelectedId);
+            } else showError("Erreur", json.error || "Impossible de modifier le statut");
+        } catch { showError("Erreur", "Une erreur est survenue"); }
+        finally { setIsTogglingAccessActive(false); }
+    };
+
+    const handleResetAccessPassword = async () => {
+        if (!manageAccessSelectedId || !accessUserDetails) return;
+        if (accessNewPassword && accessNewPassword.length < 6) {
+            showError("Erreur", "Le mot de passe doit contenir au moins 6 caractères");
+            return;
+        }
+        const passwordToSet = accessNewPassword || generateRandomPassword();
+        setIsResettingAccessPassword(true);
+        try {
+            const res = await fetch(`/api/users/${manageAccessSelectedId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ password: passwordToSet }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success("Mot de passe réinitialisé", "Communiquez le nouveau mot de passe au client");
+                setResetPasswordResult({ email: accessUserDetails.email, password: passwordToSet });
+                setAccessNewPassword("");
+            } else showError("Erreur", json.error || "Impossible de réinitialiser le mot de passe");
+        } catch { showError("Erreur", "Une erreur est survenue"); }
+        finally { setIsResettingAccessPassword(false); }
+    };
+
+    const handleCreateAccessUser = async () => {
+        if (!client) return;
+        if (!manageAccessForm.name.trim() || !manageAccessForm.email.trim()) {
+            showError("Erreur", "Le nom et l'email sont requis");
+            return;
+        }
+        setIsSavingAccessUser(true);
+        try {
+            const res = await fetch("/api/users", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: manageAccessForm.name,
+                    email: manageAccessForm.email,
+                    password: manageAccessForm.password || undefined,
+                    role: "CLIENT",
+                    clientId: client.id,
+                }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success("Accès créé", "Le compte portail a été créé");
+                setResetPasswordResult({
+                    email: manageAccessForm.email,
+                    password: json.generatedPassword || manageAccessForm.password,
+                });
+                const newId = json.data?.id;
+                await fetchClient();
+                if (newId) {
+                    setManageAccessMode("view");
+                    setManageAccessSelectedId(newId);
+                    await loadAccessUserDetails(newId);
+                }
+            } else showError("Erreur", json.error || "Impossible de créer l'accès");
+        } catch { showError("Erreur", "Une erreur est survenue"); }
+        finally { setIsSavingAccessUser(false); }
     };
 
     // ============================================================
@@ -1737,19 +1942,31 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 {showPortalAccess && (
                                     <div className="p-3">
                                         {client.users && client.users.length > 0 ? (
-                                            <div className="space-y-2 mb-3">
+                                            <div className="space-y-1.5 mb-3">
                                                 {client.users.map((u) => (
-                                                    <div key={u.id} className="flex items-center justify-between px-1">
-                                                        <div>
-                                                            <p className="text-sm font-medium text-slate-900">{u.name}</p>
-                                                            <p className="text-[11px] text-slate-500">{u.email}</p>
+                                                    <button
+                                                        key={u.id}
+                                                        onClick={() => {
+                                                            setShowManageAccessDialog(true);
+                                                            setManageAccessMode("view");
+                                                            setManageAccessSelectedId(u.id);
+                                                            setResetPasswordResult(null);
+                                                            setAccessNewPassword("");
+                                                            void loadAccessUserDetails(u.id);
+                                                        }}
+                                                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-slate-50 text-left transition-colors"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-1.5">
+                                                                {u.name}
+                                                                {u.isActive === false && (
+                                                                    <Badge className="text-[9px] bg-red-100 text-red-700 border-0">Révoqué</Badge>
+                                                                )}
+                                                            </p>
+                                                            <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
                                                         </div>
-                                                        {u.role === "CLIENT" && (
-                                                            <button onClick={() => setUserToDelete({ id: u.id, name: u.name })} className="text-red-400 hover:text-red-600">
-                                                                <Trash2 className="w-3.5 h-3.5" />
-                                                            </button>
-                                                        )}
-                                                    </div>
+                                                        <ChevronUp className="w-3.5 h-3.5 text-slate-300 rotate-90" />
+                                                    </button>
                                                 ))}
                                             </div>
                                         ) : (
@@ -1783,10 +2000,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                 <p className="text-[11px] text-slate-500">Mise à jour en cours...</p>
                                             )}
                                         </div>
-                                        <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" onClick={() => setShowCreateUserModal(true)}>
-                                            <Plus className="w-3.5 h-3.5" />
-                                            Nouvel accès
-                                        </Button>
+                                        <div className="space-y-2">
+                                            <Button variant="primary" size="sm" className="w-full gap-1.5 text-xs" onClick={openManageAccessDialog}>
+                                                <ShieldCheck className="w-3.5 h-3.5" />
+                                                Gérer les accès
+                                            </Button>
+                                            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" onClick={() => setShowCreateUserModal(true)}>
+                                                <Plus className="w-3.5 h-3.5" />
+                                                Nouvel accès rapide
+                                            </Button>
+                                        </div>
                                     </div>
                                 )}
                             </Card>
@@ -3176,6 +3399,414 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     </div>
                 </Modal>
             )}
+
+            {/* ── MANAGE ACCESS DIALOG ── */}
+            <Modal
+                isOpen={showManageAccessDialog}
+                onClose={closeManageAccessDialog}
+                size="xl"
+                showCloseButton={false}
+                className="!p-0 max-h-[90vh]"
+            >
+                <div className="-m-6 md:-m-8 flex flex-col h-[80vh]">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                            </div>
+                            <div>
+                                <h2 className="text-base font-bold text-slate-900">Gestion des accès portail</h2>
+                                <p className="text-xs text-slate-500">{client.name}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={closeManageAccessDialog}
+                            className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-200 rounded-md transition-colors"
+                        >
+                            <XCircle className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    {/* Body: sidebar + content */}
+                    <div className="flex flex-1 min-h-0">
+                        {/* ── SIDEBAR ── */}
+                        <aside className="w-64 border-r border-slate-200 bg-slate-50/40 flex flex-col">
+                            <div className="px-3 py-3 border-b border-slate-200">
+                                <button
+                                    onClick={handleStartNewAccess}
+                                    className={cn(
+                                        "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors",
+                                        manageAccessMode === "new"
+                                            ? "bg-indigo-600 text-white shadow-sm shadow-indigo-500/30"
+                                            : "bg-white border border-slate-200 text-slate-700 hover:border-indigo-300 hover:text-indigo-600"
+                                    )}
+                                >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    Nouvel accès
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+                                <p className="px-2 pt-1 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                    Accès existants ({client.users?.length || 0})
+                                </p>
+                                {client.users && client.users.length > 0 ? (
+                                    <ul className="space-y-1">
+                                        {client.users.map((u) => {
+                                            const isSelected = manageAccessMode === "view" && manageAccessSelectedId === u.id;
+                                            const isInactive = u.isActive === false;
+                                            return (
+                                                <li key={u.id}>
+                                                    <button
+                                                        onClick={() => handleSelectAccessUser(u.id)}
+                                                        className={cn(
+                                                            "w-full text-left px-3 py-2 rounded-lg transition-all flex items-start gap-2.5",
+                                                            isSelected
+                                                                ? "bg-white border border-indigo-300 shadow-sm"
+                                                                : "hover:bg-white hover:border-slate-200 border border-transparent"
+                                                        )}
+                                                    >
+                                                        <div className={cn(
+                                                            "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
+                                                            isInactive ? "bg-slate-200 text-slate-500" : "bg-indigo-100 text-indigo-700"
+                                                        )}>
+                                                            {u.name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase()}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className={cn(
+                                                                "text-xs font-semibold truncate",
+                                                                isSelected ? "text-indigo-700" : "text-slate-900"
+                                                            )}>
+                                                                {u.name}
+                                                            </p>
+                                                            <p className="text-[10px] text-slate-500 truncate">{u.email}</p>
+                                                            {isInactive && (
+                                                                <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-100 text-red-700">
+                                                                    Révoqué
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </button>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                ) : (
+                                    <div className="px-3 py-6 text-center">
+                                        <Users className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+                                        <p className="text-[11px] text-slate-500">Aucun accès configuré</p>
+                                    </div>
+                                )}
+                            </div>
+                        </aside>
+
+                        {/* ── MAIN CONTENT ── */}
+                        <section className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-white">
+                            {manageAccessMode === "new" ? (
+                                /* ─── NEW ACCESS FORM ─── */
+                                <div className="max-w-xl">
+                                    {!resetPasswordResult ? (
+                                        <>
+                                            <div className="mb-5">
+                                                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                                    <Plus className="w-4 h-4 text-indigo-500" />
+                                                    Créer un nouvel accès
+                                                </h3>
+                                                <p className="text-xs text-slate-500 mt-1">
+                                                    Génère un compte portail pour permettre au client de se connecter.
+                                                </p>
+                                            </div>
+                                            <div className="space-y-4">
+                                                <Input
+                                                    label="Nom complet *"
+                                                    placeholder="ex: Jean Dupont"
+                                                    value={manageAccessForm.name}
+                                                    onChange={(e) => setManageAccessForm(p => ({ ...p, name: e.target.value }))}
+                                                    icon={<User className="w-4 h-4 text-slate-400" />}
+                                                />
+                                                <Input
+                                                    label="Adresse email *"
+                                                    type="email"
+                                                    placeholder="jean.dupont@client.com"
+                                                    value={manageAccessForm.email}
+                                                    onChange={(e) => setManageAccessForm(p => ({ ...p, email: e.target.value }))}
+                                                    icon={<Mail className="w-4 h-4 text-slate-400" />}
+                                                />
+                                                <div>
+                                                    <Input
+                                                        label="Mot de passe (optionnel)"
+                                                        type="password"
+                                                        placeholder="Laisser vide pour auto-générer"
+                                                        value={manageAccessForm.password}
+                                                        onChange={(e) => setManageAccessForm(p => ({ ...p, password: e.target.value }))}
+                                                        icon={<Key className="w-4 h-4 text-slate-400" />}
+                                                    />
+                                                    <p className="text-[11px] text-slate-500 mt-1.5">
+                                                        Si vide, un mot de passe sécurisé sera généré et affiché.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-100">
+                                                <Button variant="ghost" onClick={closeManageAccessDialog} disabled={isSavingAccessUser}>
+                                                    Annuler
+                                                </Button>
+                                                <Button variant="primary" onClick={handleCreateAccessUser} isLoading={isSavingAccessUser}>
+                                                    Créer l'accès
+                                                </Button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                                                <h3 className="text-emerald-800 font-medium flex items-center gap-2 mb-1">
+                                                    <CheckCircle2 className="w-4 h-4" />
+                                                    Accès créé
+                                                </h3>
+                                                <p className="text-xs text-emerald-700">Transmettez ces identifiants de manière sécurisée.</p>
+                                            </div>
+                                            {[
+                                                { label: "Email", value: resetPasswordResult.email, mono: false },
+                                                { label: "Mot de passe", value: resetPasswordResult.password, mono: true },
+                                            ].map(({ label, value, mono }) => (
+                                                <div key={label}>
+                                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{label}</p>
+                                                    <div className={cn("flex items-center justify-between p-3 border rounded-lg", mono ? "bg-orange-50 border-orange-200" : "bg-slate-50 border-slate-200")}>
+                                                        <span className={cn("text-sm font-medium select-all", mono ? "font-mono text-orange-900" : "text-slate-900")}>{value}</span>
+                                                        <button onClick={() => { navigator.clipboard.writeText(value); success("Copié", ""); }} className={mono ? "text-orange-500 hover:text-orange-700" : "text-slate-400 hover:text-slate-600"}>
+                                                            <Copy className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <p className="text-xs text-orange-600 flex items-center gap-1.5">
+                                                <ShieldCheck className="w-3.5 h-3.5" />
+                                                Ce mot de passe ne sera plus affiché.
+                                            </p>
+                                            <div className="flex justify-end pt-3">
+                                                <Button variant="primary" onClick={() => setResetPasswordResult(null)}>
+                                                    J'ai copié les identifiants
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : manageAccessSelectedId && accessUserDetails ? (
+                                /* ─── VIEW / EDIT EXISTING USER ─── */
+                                <div className="space-y-6">
+                                    {/* Header */}
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold">
+                                                {accessUserDetails.name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                                    {accessUserDetails.name}
+                                                    {accessUserDetails.isActive === false ? (
+                                                        <Badge className="text-[10px] bg-red-100 text-red-700 border-0">Révoqué</Badge>
+                                                    ) : (
+                                                        <Badge className="text-[10px] bg-emerald-100 text-emerald-700 border-0">Actif</Badge>
+                                                    )}
+                                                </h3>
+                                                <p className="text-xs text-slate-500">{accessUserDetails.email}</p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            variant={accessUserDetails.isActive === false ? "primary" : "outline"}
+                                            size="sm"
+                                            onClick={handleToggleAccessActive}
+                                            isLoading={isTogglingAccessActive}
+                                            className={cn(
+                                                "gap-1.5",
+                                                accessUserDetails.isActive !== false && "text-red-600 border-red-200 hover:bg-red-50"
+                                            )}
+                                        >
+                                            {accessUserDetails.isActive === false ? (
+                                                <>
+                                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                                    Réactiver
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <XCircle className="w-3.5 h-3.5" />
+                                                    Révoquer l'accès
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
+
+                                    {/* Connection info */}
+                                    <div>
+                                        <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                            <Clock className="w-3.5 h-3.5" />
+                                            Informations de connexion
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/40">
+                                                <p className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider mb-1">Dernière connexion</p>
+                                                <p className="text-sm font-medium text-slate-900">
+                                                    {accessUserDetails.lastSignInAt
+                                                        ? new Date(accessUserDetails.lastSignInAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })
+                                                        : <span className="text-slate-400">Jamais connecté</span>}
+                                                </p>
+                                            </div>
+                                            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/40">
+                                                <p className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider mb-1">Dernière activité</p>
+                                                <p className="text-sm font-medium text-slate-900">
+                                                    {accessUserDetails.lastConnectedAt
+                                                        ? new Date(accessUserDetails.lastConnectedAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })
+                                                        : <span className="text-slate-400">—</span>}
+                                                </p>
+                                            </div>
+                                            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/40">
+                                                <p className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider mb-1 flex items-center gap-1">
+                                                    <Hash className="w-3 h-3" /> Adresse IP
+                                                </p>
+                                                <p className="text-sm font-mono text-slate-900">
+                                                    {accessUserDetails.lastSignInIp || <span className="text-slate-400 font-sans">—</span>}
+                                                </p>
+                                            </div>
+                                            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/40">
+                                                <p className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider mb-1 flex items-center gap-1">
+                                                    <MapPin className="w-3 h-3" /> Localisation
+                                                </p>
+                                                <p className="text-sm font-medium text-slate-900">
+                                                    {accessUserDetails.lastSignInCountry || <span className="text-slate-400">—</span>}
+                                                </p>
+                                            </div>
+                                            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/40 col-span-2">
+                                                <p className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider mb-1">Compte créé le</p>
+                                                <p className="text-sm font-medium text-slate-900">
+                                                    {new Date(accessUserDetails.createdAt).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Edit profile */}
+                                    <div>
+                                        <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                            <PenLine className="w-3.5 h-3.5" />
+                                            Modifier le profil
+                                        </h4>
+                                        <div className="space-y-3 p-4 rounded-lg border border-slate-200">
+                                            <Input
+                                                label="Nom complet"
+                                                value={manageAccessForm.name}
+                                                onChange={(e) => setManageAccessForm(p => ({ ...p, name: e.target.value }))}
+                                                icon={<User className="w-4 h-4 text-slate-400" />}
+                                            />
+                                            <Input
+                                                label="Email"
+                                                type="email"
+                                                value={manageAccessForm.email}
+                                                onChange={(e) => setManageAccessForm(p => ({ ...p, email: e.target.value }))}
+                                                icon={<Mail className="w-4 h-4 text-slate-400" />}
+                                            />
+                                            <div className="flex justify-end">
+                                                <Button variant="primary" size="sm" onClick={handleSaveAccessProfile} isLoading={isSavingAccessUser}>
+                                                    Enregistrer
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Reset password */}
+                                    <div>
+                                        <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                            <Key className="w-3.5 h-3.5" />
+                                            Réinitialiser le mot de passe
+                                        </h4>
+                                        {resetPasswordResult && resetPasswordResult.email === accessUserDetails.email ? (
+                                            <div className="p-4 rounded-lg border border-emerald-200 bg-emerald-50/40 space-y-3">
+                                                <p className="text-xs text-emerald-700 font-medium flex items-center gap-1.5">
+                                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                                    Nouveau mot de passe — copiez-le maintenant
+                                                </p>
+                                                <div className="flex items-center justify-between p-3 border border-orange-200 bg-orange-50 rounded-lg">
+                                                    <span className="text-sm font-mono font-medium text-orange-900 select-all">
+                                                        {resetPasswordResult.password}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => { navigator.clipboard.writeText(resetPasswordResult.password); success("Copié", ""); }}
+                                                        className="text-orange-500 hover:text-orange-700"
+                                                    >
+                                                        <Copy className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <div className="flex justify-end">
+                                                    <Button variant="ghost" size="sm" onClick={() => setResetPasswordResult(null)}>
+                                                        Fermer
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="p-4 rounded-lg border border-slate-200 space-y-3">
+                                                <Input
+                                                    label="Nouveau mot de passe (optionnel)"
+                                                    type="password"
+                                                    placeholder="Laisser vide pour auto-générer"
+                                                    value={accessNewPassword}
+                                                    onChange={(e) => setAccessNewPassword(e.target.value)}
+                                                    icon={<Key className="w-4 h-4 text-slate-400" />}
+                                                />
+                                                <p className="text-[11px] text-slate-500">
+                                                    Le mot de passe ne pourra plus être récupéré après cette action.
+                                                </p>
+                                                <div className="flex justify-end">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={handleResetAccessPassword}
+                                                        isLoading={isResettingAccessPassword}
+                                                        className="gap-1.5"
+                                                    >
+                                                        <RefreshCw className="w-3.5 h-3.5" />
+                                                        Réinitialiser
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Delete (revoke definitively) */}
+                                    <div>
+                                        <h4 className="text-[11px] font-bold text-red-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                            <AlertCircle className="w-3.5 h-3.5" />
+                                            Zone de danger
+                                        </h4>
+                                        <div className="p-4 rounded-lg border border-red-200 bg-red-50/40 flex items-center justify-between gap-4">
+                                            <div>
+                                                <p className="text-xs font-semibold text-slate-900">Supprimer définitivement</p>
+                                                <p className="text-[11px] text-slate-600 mt-0.5">L&apos;utilisateur perdra tout accès et son compte sera supprimé.</p>
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setUserToDelete({ id: accessUserDetails.id, name: accessUserDetails.name })}
+                                                className="text-red-600 border-red-200 hover:bg-red-100 gap-1.5 shrink-0"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                                Supprimer
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : isLoadingAccessDetails ? (
+                                <div className="flex items-center justify-center h-full">
+                                    <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-full text-center">
+                                    <ShieldCheck className="w-12 h-12 text-slate-200 mb-3" />
+                                    <p className="text-sm text-slate-500">Sélectionnez un accès dans la liste</p>
+                                    <p className="text-xs text-slate-400 mt-1">ou créez-en un nouveau</p>
+                                </div>
+                            )}
+                        </section>
+                    </div>
+                </div>
+            </Modal>
 
             {/* ── INTERLOCUTEUR MODAL ── */}
             <InterlocuteurModal
