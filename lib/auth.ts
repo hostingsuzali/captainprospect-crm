@@ -196,6 +196,9 @@ export const authOptions: NextAuthOptions = {
         maxAge: 8 * 60 * 60, // 8 hours
         updateAge: 60 * 60, // Update session every hour
     },
+    jwt: {
+        maxAge: 8 * 60 * 60, // Keep JWT exp aligned with session maxAge
+    },
     cookies: {
         sessionToken: {
             name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.session-token" : "next-auth.session-token",
