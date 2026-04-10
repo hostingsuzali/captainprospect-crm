@@ -510,6 +510,7 @@ export default function ManagerProspectionPage() {
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(100);
     const [liveRefresh, setLiveRefresh] = useState(true);
+    const [exporting, setExporting] = useState(false);
     const searchRef = useRef<HTMLInputElement>(null);
     const prevActionsRef = useRef<ActionRecord[]>([]);
 
@@ -616,6 +617,45 @@ export default function ManagerProspectionPage() {
             if (!silent) setLoadingData(false);
         }
     }, []);
+
+    const fetchAllForExport = useCallback(async (missionId: string): Promise<ActionRecord[]> => {
+        const EXPORT_LIMIT = 5000;
+        const all: ActionRecord[] = [];
+        let pg = 1;
+        let hasMore = true;
+        while (hasMore) {
+            const qs = new URLSearchParams({ missionId, limit: String(EXPORT_LIMIT), page: String(pg) });
+            if (sdrFilter) qs.set("sdrId", sdrFilter);
+            if (dateFrom)  qs.set("from", `${dateFrom}T00:00:00`);
+            if (dateTo)    qs.set("to", `${dateTo}T23:59:59.999`);
+            const json = await fetch(`/api/actions?${qs}`).then(r => r.json());
+            if (!json.success) break;
+            all.push(...(json.data || []));
+            hasMore = json.pagination?.hasMore ?? false;
+            pg++;
+        }
+        return all;
+    }, [sdrFilter, dateFrom, dateTo]);
+
+    const handleExportAll = useCallback(async () => {
+        if (!selectedMission || exporting) return;
+        setExporting(true);
+        try {
+            const raw = await fetchAllForExport(selectedMission.id);
+            const filtered = raw.filter(a => {
+                if (resultFilters.size && !resultFilters.has(a.result)) return false;
+                if (search) {
+                    const key = [getContactName(a), getCompanyName(a), a.note, a.callSummary, a.callTranscription]
+                        .filter(Boolean).join(" ").toLowerCase();
+                    if (!key.includes(search.toLowerCase())) return false;
+                }
+                return true;
+            });
+            exportCSV(filtered, selectedMission.name);
+        } finally {
+            setExporting(false);
+        }
+    }, [selectedMission, exporting, fetchAllForExport, resultFilters, search]);
 
     useEffect(() => {
         if (!selectedMission) return;
@@ -1169,12 +1209,13 @@ export default function ManagerProspectionPage() {
                         {/* Export */}
                         <button
                             type="button"
-                            onClick={() => exportCSV(processed, selectedMission.name)}
+                            onClick={handleExportAll}
+                            disabled={exporting}
                             aria-label="Exporter en CSV"
-                            className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                            className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <Download className="w-3.5 h-3.5" aria-hidden />
-                            Export CSV
+                            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <Download className="w-3.5 h-3.5" aria-hidden />}
+                            {exporting ? "Export en cours…" : "Export CSV"}
                         </button>
                     </div>
                 </div>
