@@ -36,7 +36,8 @@ export function useNoteAutosave(): UseNoteAutosaveReturn {
       setNoteStatus("saving");
       timeoutRef.current = setTimeout(async () => {
         try {
-          await updateMeeting(meetingId, { managerNote: note });
+          // Persist into the canonical note field so it reloads consistently.
+          await updateMeeting(meetingId, { note });
           setNoteStatus("saved");
           setTimeout(() => setNoteStatus("idle"), 2000);
         } catch {

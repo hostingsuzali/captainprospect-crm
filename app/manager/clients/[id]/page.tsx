@@ -125,6 +125,8 @@ interface Client {
     email?: string;
     phone?: string;
     bookingUrl?: string;
+    portalShowCallHistory?: boolean;
+    portalShowDatabase?: boolean;
     createdAt: string;
     _count: { missions: number; users: number };
     missions?: Mission[];
@@ -351,6 +353,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [isDeletingUser, setIsDeletingUser] = useState(false);
     const [userFormData, setUserFormData] = useState({ name: "", email: "", password: "" });
     const [showPortalAccess, setShowPortalAccess] = useState(false);
+    const [isSavingPortalSettings, setIsSavingPortalSettings] = useState(false);
 
     // Interlocuteurs
     const [interlocuteurs, setInterlocuteurs] = useState<ClientInterlocuteur[]>([]);
@@ -1032,6 +1035,36 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             } else showError("Erreur", json.error);
         } catch { showError("Erreur", "Une erreur est survenue"); }
         finally { setIsDeletingUser(false); setUserToDelete(null); }
+    };
+
+    const handlePortalVisibilityChange = async (
+        key: "portalShowCallHistory" | "portalShowDatabase",
+        value: boolean
+    ) => {
+        if (!client) return;
+        const previous = client[key] ?? false;
+        setIsSavingPortalSettings(true);
+        setClient((prev) => (prev ? { ...prev, [key]: value } : prev));
+
+        try {
+            const res = await fetch(`/api/clients/${client.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ [key]: value }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                setClient((prev) => (prev ? { ...prev, ...json.data } : prev));
+            } else {
+                setClient((prev) => (prev ? { ...prev, [key]: previous } : prev));
+                showError("Erreur", json.error || "Impossible de mettre à jour le portail client");
+            }
+        } catch {
+            setClient((prev) => (prev ? { ...prev, [key]: previous } : prev));
+            showError("Erreur", "Impossible de mettre à jour le portail client");
+        } finally {
+            setIsSavingPortalSettings(false);
+        }
     };
 
     // ============================================================
@@ -1722,6 +1755,34 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                         ) : (
                                             <p className="text-xs text-slate-500 mb-3">Aucun accès configuré.</p>
                                         )}
+                                        <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-2.5">
+                                            <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
+                                                Paramètres du portail client
+                                            </p>
+                                            <label className="flex items-center justify-between gap-3 text-xs text-slate-700">
+                                                <span>Afficher l&apos;historique d&apos;appels</span>
+                                                <input
+                                                    type="checkbox"
+                                                    className="h-4 w-4 accent-indigo-600"
+                                                    checked={client.portalShowCallHistory ?? false}
+                                                    onChange={(e) => handlePortalVisibilityChange("portalShowCallHistory", e.target.checked)}
+                                                    disabled={isSavingPortalSettings}
+                                                />
+                                            </label>
+                                            <label className="flex items-center justify-between gap-3 text-xs text-slate-700">
+                                                <span>Afficher la base de données (contacts / entreprises)</span>
+                                                <input
+                                                    type="checkbox"
+                                                    className="h-4 w-4 accent-indigo-600"
+                                                    checked={client.portalShowDatabase ?? false}
+                                                    onChange={(e) => handlePortalVisibilityChange("portalShowDatabase", e.target.checked)}
+                                                    disabled={isSavingPortalSettings}
+                                                />
+                                            </label>
+                                            {isSavingPortalSettings && (
+                                                <p className="text-[11px] text-slate-500">Mise à jour en cours...</p>
+                                            )}
+                                        </div>
                                         <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" onClick={() => setShowCreateUserModal(true)}>
                                             <Plus className="w-3.5 h-3.5" />
                                             Nouvel accès

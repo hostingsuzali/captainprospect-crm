@@ -273,6 +273,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     meetingJoinUrl: m.meetingJoinUrl,
     meetingPhone: m.meetingPhone,
     note: m.note,
+    managerNote: m.note,
     cancellationReason: m.cancellationReason,
     createdAt: m.createdAt,
     duration: m.duration,

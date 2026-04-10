@@ -47,6 +47,8 @@ export const PUT = withErrorHandler(
 
     const actionUpdate: Record<string, unknown> = {};
     if (body.note !== undefined) actionUpdate.note = body.note;
+    // Backward compatibility: accept managerNote payloads from UI and store in note.
+    if (body.managerNote !== undefined) actionUpdate.note = body.managerNote;
     if (body.contactId !== undefined) actionUpdate.contactId = body.contactId;
     if (body.callbackDate !== undefined) actionUpdate.callbackDate = new Date(body.callbackDate);
     if (body.meetingType !== undefined) actionUpdate.meetingType = body.meetingType;
