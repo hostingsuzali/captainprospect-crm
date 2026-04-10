@@ -682,17 +682,32 @@ export default function SDRActionPage() {
     }, [showError]);
 
     useEffect(() => {
-        if (selectedMissionId && selectableMissions.some((m) => m.id === selectedMissionId)) return;
-        if (selectableMissions.length === 0) {
+        const allowedMissionIds = (() => {
+            if (!todayBlocksData) return null;
+            if (todayBlocksData.hasBlocksToday && todayBlocksData.todayMissionIds.length > 0) {
+                return new Set(todayBlocksData.todayMissionIds);
+            }
+            const weekIds = todayBlocksData.weekBlocks.map((block) => block.mission.id);
+            if (weekIds.length > 0) return new Set(weekIds);
+            return new Set<string>();
+        })();
+
+        const availableMissions = allowedMissionIds
+            ? missions.filter((mission) => allowedMissionIds.has(mission.id))
+            : missions;
+
+        if (selectedMissionId && availableMissions.some((m) => m.id === selectedMissionId)) return;
+        if (availableMissions.length === 0) {
             setSelectedMissionId(null);
             setSelectedListId(null);
             return;
         }
-        const nextMissionId = selectableMissions[0].id;
+
+        const nextMissionId = availableMissions[0].id;
         setSelectedMissionId(nextMissionId);
         const firstList = lists.find((l) => l.mission.id === nextMissionId);
         setSelectedListId(firstList?.id ?? null);
-    }, [selectedMissionId, selectableMissions, lists, setSelectedListId]);
+    }, [selectedMissionId, missions, todayBlocksData, lists, setSelectedListId]);
 
     // Fetch status config: global on mount, mission-specific when mission selected
     useEffect(() => {
