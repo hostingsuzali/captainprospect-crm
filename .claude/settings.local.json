@@ -4,7 +4,8 @@
       "WebFetch(domain:help.withallo.com)",
       "Bash(npx prisma:*)",
       "Bash(xargs wc:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

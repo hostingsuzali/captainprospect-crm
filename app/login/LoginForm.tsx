@@ -367,7 +367,7 @@ export default function LoginForm() {
 
                         {/* Forgot */}
                         <div className="lp-forgot-row">
-                            <button type="button" className="lp-forgot">Mot de passe oublié ?</button>
+                            <button type="button" className="lp-forgot" onClick={() => router.push("/forgot-password")}>Mot de passe oublié ?</button>
                         </div>
 
                         {/* Error */}

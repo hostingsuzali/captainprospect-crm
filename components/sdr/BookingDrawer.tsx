@@ -248,6 +248,30 @@ const MEETING_CATEGORY_LABELS: Record<string, string> = {
     BESOIN: "Analyse de besoin",
 };
 
+// ── Extract date from calendar postMessage event data (client-side mirror of API's extractScheduledStartTime)
+function extractDateFromEventData(eventData: unknown): string | null {
+    if (!eventData || typeof eventData !== "object") return null;
+    const data = eventData as Record<string, unknown>;
+    const candidates = [
+        data.invitee_start_time,
+        data.start_time,
+        data.startTime,
+        data.scheduled_start,
+        data.start,
+        (data.payload as Record<string, unknown> | undefined)?.invitee_start_time,
+        (data.payload as Record<string, unknown> | undefined)?.start_time,
+        (data.event as Record<string, unknown> | undefined)?.start_time,
+        (data.event as Record<string, unknown> | undefined)?.startTime,
+    ];
+    for (const c of candidates) {
+        if (typeof c === "string") {
+            const d = new Date(c);
+            if (!Number.isNaN(d.getTime())) return d.toISOString();
+        }
+    }
+    return null;
+}
+
 // ============================================
 // BOOKING DRAWER
 // ============================================
@@ -287,6 +311,10 @@ export function BookingDrawer({
     const [meetingAddressLocal, setMeetingAddressLocal] = useState<string>(meetingAddress ?? "");
     const [meetingJoinUrlLocal, setMeetingJoinUrlLocal] = useState<string>(meetingJoinUrl ?? "");
     const [meetingPhoneLocal, setMeetingPhoneLocal] = useState<string>(meetingPhone ?? "");
+
+    // Calendar-synced state: date extracted from calendar postMessage (eliminates double-typing)
+    const [calendarSyncedDate, setCalendarSyncedDate] = useState<string>("");
+    const [showManualDate, setShowManualDate] = useState(false);
 
     // Typewriter trigger key — reset on open so animation replays
     const [twKey, setTwKey] = useState(0);
@@ -339,6 +367,8 @@ export function BookingDrawer({
         setMeetingAddressLocal(meetingAddress ?? "");
         setMeetingJoinUrlLocal(meetingJoinUrl ?? "");
         setMeetingPhoneLocal(meetingPhone ?? "");
+        setCalendarSyncedDate("");
+        setShowManualDate(false);
     }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const effectiveRdvDate = onRdvDateChange ? (rdvDate ?? "") : rdvDateLocal;
@@ -354,6 +384,13 @@ export function BookingDrawer({
     const setEffectiveMeetingAddress = (v: string) => { onMeetingAddressChange?.(v); if (!onMeetingAddressChange) setMeetingAddressLocal(v); };
     const setEffectiveMeetingJoinUrl = (v: string) => { onMeetingJoinUrlChange?.(v); if (!onMeetingJoinUrlChange) setMeetingJoinUrlLocal(v); };
     const setEffectiveMeetingPhone = (v: string) => { onMeetingPhoneChange?.(v); if (!onMeetingPhoneChange) setMeetingPhoneLocal(v); };
+
+    // Auto-fill phone from contact info when TELEPHONIQUE is selected (avoids re-typing known data)
+    useEffect(() => {
+        if (effectiveMeetingType === "TELEPHONIQUE" && !effectiveMeetingPhone && contactInfo?.phone) {
+            setEffectiveMeetingPhone(contactInfo.phone);
+        }
+    }, [effectiveMeetingType]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleSelectCalendar = useCallback((id: string) => {
         if (id === selectedOptionId) return;
@@ -377,11 +414,20 @@ export function BookingDrawer({
             const processBooking = async (eventData: unknown) => {
                 setIsProcessing(true);
                 try {
+                    // Auto-extract date from calendar event → eliminates manual DateTimePicker entry
+                    const extractedDate = extractDateFromEventData(eventData);
+                    if (extractedDate) {
+                        setCalendarSyncedDate(extractedDate);
+                        setEffectiveRdvDate(extractedDate);
+                    }
+                    // Use extracted date immediately (state hasn't flushed yet)
+                    const resolvedRdvDate = extractedDate || effectiveRdvDate;
+
                     if (effectiveMeetingType === "PHYSIQUE" && !effectiveMeetingAddress.trim()) {
                         showError("Adresse requise", "Veuillez renseigner une adresse pour un RDV physique.");
                         return;
                     }
-                    const isoRdvDate = effectiveRdvDate ? new Date(effectiveRdvDate).toISOString() : undefined;
+                    const isoRdvDate = resolvedRdvDate ? new Date(resolvedRdvDate).toISOString() : undefined;
                     const res = await fetch("/api/actions/booking-success", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -634,13 +680,36 @@ export function BookingDrawer({
                                 Détails du rendez-vous
                             </p>
 
-                            <DateTimePicker
-                                label="Date et heure"
-                                value={effectiveRdvDate}
-                                onChange={setEffectiveRdvDate}
-                                placeholder="Choisir date et heure…"
-                                triggerClassName="border-slate-200 focus:ring-indigo-400/30 focus:border-indigo-400 bg-white"
-                            />
+                            {/* Date: auto-synced from calendar, or manual fallback */}
+                            {calendarSyncedDate ? (
+                                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-sm">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                                    <span className="text-emerald-800 font-medium capitalize">
+                                        {formatRdvDate(calendarSyncedDate)}
+                                    </span>
+                                    <span className="text-emerald-500 text-xs ml-auto">via calendrier</span>
+                                </div>
+                            ) : showManualDate ? (
+                                <DateTimePicker
+                                    label="Date et heure (saisie manuelle)"
+                                    value={effectiveRdvDate}
+                                    onChange={setEffectiveRdvDate}
+                                    placeholder="Choisir date et heure…"
+                                    triggerClassName="border-slate-200 focus:ring-indigo-400/30 focus:border-indigo-400 bg-white"
+                                />
+                            ) : (
+                                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-indigo-50/60 border border-indigo-100 text-xs text-indigo-600">
+                                    <Calendar className="w-3.5 h-3.5 shrink-0" />
+                                    <span>Le créneau sera récupéré depuis le calendrier</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowManualDate(true)}
+                                        className="ml-auto text-[11px] text-indigo-500 hover:text-indigo-700 underline underline-offset-2 whitespace-nowrap"
+                                    >
+                                        Saisie manuelle
+                                    </button>
+                                </div>
+                            )}
 
                             <div className="space-y-2 text-xs text-slate-600">
                                 <p className="font-semibold">Type de réunion</p>
@@ -680,13 +749,13 @@ export function BookingDrawer({
                             {effectiveMeetingType === "VISIO" && (
                                 <div className="space-y-1 text-xs">
                                     <label className="font-semibold text-slate-700">
-                                        Lien de connexion <span className="text-slate-400 font-normal">(optionnel)</span>
+                                        Lien de connexion <span className="text-slate-400 font-normal">(auto-détecté si disponible)</span>
                                     </label>
                                     <input
                                         value={effectiveMeetingJoinUrl}
                                         onChange={(e) => setEffectiveMeetingJoinUrl(e.target.value)}
                                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400"
-                                        placeholder="https://zoom.us/… ou Meet…"
+                                        placeholder="Auto-récupéré du calendrier, ou saisir manuellement…"
                                     />
                                 </div>
                             )}
@@ -746,7 +815,7 @@ export function BookingDrawer({
                                     )}
                                 </button>
                                 <p className="text-[11px] text-slate-400 mt-2 text-center">
-                                    Vous pouvez aussi confirmer depuis le calendrier après avoir choisi un créneau.
+                                    Choisissez un créneau dans le calendrier — la date et l&apos;heure seront récupérées automatiquement.
                                 </p>
                             </div>
                         </div>
