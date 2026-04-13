@@ -31,6 +31,7 @@ const updateSchema = z.object({
   feedbackRecontact: z.enum(["YES", "NO", "MAYBE"]).optional(),
   feedbackNote: z.string().optional(),
   rdvFiche: z.record(z.string(), z.any()).nullable().optional(),
+  interlocuteurId: z.string().cuid().nullable().optional(),
 });
 
 export const PUT = withErrorHandler(
@@ -74,6 +75,7 @@ export const PUT = withErrorHandler(
       actionUpdate.rdvFiche = body.rdvFiche;
       actionUpdate.rdvFicheUpdatedAt = new Date();
     }
+    if (body.interlocuteurId !== undefined) actionUpdate.interlocuteurId = body.interlocuteurId;
     if (body.meetingCategory !== undefined) {
       actionUpdate.meetingCategory = body.meetingCategory;
     } else if (body.note !== undefined && !action.meetingCategory) {
@@ -89,6 +91,7 @@ export const PUT = withErrorHandler(
         sdr: { select: { id: true, name: true, email: true } },
         campaign: { include: { mission: { include: { client: true } } } },
         meetingFeedback: true,
+        interlocuteur: { select: { id: true, firstName: true, lastName: true, title: true } },
       },
     });
 

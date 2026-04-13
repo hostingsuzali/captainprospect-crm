@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import type { Meeting } from "../../_types";
 import type { ConfirmationFilter } from "../../_types";
 import {
@@ -23,6 +24,8 @@ import {
   Phone,
   Linkedin,
   ArrowUpRight,
+  Loader2,
+  UserRoundCog,
 } from "lucide-react";
 
 interface DetailTabProps {
@@ -50,6 +53,14 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
+interface InterlocuteurOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+  title?: string | null;
+  isActive: boolean;
+}
+
 export function DetailTab({
   meeting,
   setSelectedMeeting,
@@ -65,6 +76,59 @@ export function DetailTab({
   onOpenEditCompany,
   onOpenLinkContact,
 }: DetailTabProps) {
+  // Inline interlocuteur selector state
+  const [showInterlocuteurSelect, setShowInterlocuteurSelect] = useState(false);
+  const [interlocuteurOptions, setInterlocuteurOptions] = useState<InterlocuteurOption[]>([]);
+  const [interlocuteurLoading, setInterlocuteurLoading] = useState(false);
+  const [interlocuteurSaving, setInterlocuteurSaving] = useState(false);
+
+  // Fetch interlocuteurs when the selector opens
+  const fetchInterlocuteurs = useCallback(async () => {
+    const clientId = meeting.client?.id;
+    if (!clientId) return;
+    setInterlocuteurLoading(true);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/interlocuteurs`);
+      if (res.ok) {
+        const json = await res.json();
+        const data: InterlocuteurOption[] = (json.data ?? json) || [];
+        setInterlocuteurOptions(data.filter((i: InterlocuteurOption) => i.isActive));
+      }
+    } catch (e) {
+      console.error("Failed to fetch interlocuteurs:", e);
+    } finally {
+      setInterlocuteurLoading(false);
+    }
+  }, [meeting.client?.id]);
+
+  useEffect(() => {
+    if (showInterlocuteurSelect && interlocuteurOptions.length === 0) {
+      fetchInterlocuteurs();
+    }
+  }, [showInterlocuteurSelect, fetchInterlocuteurs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleInterlocuteurChange = async (interlocuteurId: string | null) => {
+    setInterlocuteurSaving(true);
+    try {
+      await updateMeeting(meeting.id, { interlocuteurId });
+      const selected = interlocuteurId
+        ? interlocuteurOptions.find((i) => i.id === interlocuteurId) ?? null
+        : null;
+      const patch: Partial<Meeting> = {
+        interlocuteur: selected
+          ? { id: selected.id, firstName: selected.firstName, lastName: selected.lastName, title: selected.title ?? null }
+          : null,
+      };
+      updateLocalMeeting(meeting.id, patch);
+      setSelectedMeeting({ ...meeting, ...patch });
+    } catch (e) {
+      console.error("Failed to update interlocuteur:", e);
+    } finally {
+      setInterlocuteurSaving(false);
+      setShowInterlocuteurSelect(false);
+    }
+  };
+
   const handleSave = async () => {
     setDetailSaving(true);
     const payload: Record<string, unknown> = {};
@@ -282,20 +346,108 @@ export function DetailTab({
       </DetailRow>
 
       <DetailRow label="Commercial client">
-        {meeting.interlocuteur ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
-            <Avatar
-              name={[meeting.interlocuteur.firstName, meeting.interlocuteur.lastName].filter(Boolean).join(" ") || "Commercial"}
-              size={26}
-            />
-            <span style={{ color: "var(--ink)", fontWeight: 500 }}>
-              {[meeting.interlocuteur.firstName, meeting.interlocuteur.lastName].filter(Boolean).join(" ") || "Assigné"}
-              {meeting.interlocuteur.title ? ` · ${meeting.interlocuteur.title}` : ""}
-            </span>
+            {meeting.interlocuteur ? (
+              <>
+                <Avatar
+                  name={[meeting.interlocuteur.firstName, meeting.interlocuteur.lastName].filter(Boolean).join(" ") || "Commercial"}
+                  size={26}
+                />
+                <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                  {[meeting.interlocuteur.firstName, meeting.interlocuteur.lastName].filter(Boolean).join(" ") || "Assigné"}
+                  {meeting.interlocuteur.title ? ` · ${meeting.interlocuteur.title}` : ""}
+                </span>
+              </>
+            ) : (
+              <span style={{ color: "var(--ink3)" }}>Non assigné</span>
+            )}
+            {meeting.client && (
+              <button
+                type="button"
+                className="rdv-btn rdv-btn-ghost"
+                style={{ fontSize: 11, padding: "3px 8px", marginLeft: 4 }}
+                onClick={() => setShowInterlocuteurSelect((v) => !v)}
+                disabled={interlocuteurSaving}
+              >
+                {interlocuteurSaving ? (
+                  <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
+                ) : (
+                  <UserRoundCog size={12} />
+                )}
+                {" "}Changer
+              </button>
+            )}
           </div>
-        ) : (
-          <span style={{ color: "var(--ink3)" }}>Non assigné</span>
-        )}
+
+          {showInterlocuteurSelect && meeting.client && (
+            <div style={{
+              width: "100%",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              background: "var(--surface)",
+              padding: 6,
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}>
+              {interlocuteurLoading ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 0" }}>
+                  <Loader2 size={14} style={{ animation: "spin 1s linear infinite", color: "var(--ink3)" }} />
+                  <span style={{ fontSize: 12, color: "var(--ink3)" }}>Chargement…</span>
+                </div>
+              ) : interlocuteurOptions.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--ink3)", padding: "10px 8px", textAlign: "center", fontStyle: "italic" }}>
+                  Aucun interlocuteur configuré pour ce client
+                </div>
+              ) : (
+                <>
+                  {/* Unassign option */}
+                  <button
+                    type="button"
+                    onClick={() => handleInterlocuteurChange(null)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
+                      borderRadius: 8, border: "none", background: !meeting.interlocuteur ? "var(--surface2)" : "transparent",
+                      cursor: "pointer", width: "100%", textAlign: "left", fontSize: 12, color: "var(--ink3)",
+                      fontStyle: "italic", transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) => { if (meeting.interlocuteur) e.currentTarget.style.background = "var(--surface2)"; }}
+                    onMouseLeave={(e) => { if (meeting.interlocuteur) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    Non assigné
+                  </button>
+                  {interlocuteurOptions.map((opt) => {
+                    const isSelected = meeting.interlocuteur?.id === opt.id;
+                    const name = [opt.firstName, opt.lastName].filter(Boolean).join(" ");
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleInterlocuteurChange(opt.id)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
+                          borderRadius: 8, border: "none", background: isSelected ? "var(--surface2)" : "transparent",
+                          cursor: "pointer", width: "100%", textAlign: "left", fontSize: 12,
+                          color: "var(--ink)", transition: "background 0.15s",
+                        }}
+                        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--surface2)"; }}
+                        onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <Avatar name={name} size={22} />
+                        <span style={{ fontWeight: isSelected ? 600 : 400 }}>
+                          {name}
+                          {opt.title ? <span style={{ color: "var(--ink3)", fontWeight: 400 }}> · {opt.title}</span> : ""}
+                        </span>
+                        {isSelected && <Check size={13} style={{ marginLeft: "auto", color: "var(--accent)" }} />}
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </DetailRow>
 
       <DetailRow label="Client">{meeting.client?.name || "—"}</DetailRow>
