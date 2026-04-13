@@ -18,6 +18,7 @@ import {
     Trash2,
     Users,
     Lock,
+    Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -129,6 +130,7 @@ export function MonthCalendar() {
     const [dragOverTrash, setDragOverTrash] = useState(false);
     const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
     const [deleteConfirmPopover, setDeleteConfirmPopover] = useState<DeleteConfirmPopoverState | null>(null);
+    const [isDuplicatingWeek, setIsDuplicatingWeek] = useState(false);
 
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -521,6 +523,74 @@ export function MonthCalendar() {
         setWeekOffset(0);
     }
 
+    async function handleDuplicateWeek() {
+        if (!data || isDuplicatingWeek) return;
+
+        // Collect all blocks in the current week
+        const weekBlocks: CalBlock[] = [];
+        for (const day of currentWeek) {
+            const dayBlocks = data.blocksByDate[day.dateStr] ?? [];
+            weekBlocks.push(...dayBlocks);
+        }
+
+        if (weekBlocks.length === 0) {
+            showError('Aucun créneau', 'Aucun créneau à dupliquer cette semaine.');
+            return;
+        }
+
+        setIsDuplicatingWeek(true);
+        let createdCount = 0;
+        let skippedCount = 0;
+
+        try {
+            for (const block of weekBlocks) {
+                // Shift date by +7 days
+                const sourceDate = new Date(block.date + 'T00:00:00');
+                sourceDate.setDate(sourceDate.getDate() + 7);
+                const nextDate = `${sourceDate.getFullYear()}-${String(sourceDate.getMonth() + 1).padStart(2, '0')}-${String(sourceDate.getDate()).padStart(2, '0')}`;
+
+                try {
+                    const res = await fetch('/api/planning', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sdrId: block.sdr.id,
+                            missionId: block.mission.id,
+                            date: nextDate,
+                            startTime: block.startTime,
+                            endTime: block.endTime,
+                            ...(block.allocationId ? { allocationId: block.allocationId } : {}),
+                        }),
+                    });
+                    const json = await res.json();
+                    if (json.success) {
+                        createdCount++;
+                    } else {
+                        skippedCount++;
+                    }
+                } catch {
+                    skippedCount++;
+                }
+            }
+
+            if (createdCount > 0) {
+                success(
+                    `${createdCount} créneau${createdCount > 1 ? 'x' : ''} dupliqué${createdCount > 1 ? 's' : ''}`,
+                    skippedCount > 0 ? `${skippedCount} ignoré${skippedCount > 1 ? 's' : ''} (conflit ou hors mission)` : 'Semaine suivante prête',
+                );
+                backgroundSync();
+                // Navigate to the next week
+                setWeekOffset((current) => current + 1);
+            } else {
+                showError('Erreur', 'Aucun créneau n\'a pu être dupliqué (conflits ou missions terminées).');
+            }
+        } catch {
+            showError('Erreur', 'Une erreur est survenue lors de la duplication.');
+        } finally {
+            setIsDuplicatingWeek(false);
+        }
+    }
+
     function handleDrawerRowClick(sdrId: string) {
         setHighlightedSdrId(sdrId);
     }
@@ -573,6 +643,16 @@ export function MonthCalendar() {
                         >
                             <Users className="w-4 h-4" />
                             Charge équipe
+                        </button>
+
+                        <button
+                            onClick={handleDuplicateWeek}
+                            disabled={isDuplicatingWeek}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Dupliquer tous les créneaux de cette semaine vers la semaine suivante"
+                        >
+                            {isDuplicatingWeek ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+                            Dupliquer → S+1
                         </button>
 
                         <div className="flex items-center gap-1.5">

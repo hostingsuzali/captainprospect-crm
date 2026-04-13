@@ -97,12 +97,26 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                         select: {
                             id: true,
                             name: true,
+                            phone: true,
                             industry: true,
                             country: true,
                             website: true,
                             size: true,
+                            customData: true,
                         },
                     },
+                },
+            },
+            company: {
+                select: {
+                    id: true,
+                    name: true,
+                    phone: true,
+                    industry: true,
+                    country: true,
+                    website: true,
+                    size: true,
+                    customData: true,
                 },
             },
             campaign: {
