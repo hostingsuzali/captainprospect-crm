@@ -212,7 +212,14 @@ export const PUT = withErrorHandler(async (
         if (!currentMission) {
             throw new NotFoundError('Mission introuvable');
         }
-        if (!canTransitionMissionStatus(currentMission.status as MissionStatusValue, data.status as MissionStatusValue, session.user.role)) {
+        if (
+            data.status !== currentMission.status &&
+            !canTransitionMissionStatus(
+                currentMission.status as MissionStatusValue,
+                data.status as MissionStatusValue,
+                session.user.role
+            )
+        ) {
             return errorResponse('Transition de statut non autorisée', 403);
         }
     }
