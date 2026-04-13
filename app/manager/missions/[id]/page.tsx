@@ -1481,21 +1481,45 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            {isStrategyEditing && (
-                                                <button
-                                                    onClick={generateWithMistral}
-                                                    disabled={isGenerating || !strategyForm.icp || !strategyForm.pitch}
-                                                    className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-700 bg-gradient-to-r from-purple-50 to-indigo-50 border border-indigo-200 hover:from-purple-100 hover:to-indigo-100 disabled:opacity-50 rounded-lg transition-colors"
-                                                >
-                                                    {isGenerating && generatingSection === "all" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                                                    Générer avec IA
-                                                </button>
-                                            )}
-                                            {!isStrategyEditing && (
-                                                <button onClick={copyScript} className="flex items-center gap-2 h-9 px-3 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
-                                                    <Copy className="w-4 h-4" />
-                                                    Copier
-                                                </button>
+                                            {isStrategyEditing ? (
+                                                <>
+                                                    <button
+                                                        onClick={generateWithMistral}
+                                                        disabled={isGenerating || !strategyForm.icp || !strategyForm.pitch}
+                                                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-700 bg-gradient-to-r from-purple-50 to-indigo-50 border border-indigo-200 hover:from-purple-100 hover:to-indigo-100 disabled:opacity-50 rounded-lg transition-colors"
+                                                    >
+                                                        {isGenerating && generatingSection === "all" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                                                        Générer avec IA
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setIsStrategyEditing(false)}
+                                                        className="h-9 px-4 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                                                    >
+                                                        Annuler
+                                                    </button>
+                                                    <button
+                                                        onClick={handleSaveStrategy}
+                                                        disabled={isSavingStrategy}
+                                                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg transition-colors"
+                                                    >
+                                                        {isSavingStrategy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                                        Enregistrer
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={copyScript} className="flex items-center gap-2 h-9 px-3 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                                                        <Copy className="w-4 h-4" />
+                                                        Copier
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setIsStrategyEditing(true)}
+                                                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                        Modifier
+                                                    </button>
+                                                </>
                                             )}
                                         </div>
                                     </div>
