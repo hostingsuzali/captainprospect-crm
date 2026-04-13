@@ -4,6 +4,7 @@ import { Drawer } from "@/components/ui";
 import { Users, Target, Calendar, Phone, Mail, Linkedin, ChevronRight, ArrowRight, ListChecks, ExternalLink, Zap, Globe, Activity } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { MISSION_STATUS_CONFIG } from "@/lib/constants/missionStatus";
 
 const CHANNEL_CONFIG = {
     CALL: {
@@ -80,12 +81,14 @@ export function MissionQuickViewDrawer({
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <span className={cn(
                                         "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold",
-                                        mission.isActive
+                                        mission.status === "ACTIVE"
                                             ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                            : mission.status === "PAUSED"
+                                                ? "bg-amber-500/20 text-amber-200 border border-amber-500/30"
                                             : "bg-white/10 text-white/60 border border-white/10"
                                     )}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${mission.isActive ? "bg-emerald-400" : "bg-white/40"}`} />
-                                        {mission.isActive ? "Actif" : "En pause"}
+                                        <span className={`w-1.5 h-1.5 rounded-full ${mission.status === "ACTIVE" ? "bg-emerald-400" : mission.status === "PAUSED" ? "bg-amber-300" : "bg-white/40"}`} />
+                                        {MISSION_STATUS_CONFIG[mission.status]?.label ?? mission.status ?? "Inconnu"}
                                     </span>
                                     {channelsList.length === 1 ? (
                                         <span className={cn(

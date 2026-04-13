@@ -15,7 +15,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   const missions = await prisma.mission.findMany({
     where: {
-      isActive: true,
+      status: 'ACTIVE',
       ...(clientId && { clientId }),
     },
     select: {

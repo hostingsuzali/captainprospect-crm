@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { searchExploriumCompanies, getExploriumStats, ExploriumSearchFilters } from "@/lib/explorium";
 import { enrichmentQueue } from "@/lib/bullmq";
 import { Channel } from "@prisma/client";
+import type { MissionStatusValue } from "@/lib/constants/missionStatus";
 import { revalidatePath } from "next/cache";
 
 // ============================================
@@ -16,6 +17,7 @@ export interface CreateMissionInput {
     objective: string;
     channel: Channel;
     channels?: Channel[];
+    status?: MissionStatusValue;
     clientId: string;
     startDate: string;
     endDate: string;
@@ -80,7 +82,8 @@ export async function createMission(
                     clientId: missionData.clientId,
                     startDate: new Date(missionData.startDate),
                     endDate: new Date(missionData.endDate),
-                    isActive: true,
+                    status: missionData.status ?? "DRAFT",
+                    isActive: (missionData.status ?? "DRAFT") === "ACTIVE",
                 },
             });
 

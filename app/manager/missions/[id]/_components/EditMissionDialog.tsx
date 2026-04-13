@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { Modal, Button, Select, useToast } from "@/components/ui";
 import { Save, Loader2 } from "lucide-react";
+import { MISSION_STATUS_TABS } from "@/lib/constants/missionStatus";
+import type { MissionStatusValue } from "@/lib/constants/missionStatus";
 
 interface Client {
     id: string;
@@ -15,7 +17,7 @@ interface MissionData {
     objective?: string;
     channel: "CALL" | "EMAIL" | "LINKEDIN";
     channels?: ("CALL" | "EMAIL" | "LINKEDIN")[];
-    isActive: boolean;
+    status: MissionStatusValue;
     startDate?: string;
     endDate?: string;
     client?: { id: string; name: string };
@@ -29,7 +31,7 @@ interface FormData {
     clientId: string;
     startDate: string;
     endDate: string;
-    isActive: boolean;
+    status: MissionStatusValue;
 }
 
 interface EditMissionDialogProps {
@@ -52,7 +54,7 @@ export function EditMissionDialog({ isOpen, onClose, mission, onSaved }: EditMis
         clientId: "",
         startDate: "",
         endDate: "",
-        isActive: true,
+        status: "DRAFT",
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -67,7 +69,7 @@ export function EditMissionDialog({ isOpen, onClose, mission, onSaved }: EditMis
                 clientId: mission.client?.id || "",
                 startDate: mission.startDate ? mission.startDate.toString().split("T")[0] : "",
                 endDate: mission.endDate ? mission.endDate.toString().split("T")[0] : "",
-                isActive: mission.isActive ?? true,
+                status: mission.status ?? "ACTIVE",
             });
             setErrors({});
         }
@@ -113,7 +115,7 @@ export function EditMissionDialog({ isOpen, onClose, mission, onSaved }: EditMis
                     clientId: formData.clientId,
                     startDate: formData.startDate || null,
                     endDate: formData.endDate || null,
-                    isActive: formData.isActive,
+                    status: formData.status,
                 }),
             });
             const json = await res.json();
@@ -212,35 +214,15 @@ export function EditMissionDialog({ isOpen, onClose, mission, onSaved }: EditMis
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Statut</label>
-                    <div className="flex gap-4">
-                        <label
-                            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl cursor-pointer border transition-all ${
-                                formData.isActive ? "bg-emerald-50 border-emerald-500 text-emerald-700" : "bg-white border-slate-200 text-slate-500"
-                            }`}
-                        >
-                            <input
-                                type="radio"
-                                checked={formData.isActive}
-                                onChange={() => setFormData((prev) => ({ ...prev, isActive: true }))}
-                                className="hidden"
-                            />
-                            Actif
-                        </label>
-                        <label
-                            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl cursor-pointer border transition-all ${
-                                !formData.isActive ? "bg-amber-50 border-amber-500 text-amber-700" : "bg-white border-slate-200 text-slate-500"
-                            }`}
-                        >
-                            <input
-                                type="radio"
-                                checked={!formData.isActive}
-                                onChange={() => setFormData((prev) => ({ ...prev, isActive: false }))}
-                                className="hidden"
-                            />
-                            En pause
-                        </label>
-                    </div>
+                    <Select
+                        label="Statut"
+                        options={MISSION_STATUS_TABS.filter((s) => s.value !== "all").map((s) => ({
+                            value: s.value,
+                            label: s.label,
+                        }))}
+                        value={formData.status}
+                        onChange={(value) => setFormData((prev) => ({ ...prev, status: value as MissionStatusValue }))}
+                    />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

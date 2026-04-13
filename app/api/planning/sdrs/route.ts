@@ -36,7 +36,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                             id: true,
                             name: true,
                             channel: true,
-                            isActive: true,
+                            status: true,
                             client: {
                                 select: {
                                     id: true,
@@ -56,7 +56,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                             id: true,
                             name: true,
                             missions: {
-                                where: { isActive: true },
+                                where: { status: 'ACTIVE' },
                                 select: {
                                     id: true,
                                     name: true,
@@ -79,7 +79,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         // For SDRs, use their assigned missions
         // For BDs, combine assigned missions + missions from their portfolio clients
         let missions = member.assignedMissions
-            .filter(a => a.mission.isActive)
+            .filter(a => a.mission.status === 'ACTIVE')
             .map(a => ({
                 id: a.mission.id,
                 name: a.mission.name,

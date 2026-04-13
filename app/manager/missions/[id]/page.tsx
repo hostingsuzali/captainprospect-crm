@@ -44,6 +44,8 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { EditMissionDialog } from "./_components/EditMissionDialog";
 import { MailboxManagerDialog } from "@/components/email/inbox/MailboxManagerDialog";
+import { MISSION_STATUS_CONFIG } from "@/lib/constants/missionStatus";
+import type { MissionStatusValue } from "@/lib/constants/missionStatus";
 
 // ============================================
 // TYPES
@@ -55,6 +57,7 @@ interface Mission {
     objective?: string;
     channel: "CALL" | "EMAIL" | "LINKEDIN";
     channels?: ("CALL" | "EMAIL" | "LINKEDIN")[];
+    status: MissionStatusValue;
     isActive: boolean;
     startDate?: string;
     endDate?: string;
@@ -949,22 +952,23 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
 
     const toggleActive = async () => {
         if (!mission) return;
+        const nextStatus = mission.status === "ACTIVE" ? "PAUSED" : "ACTIVE";
 
         setIsToggling(true);
         try {
             const res = await fetch(`/api/missions/${mission.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ isActive: !mission.isActive }),
+                body: JSON.stringify({ status: nextStatus }),
             });
 
             const json = await res.json();
 
             if (json.success) {
-                setMission(prev => prev ? { ...prev, isActive: !prev.isActive } : null);
+                setMission(prev => prev ? { ...prev, status: nextStatus, isActive: nextStatus === "ACTIVE" } : null);
                 success(
-                    mission.isActive ? "Mission mise en pause" : "Mission activée",
-                    `${mission.name} est maintenant ${!mission.isActive ? "active" : "en pause"}`
+                    nextStatus === "PAUSED" ? "Mission mise en pause" : "Mission activée",
+                    `${mission.name} est maintenant ${nextStatus === "ACTIVE" ? "active" : "en pause"}`
                 );
             } else {
                 showError("Erreur", json.error);
@@ -1114,8 +1118,8 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                         <div>
                             <div className="flex items-center gap-2 flex-wrap mb-0.5">
                                 <h1 className="text-xl font-bold">{mission.name}</h1>
-                                <span className={mission.isActive ? "mgr-badge-active" : "mgr-badge-paused"}>
-                                    {mission.isActive ? "Actif" : "Pause"}
+                                <span className={mission.status === "ACTIVE" ? "mgr-badge-active" : "mgr-badge-paused"}>
+                                    {MISSION_STATUS_CONFIG[mission.status]?.label ?? mission.status}
                                 </span>
                                 {channelsList.length === 1 ? (
                                     <span className={`mgr-channel-badge ${channel.className}`}>
@@ -1146,8 +1150,8 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                             disabled={isToggling}
                             className="flex items-center gap-2 h-9 px-3 text-sm font-medium bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-lg transition-colors"
                         >
-                            {isToggling ? <Loader2 className="w-4 h-4 animate-spin" /> : mission.isActive ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
-                            {mission.isActive ? "Pause" : "Activer"}
+                            {isToggling ? <Loader2 className="w-4 h-4 animate-spin" /> : mission.status === "ACTIVE" ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
+                            {mission.status === "ACTIVE" ? "Pause" : "Activer"}
                         </button>
                         <button
                             type="button"

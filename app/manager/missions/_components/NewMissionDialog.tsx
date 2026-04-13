@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui";
 import { createMission, CreateMissionInput } from "@/app/actions/mission-wizard";
 import { Channel } from "@prisma/client";
+import type { MissionStatusValue } from "@/lib/constants/missionStatus";
 import {
     X,
     Target,
@@ -117,6 +118,7 @@ export function NewMissionDialog({ isOpen, onClose, onCreated }: Props) {
         scriptDiscovery: "",
         scriptObjection: "",
         scriptClosing: "",
+        status: "DRAFT" as MissionStatusValue,
     });
 
     useEffect(() => {
@@ -127,6 +129,7 @@ export function NewMissionDialog({ isOpen, onClose, onCreated }: Props) {
             clientId: "", startDate: "", endDate: "",
             icp: "", pitch: "",
             scriptIntro: "", scriptDiscovery: "", scriptObjection: "", scriptClosing: "",
+            status: "DRAFT" as MissionStatusValue,
         });
     }, [isOpen]);
 
@@ -469,6 +472,26 @@ export function NewMissionDialog({ isOpen, onClose, onCreated }: Props) {
                                             onChange={e => setForm(p => ({ ...p, endDate: e.target.value }))}
                                             className="w-full h-11 px-4 border border-slate-200 rounded-xl text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
                                         />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Statut initial</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setForm((p) => ({ ...p, status: "DRAFT" as MissionStatusValue }))}
+                                            className={`px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all ${form.status === "DRAFT" ? "border-slate-400 bg-slate-100 text-slate-800" : "border-slate-200 bg-white text-slate-600"}`}
+                                        >
+                                            Brouillon
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setForm((p) => ({ ...p, status: "ACTIVE" as MissionStatusValue }))}
+                                            className={`px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all ${form.status === "ACTIVE" ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-600"}`}
+                                        >
+                                            Active
+                                        </button>
                                     </div>
                                 </div>
                             </div>

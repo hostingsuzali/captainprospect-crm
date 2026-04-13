@@ -9,12 +9,15 @@ import {
     NotFoundError,
 } from '@/lib/api-utils';
 import { z } from 'zod';
+import { canTransitionMissionStatus } from '@/lib/constants/missionStatus';
+import type { MissionStatusValue } from '@/lib/constants/missionStatus';
 
 // ============================================
 // SCHEMAS
 // ============================================
 
 const channelEnum = z.enum(['CALL', 'EMAIL', 'LINKEDIN']);
+const missionStatusEnum = z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED']);
 const updateMissionSchema = z
     .object({
         clientId: z.string().min(1).optional(),
@@ -27,6 +30,7 @@ const updateMissionSchema = z
         channels: z.array(channelEnum).min(1).optional(),
         startDate: z.string().transform((s) => new Date(s)).optional(),
         endDate: z.string().transform((s) => new Date(s)).optional(),
+        status: missionStatusEnum.optional(),
         isActive: z.boolean().optional(),
         teamLeadSdrId: z.string().nullable().optional(),
         defaultInterlocuteurId: z.string().nullable().optional(),
@@ -35,12 +39,17 @@ const updateMissionSchema = z
     })
     .partial()
     .transform((data) => {
+        const status = data.status ?? (data.isActive !== undefined ? (data.isActive ? 'ACTIVE' : 'PAUSED') : undefined);
         const base = data.channels !== undefined ? { ...data, channel: data.channels[0] } : data;
         // Normalize empty string to null so we can safely disconnect the relation
         if (base.defaultMailboxId === '') {
-            return { ...base, defaultMailboxId: null };
+            return {
+                ...base,
+                ...(status !== undefined ? { status, isActive: status === 'ACTIVE' } : {}),
+                defaultMailboxId: null,
+            };
         }
-        return base;
+        return status !== undefined ? { ...base, status, isActive: status === 'ACTIVE' } : base;
     });
 
 const assignSdrSchema = z.object({
@@ -191,9 +200,22 @@ export const PUT = withErrorHandler(async (
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) => {
-    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
+    const session = await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'BOOKER'], request);
     const { id } = await params;
     const data = await validateRequest(request, updateMissionSchema);
+
+    if (data.status) {
+        const currentMission = await prisma.mission.findUnique({
+            where: { id },
+            select: { status: true },
+        });
+        if (!currentMission) {
+            throw new NotFoundError('Mission introuvable');
+        }
+        if (!canTransitionMissionStatus(currentMission.status as MissionStatusValue, data.status as MissionStatusValue, session.user.role)) {
+            return errorResponse('Transition de statut non autorisée', 403);
+        }
+    }
 
     // If setting teamLeadSdrId, ensure they are assigned to this mission
     if (data.teamLeadSdrId !== undefined) {

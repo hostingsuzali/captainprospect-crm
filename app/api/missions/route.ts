@@ -10,12 +10,14 @@ import {
     getPaginationParams,
 } from '@/lib/api-utils';
 import { z } from 'zod';
+import type { MissionStatusValue } from '@/lib/constants/missionStatus';
 
 // ============================================
 // SCHEMAS
 // ============================================
 
 const channelEnum = z.enum(['CALL', 'EMAIL', 'LINKEDIN']);
+const missionStatusEnum = z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED']);
 const createMissionSchema = z.object({
     clientId: z.string().min(1, 'Client requis'),
     name: z.string().min(1, 'Nom requis'),
@@ -24,11 +26,15 @@ const createMissionSchema = z.object({
     channels: z.array(channelEnum).min(1, 'Sélectionnez au moins un canal').optional(),
     startDate: z.string().transform((s) => new Date(s)),
     endDate: z.string().transform((s) => new Date(s)),
-    isActive: z.boolean().optional().default(true),
+    status: missionStatusEnum.optional().default('DRAFT'),
+    isActive: z.boolean().optional(),
 }).transform((data) => {
     const channels = data.channels ?? (data.channel ? [data.channel] : ['CALL']);
     const channel = channels[0];
-    return { ...data, channel, channels };
+    const status = data.isActive !== undefined
+        ? (data.isActive ? 'ACTIVE' : 'PAUSED')
+        : data.status;
+    return { ...data, channel, channels, status, isActive: status === 'ACTIVE' };
 });
 
 const updateMissionSchema = z.object({
@@ -39,13 +45,15 @@ const updateMissionSchema = z.object({
     channels: z.array(channelEnum).min(1).optional(),
     startDate: z.string().transform((s) => new Date(s)).optional(),
     endDate: z.string().transform((s) => new Date(s)).optional(),
+    status: missionStatusEnum.optional(),
     isActive: z.boolean().optional(),
 }).partial().transform((data) => {
+    const status = data.status ?? (data.isActive !== undefined ? (data.isActive ? 'ACTIVE' : 'PAUSED') : undefined);
     if (data.channels !== undefined) {
         const channel = data.channels[0];
-        return { ...data, channel };
+        return { ...data, channel, ...(status !== undefined ? { status, isActive: status === 'ACTIVE' } : {}) };
     }
-    return data;
+    return status !== undefined ? { ...data, status, isActive: status === 'ACTIVE' } : data;
 });
 
 // ============================================
@@ -59,7 +67,9 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
     // Filters
     const clientId = searchParams.get('clientId');
-    const isActive = searchParams.get('isActive');
+    const status = searchParams.get('status');
+    const statuses = searchParams.get('statuses');
+    const isActive = searchParams.get('isActive'); // legacy compat
     const search = searchParams.get('search');
     const channel = searchParams.get('channel');
 
@@ -75,7 +85,20 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     }
 
     if (clientId) where.clientId = clientId;
-    if (isActive !== null) where.isActive = isActive === 'true';
+    const allowedStatuses: MissionStatusValue[] = ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED'];
+    const parsedStatuses = statuses
+        ? statuses
+            .split(',')
+            .map((s) => s.trim())
+            .filter((s): s is MissionStatusValue => allowedStatuses.includes(s as MissionStatusValue))
+        : null;
+    if (status && missionStatusEnum.safeParse(status).success) {
+        where.status = status as MissionStatusValue;
+    } else if (parsedStatuses && parsedStatuses.length > 0) {
+        where.status = { in: parsedStatuses };
+    } else if (isActive !== null) {
+        where.status = isActive === 'true' ? 'ACTIVE' : 'PAUSED';
+    }
     if (channel && ['CALL', 'EMAIL', 'LINKEDIN'].includes(channel)) {
         where.channels = { has: channel };
     }

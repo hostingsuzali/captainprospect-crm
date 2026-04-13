@@ -138,6 +138,14 @@ enum TaskStatus {
   DONE
 }
 
+enum MissionStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
 enum TaskPriority {
   LOW
   MEDIUM
@@ -610,6 +618,7 @@ model Mission {
 
   startDate     DateTime
   endDate       DateTime
+  status        MissionStatus @default(ACTIVE)
   isActive      Boolean   @default(true)
   campaigns     Campaign[]
   lists         List[]
@@ -658,6 +667,9 @@ model Mission {
   updatedAt     DateTime  @updatedAt
 
   @@index([defaultMailboxId])
+  @@index([status])
+  @@index([clientId, status])
+  @@index([status, startDate, endDate])
 }
 
 model SDRAssignment {

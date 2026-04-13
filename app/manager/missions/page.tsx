@@ -27,6 +27,8 @@ import {
 import Link from "next/link";
 import { MissionQuickViewDrawer } from "./_components/MissionQuickViewDrawer";
 import { NewMissionDialog } from "./_components/NewMissionDialog";
+import { MISSION_STATUS_CONFIG, MISSION_STATUS_TABS } from "@/lib/constants/missionStatus";
+import type { MissionStatusValue } from "@/lib/constants/missionStatus";
 
 // ============================================
 // TYPES
@@ -38,7 +40,8 @@ interface Mission {
     objective?: string;
     channel: "CALL" | "EMAIL" | "LINKEDIN";
     channels?: ("CALL" | "EMAIL" | "LINKEDIN")[];
-    isActive: boolean;
+    status: MissionStatusValue;
+    isActive?: boolean;
     startDate?: string;
     endDate?: string;
     client?: {
@@ -133,7 +136,7 @@ export default function MissionsPage() {
             params.set("page", String(page));
             params.set("limit", String(pageSize));
             if (statusFilter !== "all") {
-                params.set("isActive", statusFilter === "active" ? "true" : "false");
+                params.set("status", statusFilter);
             }
             if (debouncedSearchQuery.trim()) {
                 params.set("search", debouncedSearchQuery.trim());
@@ -175,8 +178,8 @@ export default function MissionsPage() {
 
     const stats = {
         total: total || missions.length,
-        active: missions.filter(m => m.isActive).length,
-        paused: missions.filter(m => !m.isActive).length,
+        active: missions.filter(m => m.status === "ACTIVE").length,
+        paused: missions.filter(m => m.status === "PAUSED").length,
         totalMembers: missions.reduce((acc, m) => acc + (m._count?.sdrAssignments || 0), 0),
     };
 
@@ -312,11 +315,7 @@ export default function MissionsPage() {
 
                 {/* Status pill tabs */}
                 <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
-                    {[
-                        { value: "all", label: "Tous" },
-                        { value: "active", label: "Actifs" },
-                        { value: "paused", label: "En pause" },
-                    ].map(opt => (
+                    {MISSION_STATUS_TABS.map(opt => (
                         <button
                             key={opt.value}
                             onClick={() => {
@@ -422,7 +421,7 @@ export default function MissionsPage() {
                                         style={{ animationDelay: `${index * 40}ms` }}
                                     >
                                         {/* Active status left bar */}
-                                        <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl transition-all duration-300 ${mission.isActive ? "bg-gradient-to-b from-emerald-400 to-emerald-600" : "bg-gradient-to-b from-slate-200 to-slate-300"}`} />
+                                        <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl transition-all duration-300 ${mission.status === "ACTIVE" ? "bg-gradient-to-b from-emerald-400 to-emerald-600" : mission.status === "PAUSED" ? "bg-gradient-to-b from-amber-300 to-amber-500" : "bg-gradient-to-b from-slate-200 to-slate-300"}`} />
 
                                         {/* Hover shimmer */}
                                         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none bg-gradient-to-r from-indigo-500/3 via-transparent to-transparent" />
@@ -444,12 +443,14 @@ export default function MissionsPage() {
                                                     <h3 className="font-bold text-slate-900 group-hover:text-indigo-700 transition-colors text-base truncate">
                                                         {mission.name}
                                                     </h3>
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide ${mission.isActive
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide ${mission.status === "ACTIVE"
                                                         ? "bg-emerald-100 text-emerald-700"
-                                                        : "bg-slate-100 text-slate-500"
+                                                        : mission.status === "PAUSED"
+                                                            ? "bg-amber-100 text-amber-700"
+                                                            : "bg-slate-100 text-slate-600"
                                                         }`}>
-                                                        <span className={`w-1.5 h-1.5 rounded-full ${mission.isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
-                                                        {mission.isActive ? "Actif" : "Pause"}
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${mission.status === "ACTIVE" ? "bg-emerald-500" : mission.status === "PAUSED" ? "bg-amber-500" : "bg-slate-400"}`} />
+                                                        {MISSION_STATUS_CONFIG[mission.status]?.label ?? mission.status}
                                                     </span>
                                                 </div>
 
@@ -554,7 +555,7 @@ export default function MissionsPage() {
                                         </div>
 
                                         {/* Bottom progress bar — visual only, represents activity ratio */}
-                                        {mission.isActive && (
+                                        {mission.status === "ACTIVE" && (
                                             <div className="px-7 pb-3">
                                                 <div className="h-0.5 w-full bg-slate-100 rounded-full overflow-hidden">
                                                     <div

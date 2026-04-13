@@ -17,6 +17,8 @@ import {
 import Link from "next/link";
 import { Card, Badge, LoadingState, EmptyState, PageHeader } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { MISSION_STATUS_CONFIG, MISSION_STATUS_TABS } from "@/lib/constants/missionStatus";
+import type { MissionStatusValue } from "@/lib/constants/missionStatus";
 
 // ============================================
 // TYPES
@@ -27,7 +29,8 @@ interface Mission {
     name: string;
     objective?: string;
     channel: "CALL" | "EMAIL" | "LINKEDIN";
-    isActive: boolean;
+    status: MissionStatusValue;
+    isActive?: boolean;
     startDate?: string;
     endDate?: string;
     client?: {
@@ -52,6 +55,7 @@ export default function BDMissionsPage() {
     const [missions, setMissions] = useState<Mission[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+    const [statusFilter, setStatusFilter] = useState<"all" | MissionStatusValue>("all");
 
     // ============================================
     // FETCH MISSIONS (from BD portfolio clients)
@@ -103,14 +107,17 @@ export default function BDMissionsPage() {
     // FILTER MISSIONS
     // ============================================
 
-    const filteredMissions = missions.filter(mission =>
-        mission.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        mission.client?.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredMissions = missions.filter((mission) => {
+        const matchesText =
+            mission.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            mission.client?.name.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesStatus = statusFilter === "all" || mission.status === statusFilter;
+        return matchesText && matchesStatus;
+    });
 
     const stats = {
         total: missions.length,
-        active: missions.filter(m => m.isActive).length,
+        active: missions.filter(m => m.status === "ACTIVE").length,
     };
 
     if (isLoading) {
@@ -155,7 +162,7 @@ export default function BDMissionsPage() {
 
             {/* Search */}
             <Card className="!p-4">
-                <div className="relative">
+                <div className="relative mb-3">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                     <input
                         type="text"
@@ -172,6 +179,17 @@ export default function BDMissionsPage() {
                             <X className="w-4 h-4 text-slate-400" />
                         </button>
                     )}
+                </div>
+                <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+                    {MISSION_STATUS_TABS.map((tab) => (
+                        <button
+                            key={tab.value}
+                            onClick={() => setStatusFilter(tab.value)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === tab.value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
             </Card>
 
@@ -203,8 +221,8 @@ export default function BDMissionsPage() {
                                             <h3 className="font-semibold text-slate-900 group-hover:text-emerald-600 transition-colors">
                                                 {mission.name}
                                             </h3>
-                                            <Badge variant={mission.isActive ? "success" : "default"}>
-                                                {mission.isActive ? "Actif" : "Pause"}
+                                            <Badge variant={mission.status === "ACTIVE" ? "success" : "default"}>
+                                                {MISSION_STATUS_CONFIG[mission.status]?.label ?? mission.status}
                                             </Badge>
                                             <span className={cn("text-xs px-2 py-1 rounded-full flex items-center gap-1", channel.className)}>
                                                 <ChannelIcon className="w-3 h-3" />

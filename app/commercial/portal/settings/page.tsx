@@ -19,8 +19,8 @@ interface CommercialProfile {
     title?: string | null;
     department?: string | null;
     territory?: string | null;
-    emails: string[];
-    phones: string[];
+    emails: Array<string | { label?: string; value?: string; isPrimary?: boolean }>;
+    phones: Array<string | { label?: string; value?: string; isPrimary?: boolean }>;
     bookingLinks: BookingLink[];
     notes?: string | null;
     client: { id: string; name: string; logo?: string | null };
@@ -40,6 +40,23 @@ export default function CommercialSettingsPage() {
     const [territory, setTerritory] = useState("");
     const [bookingLinks, setBookingLinks] = useState<BookingLink[]>([]);
     const [isDirty, setIsDirty] = useState(false);
+
+    const extractPrimaryValue = useCallback(
+        (items: Array<string | { label?: string; value?: string; isPrimary?: boolean }> | null | undefined): string => {
+            if (!Array.isArray(items) || items.length === 0) return "";
+            const objectItems = items.filter(
+                (item): item is { label?: string; value?: string; isPrimary?: boolean } =>
+                    typeof item === "object" && item !== null
+            );
+            const primaryObject = objectItems.find((item) => item.isPrimary && typeof item.value === "string");
+            if (primaryObject?.value) return primaryObject.value;
+            const firstObjectWithValue = objectItems.find((item) => typeof item.value === "string" && item.value.trim().length > 0);
+            if (firstObjectWithValue?.value) return firstObjectWithValue.value;
+            const firstString = items.find((item): item is string => typeof item === "string" && item.trim().length > 0);
+            return firstString ?? "";
+        },
+        []
+    );
 
     const fetchProfile = useCallback(async () => {
         setIsLoading(true);
@@ -171,7 +188,7 @@ export default function CommercialSettingsPage() {
                         <p className="text-[17px] font-bold text-[#12122A]">
                             {profile.firstName} {profile.lastName}
                         </p>
-                        <p className="text-sm text-[#6B7194]">{profile.emails?.[0] ?? ""}</p>
+                        <p className="text-sm text-[#6B7194]">{extractPrimaryValue(profile.emails)}</p>
                     </div>
                 </div>
 

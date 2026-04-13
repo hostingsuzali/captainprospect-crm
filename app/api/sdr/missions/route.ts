@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { SDR_VISIBLE_MISSION_STATUSES } from "@/lib/constants/missionStatus";
 
 // ============================================
 // GET /api/sdr/missions
@@ -43,7 +44,7 @@ export async function GET() {
 
         const missionsRaw = await prisma.mission.findMany({
             where: {
-                isActive: true,
+                status: { in: SDR_VISIBLE_MISSION_STATUSES },
                 startDate: { lte: new Date() },
                 endDate: { gte: new Date() },
             },
