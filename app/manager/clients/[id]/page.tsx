@@ -47,6 +47,10 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import AITaskExtractor, { type ExtractedTask } from "@/components/sessions/AITaskExtractor";
+import { NewMissionDialog } from "@/app/manager/missions/_components/NewMissionDialog";
+import { EditMissionDialog } from "@/app/manager/missions/[id]/_components/EditMissionDialog";
+import { MISSION_STATUS_CONFIG } from "@/lib/constants/missionStatus";
+import type { MissionStatusValue } from "@/lib/constants/missionStatus";
 
 // ============================================================
 // TYPES
@@ -69,6 +73,9 @@ interface Mission {
     id: string;
     name: string;
     channel: "CALL" | "EMAIL" | "LINKEDIN";
+    channels?: ("CALL" | "EMAIL" | "LINKEDIN")[];
+    objective?: string;
+    status?: MissionStatusValue;
     isActive: boolean;
     startDate: string;
     endDate?: string;
@@ -394,6 +401,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
     // Tabs
     const [activeTab, setActiveTab] = useState<"overview" | "missions" | "sessions" | "analytics">("overview");
+    const [showNewMissionDialog, setShowNewMissionDialog] = useState(false);
+    const [editingMission, setEditingMission] = useState<Mission | null>(null);
 
     // Analytics
     const [clientStats, setClientStats] = useState<any>(null);
@@ -542,6 +551,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     };
 
     useEffect(() => { fetchClient(); }, [resolvedParams.id]);
+
+    const getMissionStatus = (mission: Mission): MissionStatusValue => {
+        if (mission.status) return mission.status;
+        return mission.isActive ? "ACTIVE" : "PAUSED";
+    };
 
     // ============================================================
     // FETCH MEETINGS
@@ -2031,59 +2045,82 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 <Target className="w-5 h-5 text-indigo-500" />
                                 Missions
                             </h2>
-                            <Link href={`/manager/missions/new?clientId=${client.id}`}>
-                                <Button variant="primary" size="sm" className="gap-2 shadow-sm shadow-indigo-500/20">
+                            <Button variant="primary" size="sm" className="gap-2 shadow-sm shadow-indigo-500/20" onClick={() => setShowNewMissionDialog(true)}>
                                     <Plus className="w-4 h-4" />
                                     Nouvelle mission
-                                </Button>
-                            </Link>
+                            </Button>
                         </div>
                         {client.missions?.length ? (
                             <div className="p-4 space-y-4">
                                 {client.missions.map((mission) => (
-                                    <Link key={mission.id} href={`/manager/missions/${mission.id}`}>
-                                        <div className={cn(
+                                    <div
+                                        key={mission.id}
+                                        className={cn(
                                             "group block bg-white border rounded-xl p-5 hover:shadow-md transition-all duration-200 border-l-4",
-                                            mission.isActive ? "border-slate-200 border-l-indigo-500 hover:border-indigo-300" : "border-slate-200 border-l-slate-300 hover:border-slate-300"
-                                        )}>
-                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                                <div className="flex items-start gap-4">
-                                                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", mission.isActive ? "bg-indigo-50" : "bg-slate-100")}>
-                                                        {mission.isActive ? <CheckCircle2 className="w-5 h-5 text-indigo-600" /> : <XCircle className="w-5 h-5 text-slate-400" />}
+                                            getMissionStatus(mission) === "ACTIVE"
+                                                ? "border-slate-200 border-l-indigo-500 hover:border-indigo-300"
+                                                : "border-slate-200 border-l-slate-300 hover:border-slate-300"
+                                        )}
+                                    >
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                            <div className="flex items-start gap-4">
+                                                <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", getMissionStatus(mission) === "ACTIVE" ? "bg-indigo-50" : "bg-slate-100")}>
+                                                    {getMissionStatus(mission) === "ACTIVE"
+                                                        ? <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                                                        : <XCircle className="w-5 h-5 text-slate-400" />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                                                        {mission.name}
+                                                        <Badge variant={getMissionStatus(mission) === "ACTIVE" ? "success" : "default"} className="text-xs">
+                                                            {MISSION_STATUS_CONFIG[getMissionStatus(mission)].label}
+                                                        </Badge>
+                                                    </h3>
+                                                    <div className="flex items-center gap-2 text-sm text-slate-500 mt-0.5">
+                                                        <span className="font-medium text-slate-700">{CHANNEL_LABELS[mission.channel]}</span>
+                                                        <span>·</span>
+                                                        <span>{mission._count.campaigns} campagne{mission._count.campaigns > 1 ? "s" : ""}</span>
+                                                        <span>·</span>
+                                                        <span>{mission._count.lists} liste{mission._count.lists > 1 ? "s" : ""}</span>
                                                     </div>
-                                                    <div className="min-w-0">
-                                                        <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 flex items-center gap-2">
-                                                            {mission.name}
-                                                            {!mission.isActive && <Badge variant="warning" className="text-xs">Inactive</Badge>}
-                                                        </h3>
-                                                        <div className="flex items-center gap-2 text-sm text-slate-500 mt-0.5">
-                                                            <span className="font-medium text-slate-700">{CHANNEL_LABELS[mission.channel]}</span>
-                                                            <span>·</span>
-                                                            <span>{mission._count.campaigns} campagne{mission._count.campaigns > 1 ? "s" : ""}</span>
-                                                            <span>·</span>
-                                                            <span>{mission._count.lists} liste{mission._count.lists > 1 ? "s" : ""}</span>
-                                                        </div>
-                                                        <div className="mt-3 max-w-xs">
-                                                            <ProgressBar value={mission._count.campaigns} max={Math.max(mission._count.campaigns + mission._count.lists, 1)} height="sm" />
-                                                        </div>
+                                                    <div className="mt-3 max-w-xs">
+                                                        <ProgressBar value={mission._count.campaigns} max={Math.max(mission._count.campaigns + mission._count.lists, 1)} height="sm" />
                                                     </div>
                                                 </div>
-                                                <div className="text-sm text-slate-500 pl-14 sm:pl-0 sm:text-right shrink-0">
-                                                    <p>Début : {new Date(mission.startDate).toLocaleDateString("fr-FR")}</p>
-                                                    {mission.endDate && <p>Fin : {new Date(mission.endDate).toLocaleDateString("fr-FR")}</p>}
+                                            </div>
+                                            <div className="text-sm text-slate-500 sm:text-right shrink-0">
+                                                <p>Début : {new Date(mission.startDate).toLocaleDateString("fr-FR")}</p>
+                                                {mission.endDate && <p>Fin : {new Date(mission.endDate).toLocaleDateString("fr-FR")}</p>}
+                                                <div className="mt-3 flex items-center gap-2 sm:justify-end">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="gap-1.5"
+                                                        onClick={() => setEditingMission(mission)}
+                                                    >
+                                                        <Edit className="w-3.5 h-3.5" />
+                                                        Modifier
+                                                    </Button>
+                                                    <Link href={`/manager/missions/${mission.id}`}>
+                                                        <Button variant="ghost" size="sm" className="gap-1.5">
+                                                            Ouvrir
+                                                            <ArrowUpRight className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </Link>
                                                 </div>
                                             </div>
                                         </div>
-                                    </Link>
+                                    </div>
                                 ))}
                             </div>
                         ) : (
                             <div className="text-center py-16">
                                 <Target className="w-12 h-12 text-slate-200 mx-auto mb-3" />
                                 <p className="text-sm text-slate-500 mb-4">Aucune mission pour ce client</p>
-                                <Link href={`/manager/missions/new?clientId=${client.id}`}>
-                                    <Button variant="outline" size="sm" className="gap-2"><Plus className="w-4 h-4" />Créer une mission</Button>
-                                </Link>
+                                <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowNewMissionDialog(true)}>
+                                    <Plus className="w-4 h-4" />
+                                    Créer une mission
+                                </Button>
                             </div>
                         )}
                     </Card>
@@ -3282,6 +3319,33 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     <Button variant="primary" onClick={handleUpdate}>Enregistrer</Button>
                 </ModalFooter>
             </Modal>
+
+            <NewMissionDialog
+                isOpen={showNewMissionDialog}
+                onClose={() => setShowNewMissionDialog(false)}
+                onCreated={fetchClient}
+            />
+
+            <EditMissionDialog
+                isOpen={!!editingMission}
+                onClose={() => setEditingMission(null)}
+                mission={
+                    editingMission
+                        ? {
+                            id: editingMission.id,
+                            name: editingMission.name,
+                            objective: editingMission.objective,
+                            channel: editingMission.channel,
+                            channels: editingMission.channels,
+                            status: getMissionStatus(editingMission),
+                            startDate: editingMission.startDate,
+                            endDate: editingMission.endDate,
+                            client: client ? { id: client.id, name: client.name } : undefined,
+                        }
+                        : null
+                }
+                onSaved={fetchClient}
+            />
 
             {/* ── DELETE CLIENT MODAL ── */}
             <ConfirmModal
