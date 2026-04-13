@@ -246,6 +246,7 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     // Inline Strategy (Campaign) state
     const [campaignData, setCampaignData] = useState<CampaignData | null>(null);
     const [isStrategyEditing, setIsStrategyEditing] = useState(false);
+    const [isCreatingStrategy, setIsCreatingStrategy] = useState(false);
     const [isSavingStrategy, setIsSavingStrategy] = useState(false);
     const [strategyForm, setStrategyForm] = useState({ icp: "", pitch: "" });
     const [baseScript, setBaseScript] = useState("");
@@ -442,6 +443,36 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
             }
         } catch {
             showError("Erreur", "Impossible de sauvegarder");
+        } finally {
+            setIsSavingStrategy(false);
+        }
+    };
+
+    const handleCreateStrategy = async () => {
+        if (!mission) return;
+        setIsSavingStrategy(true);
+        try {
+            const res = await fetch("/api/campaigns", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: `${mission.name} — Stratégie`,
+                    missionId: mission.id,
+                    icp: strategyForm.icp,
+                    pitch: strategyForm.pitch,
+                    script: baseScript || undefined,
+                }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success("Stratégie créée", "La stratégie a été créée pour cette mission");
+                setIsCreatingStrategy(false);
+                await fetchMission();
+            } else {
+                showError("Erreur", json.error || "Impossible de créer la stratégie");
+            }
+        } catch {
+            showError("Erreur", "Impossible de créer la stratégie");
         } finally {
             setIsSavingStrategy(false);
         }
@@ -1387,11 +1418,102 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
                         {/* Inline Strategy Editor */}
                         {mission.campaigns.length === 0 ? (
-                            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm">
-                                <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
-                                    <Target className="w-8 h-8 text-emerald-400" />
-                                </div>
-                                <p className="text-slate-500 text-sm">Aucune stratégie configurée pour cette mission.</p>
+                            <div className="space-y-6">
+                                {!isCreatingStrategy ? (
+                                    <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm">
+                                        <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                                            <Target className="w-8 h-8 text-emerald-400" />
+                                        </div>
+                                        <p className="text-slate-900 font-semibold text-base mb-1">Aucune stratégie configurée</p>
+                                        <p className="text-slate-500 text-sm mb-5">Créez une stratégie pour définir l&apos;ICP, le pitch et le script d&apos;appel de cette mission.</p>
+                                        <button
+                                            onClick={() => {
+                                                setStrategyForm({ icp: "", pitch: "" });
+                                                setBaseScript("");
+                                                setIsCreatingStrategy(true);
+                                            }}
+                                            className="inline-flex items-center gap-2 h-10 px-5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm"
+                                        >
+                                            <Plus className="w-4 h-4" />
+                                            Créer une stratégie
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* ICP & Pitch — creation mode */}
+                                        <div className="bg-white border border-emerald-200 rounded-2xl p-6 shadow-sm">
+                                            <div className="flex items-center justify-between mb-5">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                                                        <Target className="w-5 h-5 text-emerald-600" />
+                                                    </div>
+                                                    <div>
+                                                        <h2 className="text-lg font-semibold text-slate-900">Nouvelle stratégie</h2>
+                                                        <p className="text-sm text-slate-500">Définissez l&apos;ICP et le pitch de prospection</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => setIsCreatingStrategy(false)}
+                                                        className="h-9 px-4 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                                                    >
+                                                        Annuler
+                                                    </button>
+                                                    <button
+                                                        onClick={handleCreateStrategy}
+                                                        disabled={isSavingStrategy}
+                                                        className="flex items-center gap-2 h-9 px-4 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg transition-colors"
+                                                    >
+                                                        {isSavingStrategy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                                        Créer la stratégie
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-700 mb-2">ICP (Profil Client Idéal)</label>
+                                                    <textarea
+                                                        value={strategyForm.icp}
+                                                        onChange={(e) => setStrategyForm(prev => ({ ...prev, icp: e.target.value }))}
+                                                        rows={3}
+                                                        className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none text-sm"
+                                                        placeholder="Décrivez votre client idéal..."
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-700 mb-2">Pitch</label>
+                                                    <textarea
+                                                        value={strategyForm.pitch}
+                                                        onChange={(e) => setStrategyForm(prev => ({ ...prev, pitch: e.target.value }))}
+                                                        rows={3}
+                                                        className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none text-sm"
+                                                        placeholder="Votre message clé..."
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Script — creation mode */}
+                                        <div className="bg-white border border-emerald-200 rounded-2xl p-6 shadow-sm">
+                                            <div className="flex items-center gap-3 mb-5">
+                                                <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
+                                                    <Sparkles className="w-5 h-5 text-indigo-600" />
+                                                </div>
+                                                <div>
+                                                    <h2 className="text-lg font-semibold text-slate-900">Script d&apos;appel</h2>
+                                                    <p className="text-sm text-slate-500">Optionnel — vous pourrez le compléter plus tard</p>
+                                                </div>
+                                            </div>
+                                            <textarea
+                                                value={baseScript}
+                                                onChange={(e) => setBaseScript(e.target.value)}
+                                                rows={8}
+                                                placeholder="Ajoutez un script de base unique..."
+                                                className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none font-mono text-sm"
+                                            />
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         ) : (
                             <>

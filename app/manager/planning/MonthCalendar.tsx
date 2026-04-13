@@ -142,7 +142,32 @@ export function MonthCalendar() {
     }, [snapshot, monthLoading]);
 
     useEffect(() => {
-        setWeekOffset(0);
+        const [year, mon] = month.split('-').map(Number);
+        const now = new Date();
+        const isCurrentMonth =
+            now.getFullYear() === year && now.getMonth() + 1 === mon;
+
+        let nextWeekOffset = 0;
+        if (isCurrentMonth) {
+            const firstOfMonth = new Date(year, mon - 1, 1);
+            let startDow = firstOfMonth.getDay() - 1;
+            if (startDow < 0) startDow = 6;
+            const firstMonday = new Date(firstOfMonth);
+            firstMonday.setDate(firstMonday.getDate() - startDow);
+
+            const todayAtMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const firstMondayAtMidnight = new Date(
+                firstMonday.getFullYear(),
+                firstMonday.getMonth(),
+                firstMonday.getDate()
+            );
+            const diffDays = Math.floor(
+                (todayAtMidnight.getTime() - firstMondayAtMidnight.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            nextWeekOffset = Math.max(0, Math.floor(diffDays / 7));
+        }
+
+        setWeekOffset(nextWeekOffset);
         setSelectedDate(null);
         setSelectedDates([]);
         setShowAddForm(false);

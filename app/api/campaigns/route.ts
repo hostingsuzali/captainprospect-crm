@@ -17,8 +17,8 @@ import { z } from 'zod';
 const createCampaignSchema = z.object({
     name: z.string().min(1, 'Nom requis'),
     missionId: z.string().min(1, 'Mission requise'),
-    icp: z.string().min(1, 'ICP requis'),
-    pitch: z.string().min(1, 'Pitch requis'),
+    icp: z.string().optional().default(''),
+    pitch: z.string().optional().default(''),
     script: z.union([
         z.string(),
         z.object({

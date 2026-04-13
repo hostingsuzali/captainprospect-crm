@@ -5,7 +5,8 @@
       "Bash(npx prisma:*)",
       "Bash(xargs wc:*)",
       "Bash(xargs grep:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npx next:*)"
     ]
   }
 }
