@@ -29,10 +29,10 @@ interface CallItem {
             country?: string | null;
         } | null;
     } | null;
-    campaign: {
-        name: string;
-        mission: { name: string };
-    };
+    campaign?: {
+        name?: string | null;
+        mission?: { name?: string | null } | null;
+    } | null;
 }
 
 const RESULT_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -83,7 +83,15 @@ export default function ClientPortalCallsPage() {
                 const res = await fetch("/api/client/calls");
                 const json = await res.json();
                 if (json.success) {
-                    setCalls(json.data);
+                    const maybeItems = json?.data?.items;
+                    const maybeData = json?.data;
+                    if (Array.isArray(maybeItems)) {
+                        setCalls(maybeItems);
+                    } else if (Array.isArray(maybeData)) {
+                        setCalls(maybeData);
+                    } else {
+                        setCalls([]);
+                    }
                 } else {
                     showError("Erreur", json.error || "Impossible de charger l'historique d'appels");
                 }
@@ -105,8 +113,8 @@ export default function ClientPortalCallsPage() {
             c.contact?.email,
             c.contact?.phone,
             c.company?.name || c.contact?.company?.name,
-            c.campaign.mission.name,
-            c.campaign.name,
+            c.campaign?.mission?.name,
+            c.campaign?.name,
             c.note,
         ].filter(Boolean).join(" ").toLowerCase();
         return haystack.includes(search.toLowerCase());
@@ -198,6 +206,8 @@ export default function ClientPortalCallsPage() {
                         {filtered.map((call, idx) => {
                             const contactName = [call.contact?.firstName, call.contact?.lastName].filter(Boolean).join(" ") || "Contact inconnu";
                             const companyName = call.contact?.company?.name || call.company?.name || "—";
+                            const missionName = call.campaign?.mission?.name || "Mission inconnue";
+                            const campaignName = call.campaign?.name || "Campagne inconnue";
                             const rc = getResultConfig(call.result);
                             const isExpanded = expandedId === call.id;
                             return (
@@ -221,7 +231,7 @@ export default function ClientPortalCallsPage() {
                                                     <span className="text-sm font-semibold text-[#12122A] truncate">{contactName}</span>
                                                     <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0", rc.color, rc.bg)}>{rc.label}</span>
                                                 </div>
-                                                <p className="text-xs text-[#6B7194] truncate">{companyName} · {call.campaign.mission.name}</p>
+                                                <p className="text-xs text-[#6B7194] truncate">{companyName} · {missionName}</p>
                                                 <p className="text-[11px] text-[#A0A3BD]">{formatDateTime(call.callbackDate || call.createdAt)}</p>
                                             </div>
                                         </div>
@@ -239,8 +249,8 @@ export default function ClientPortalCallsPage() {
                                                 </div>
                                             </div>
                                             <div className="min-w-0">
-                                                <p className="text-sm font-medium text-[#12122A] truncate">{call.campaign.mission.name}</p>
-                                                <p className="text-xs text-[#6B7194] truncate">{call.campaign.name}</p>
+                                                <p className="text-sm font-medium text-[#12122A] truncate">{missionName}</p>
+                                                <p className="text-xs text-[#6B7194] truncate">{campaignName}</p>
                                             </div>
                                             <div>
                                                 <span className={cn("inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded-full", rc.color, rc.bg)}>

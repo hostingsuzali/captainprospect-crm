@@ -490,6 +490,13 @@ export default function ManagerProspectionPage() {
     const [callSyncModalOpen, setCallSyncModalOpen] = useState(false);
     const [bulkCallSyncOpen, setBulkCallSyncOpen] = useState(false);
     const [drawerClientBookingUrl, setDrawerClientBookingUrl] = useState<string>("");
+    const [drawerClientInterlocuteurs, setDrawerClientInterlocuteurs] = useState<Array<{
+        id: string; firstName: string; lastName: string; title?: string;
+        emails: Array<{ value: string; label: string; isPrimary: boolean }>;
+        phones: Array<{ value: string; label: string; isPrimary: boolean }>;
+        bookingLinks: Array<{ label: string; url: string; durationMinutes: number }>;
+        isActive: boolean;
+    }>>([]);
     const liveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // ── table state ─────────────────────────────────────────────────────────
@@ -560,22 +567,33 @@ export default function ManagerProspectionPage() {
         return () => window.removeEventListener("keydown", handler);
     }, []);
 
-    // ── fetch client booking URL when drawer opens (for MEETING_BOOKED flow) ──
+    // ── fetch client booking URL + interlocuteurs when drawer opens (for MEETING_BOOKED flow) ──
     useEffect(() => {
-        if (!drawerAction || !selectedMission?.client?.id) {
+        if (!drawerAction || !selectedMission?.id) {
             setDrawerClientBookingUrl("");
+            setDrawerClientInterlocuteurs([]);
             return;
         }
         let cancelled = false;
-        fetch(`/api/clients/${selectedMission.client.id}`)
+        fetch(`/api/missions/${selectedMission.id}/client-booking`)
             .then(r => r.json())
             .then(j => {
-                if (!cancelled && j.success && j.data?.bookingUrl) setDrawerClientBookingUrl(j.data.bookingUrl);
-                else if (!cancelled) setDrawerClientBookingUrl("");
+                if (cancelled) return;
+                if (j.success) {
+                    setDrawerClientBookingUrl(j.data?.bookingUrl || "");
+                    setDrawerClientInterlocuteurs(Array.isArray(j.data?.interlocuteurs) ? j.data.interlocuteurs : []);
+                } else {
+                    setDrawerClientBookingUrl("");
+                    setDrawerClientInterlocuteurs([]);
+                }
             })
-            .catch(() => { if (!cancelled) setDrawerClientBookingUrl(""); });
+            .catch(() => {
+                if (cancelled) return;
+                setDrawerClientBookingUrl("");
+                setDrawerClientInterlocuteurs([]);
+            });
         return () => { cancelled = true; };
-    }, [drawerAction, selectedMission?.client?.id]);
+    }, [drawerAction, selectedMission?.id]);
 
     const fetchMissionStats = useCallback(async (missionId: string) => {
         const qs = new URLSearchParams();
@@ -1820,6 +1838,7 @@ export default function ManagerProspectionPage() {
                     missionId={selectedMission.id}
                     missionName={selectedMission.name}
                     clientBookingUrl={drawerClientBookingUrl || undefined}
+                    clientInterlocuteurs={drawerClientInterlocuteurs}
                     onActionRecorded={() => {
                         fetchMissionData(selectedMission.id, true);
                         fetchMissionStats(selectedMission.id);
