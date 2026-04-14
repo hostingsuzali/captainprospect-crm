@@ -118,6 +118,7 @@ export const PUT = withErrorHandler(
           companyName: updated.contact?.company?.name ?? null,
           missionName: updated.campaign?.mission?.name ?? null,
           scheduledAt: updated.callbackDate ?? null,
+          meetingChannel: (updated.channel as any) ?? "CALL",
           meetingType: (updated.meetingType as any) ?? null,
           meetingJoinUrl: updated.meetingJoinUrl ?? null,
           meetingAddress: updated.meetingAddress ?? null,

@@ -279,6 +279,7 @@ export class ActionService {
                         companyName: contactData?.company?.name,
                         missionName: campaign?.mission?.name,
                         scheduledAt: anyRecord.callbackDate ?? undefined,
+                        meetingChannel: anyRecord.channel ?? "CALL",
                         meetingType: anyRecord.meetingType ?? undefined,
                         meetingJoinUrl: anyRecord.meetingJoinUrl ?? undefined,
                         meetingAddress: anyRecord.meetingAddress ?? undefined,

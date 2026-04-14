@@ -5,6 +5,7 @@ export interface RdvNotificationData {
   missionName?: string | null;
   scheduledAt?: Date | null;
   meetingType?: "VISIO" | "PHYSIQUE" | "TELEPHONIQUE" | null;
+  meetingChannel?: "CALL" | "EMAIL" | "LINKEDIN" | null;
   meetingJoinUrl?: string | null;
   meetingAddress?: string | null;
   meetingPhone?: string | null;
@@ -54,6 +55,13 @@ function meetingTypeIcon(type?: string | null): string {
   if (type === "PHYSIQUE") return "📍";
   if (type === "TELEPHONIQUE") return "📞";
   return "📅";
+}
+
+function meetingChannelLabel(channel?: string | null): string {
+  if (channel === "CALL") return "Appel";
+  if (channel === "EMAIL") return "Email";
+  if (channel === "LINKEDIN") return "LinkedIn";
+  return "Appel";
 }
 
 function connectionBlock(data: RdvNotificationData): string {
@@ -148,6 +156,7 @@ export function buildRdvNotificationEmail(data: RdvNotificationData): {
   const badgeColor = meetingTypeBadgeColor(data.meetingType);
   const typeLabel = meetingTypeLabel(data.meetingType);
   const typeIcon = meetingTypeIcon(data.meetingType);
+  const channelLabel = meetingChannelLabel(data.meetingChannel);
 
   const subject = `Nouveau RDV confirmé — ${contactName} (${company})`;
 
@@ -258,6 +267,16 @@ export function buildRdvNotificationEmail(data: RdvNotificationData): {
                         </td>
                       </tr>
                       <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #f3f4f6;">
+                          <table cellpadding="0" cellspacing="0" width="100%">
+                            <tr>
+                              <td width="40%" style="font-size: 13px; color: #6b7280; font-weight: 500;">📡 Canal</td>
+                              <td style="font-size: 13px; color: #111827; font-weight: 600;">${channelLabel}</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
                         <td style="padding: 8px 0;">
                           <table cellpadding="0" cellspacing="0" width="100%">
                             <tr>
@@ -332,6 +351,7 @@ export const RDV_TEMPLATE_VARIABLES: { name: string; description: string }[] = [
   { name: "{{meetingDate}}", description: "Date du RDV (ex: lundi 10 mars 2026)" },
   { name: "{{meetingTime}}", description: "Heure du RDV (ex: 14:30)" },
   { name: "{{meetingTypeLabel}}", description: "Format du RDV (Visioconférence / Présentiel / Téléphonique)" },
+  { name: "{{meetingChannelLabel}}", description: "Canal du RDV (Appel / Email / LinkedIn)" },
   { name: "{{meetingJoinUrl}}", description: "Lien de connexion (VISIO uniquement)" },
   { name: "{{meetingAddress}}", description: "Adresse (PHYSIQUE uniquement)" },
   { name: "{{meetingPhone}}", description: "Numéro de téléphone (TÉLÉPHONIQUE uniquement)" },
@@ -365,6 +385,7 @@ export function substituteTemplateVariables(
       ? formatTime(data.scheduledAt) + " (Paris)"
       : "",
     "{{meetingTypeLabel}}": meetingTypeLabel(data.meetingType),
+    "{{meetingChannelLabel}}": meetingChannelLabel(data.meetingChannel),
     "{{meetingJoinUrl}}": data.meetingJoinUrl || "",
     "{{meetingAddress}}": data.meetingAddress || "",
     "{{meetingPhone}}": data.meetingPhone || "",
@@ -447,7 +468,8 @@ export const DEFAULT_RDV_TEMPLATE_HTML = `<!DOCTYPE html>
                       <tr><td style="padding: 8px 0; border-bottom: 1px solid #f3f4f6;"><table cellpadding="0" cellspacing="0" width="100%"><tr><td width="40%" style="font-size: 13px; color: #6b7280; font-weight: 500;">⏰ Heure</td><td style="font-size: 13px; color: #111827; font-weight: 600;">{{meetingTime}}</td></tr></table></td></tr>
                       <tr><td style="padding: 8px 0; border-bottom: 1px solid #f3f4f6;"><table cellpadding="0" cellspacing="0" width="100%"><tr><td width="40%" style="font-size: 13px; color: #6b7280; font-weight: 500;">👤 Contact</td><td style="font-size: 13px; color: #111827; font-weight: 600;">{{contactName}}</td></tr></table></td></tr>
                       <tr><td style="padding: 8px 0; border-bottom: 1px solid #f3f4f6;"><table cellpadding="0" cellspacing="0" width="100%"><tr><td width="40%" style="font-size: 13px; color: #6b7280; font-weight: 500;">🏢 Entreprise</td><td style="font-size: 13px; color: #111827; font-weight: 600;">{{companyName}}</td></tr></table></td></tr>
-                      <tr><td style="padding: 8px 0;"><table cellpadding="0" cellspacing="0" width="100%"><tr><td width="40%" style="font-size: 13px; color: #6b7280; font-weight: 500;">📋 Format</td><td style="font-size: 13px; color: #111827; font-weight: 600;">{{meetingTypeLabel}}</td></tr></table></td></tr>
+                      <tr><td style="padding: 8px 0; border-bottom: 1px solid #f3f4f6;"><table cellpadding="0" cellspacing="0" width="100%"><tr><td width="40%" style="font-size: 13px; color: #6b7280; font-weight: 500;">📋 Format</td><td style="font-size: 13px; color: #111827; font-weight: 600;">{{meetingTypeLabel}}</td></tr></table></td></tr>
+                      <tr><td style="padding: 8px 0;"><table cellpadding="0" cellspacing="0" width="100%"><tr><td width="40%" style="font-size: 13px; color: #6b7280; font-weight: 500;">📡 Canal</td><td style="font-size: 13px; color: #111827; font-weight: 600;">{{meetingChannelLabel}}</td></tr></table></td></tr>
                     </table>
                   </td>
                 </tr>

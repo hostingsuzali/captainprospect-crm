@@ -80,6 +80,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             companyName: m.company?.name ?? m.contact?.company?.name ?? null,
             missionName: m.campaign?.mission?.name ?? null,
             scheduledAt: m.callbackDate ?? null,
+            meetingChannel: (m.channel as any) ?? "CALL",
             meetingType: (m.meetingType as any) ?? null,
             meetingJoinUrl: m.meetingJoinUrl ?? null,
             meetingAddress: m.meetingAddress ?? null,
