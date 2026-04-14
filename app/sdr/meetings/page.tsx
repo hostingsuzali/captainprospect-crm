@@ -24,6 +24,11 @@ import {
     MapPin,
     Search,
     Upload,
+    FileText,
+    MessageSquare,
+    History,
+    Check,
+    X,
 } from "lucide-react";
 import {
     MEETING_CANCELLATION_REASONS,
@@ -31,6 +36,7 @@ import {
 } from "@/lib/constants/meetingCancellationReasons";
 import { cn } from "@/lib/utils";
 import { SdrImportRdvModal } from "./_components/ImportRdvModal";
+import "../../manager/rdv/_components/rdv-shell.css";
 
 // ============================================
 // TYPES
@@ -103,6 +109,7 @@ interface List {
 }
 
 type RdvStatus = "upcoming" | "past" | "rescheduled" | "cancelled";
+type DetailDrawerTab = "detail" | "note" | "history";
 
 function getRdvStatus(m: Meeting): RdvStatus {
     if (m.result === "MEETING_CANCELLED") return "cancelled";
@@ -213,6 +220,7 @@ export default function SDRMeetingsPage() {
     const [saving, setSaving] = useState(false);
     const [savingError, setSavingError] = useState<string | null>(null);
     const [remettreSubmitting, setRemettreSubmitting] = useState(false);
+    const [detailDrawerTab, setDetailDrawerTab] = useState<DetailDrawerTab>("detail");
 
     // Cancel-with-reason modal
     const [cancelModalMeeting, setCancelModalMeeting] = useState<Meeting | null>(null);
@@ -261,6 +269,7 @@ export default function SDRMeetingsPage() {
             setEditMeetingJoinUrl(selectedMeeting.meetingJoinUrl ?? "");
             setEditMeetingPhone(selectedMeeting.meetingPhone ?? "");
             setSavingError(null);
+            setDetailDrawerTab("detail");
         }
     }, [selectedMeeting]);
 
@@ -779,7 +788,7 @@ export default function SDRMeetingsPage() {
                 )}
             </div>
 
-            {/* Meeting Detail Drawer - Reference style (two-column, clean sections) */}
+            {/* Meeting Detail Drawer - aligned with /rdv panel UX */}
             {selectedMeeting && (
                 <Drawer
                     isOpen={!!selectedMeeting}
@@ -803,9 +812,78 @@ export default function SDRMeetingsPage() {
                         </div>
                     }
                 >
-                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+                    <div className="space-y-5">
+                        {/* Header summary like /rdv */}
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <div
+                                        className="w-11 h-11 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
+                                        style={{ backgroundColor: getAvatarColor(selectedMeeting) }}
+                                    >
+                                        {getInitials(selectedMeeting)}
+                                    </div>
+                                    <div>
+                                        <p className="font-semibold text-slate-900">
+                                            {selectedMeeting.contact.firstName} {selectedMeeting.contact.lastName}
+                                        </p>
+                                        <p className="text-xs text-slate-500">
+                                            {selectedMeeting.contact.title || "—"} · {selectedMeeting.contact.company.name}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        className="rdv-btn"
+                                        style={{ fontSize: 12, padding: "6px 10px", background: "var(--greenLight)", color: "var(--green)", border: "1px solid rgba(5,150,105,0.2)" }}
+                                        onClick={() => setEditResult("MEETING_BOOKED")}
+                                    >
+                                        <Check size={13} /> Confirmer
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="rdv-btn"
+                                        style={{ fontSize: 12, padding: "6px 10px", background: "var(--redLight)", color: "var(--red)", border: "1px solid rgba(220,38,38,0.2)" }}
+                                        onClick={() => openCancelModal(selectedMeeting)}
+                                    >
+                                        <X size={13} /> Annuler
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                {statusBadge(getRdvStatus(selectedMeeting))}
+                                <span className="rdv-pill" style={{ background: "var(--surface2)", color: "var(--ink2)", padding: "4px 12px" }}>
+                                    {editMeetingType || selectedMeeting.meetingType || "Type non défini"}
+                                </span>
+                                <span className="rdv-pill" style={{ background: "var(--surface2)", color: "var(--ink2)", padding: "4px 12px" }}>
+                                    {editMeetingCategory || selectedMeeting.meetingCategory || "Catégorie non définie"}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Tabs like /rdv */}
+                        <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--border)" }}>
+                            {[
+                                { key: "detail" as const, label: "Détail", Icon: FileText },
+                                { key: "note" as const, label: "Note interne", Icon: MessageSquare },
+                                { key: "history" as const, label: "Historique", Icon: History },
+                            ].map(({ key, label, Icon }) => (
+                                <button
+                                    key={key}
+                                    className={`rdv-tab ${detailDrawerTab === key ? "active" : ""}`}
+                                    onClick={() => setDetailDrawerTab(key)}
+                                >
+                                    <Icon size={13} style={{ display: "inline", marginRight: 5, verticalAlign: -2 }} />
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {detailDrawerTab === "detail" && (
+                            <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
                         {/* Left column: Main content */}
-                        <div className="space-y-6">
+                                <div className="space-y-6">
                             {/* Contact */}
                             <div className="space-y-3">
                                 <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Contact</h3>
@@ -987,8 +1065,8 @@ export default function SDRMeetingsPage() {
                             </div>
                         </div>
 
-                        {/* Right column: Summary */}
-                        <div className="space-y-5">
+                                {/* Right column: Summary */}
+                                <div className="space-y-5">
                             <div className="space-y-3">
                                 <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Récapitulatif</h3>
                                 <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 space-y-4">
@@ -1094,7 +1172,38 @@ export default function SDRMeetingsPage() {
                                     </Button>
                                 </div>
                             )}
-                        </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {detailDrawerTab === "note" && (
+                            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Note interne</h3>
+                                <textarea
+                                    value={editNote}
+                                    onChange={(e) => setEditNote(e.target.value)}
+                                    placeholder="Ajouter une note interne..."
+                                    className="w-full min-h-[160px] bg-white border border-slate-200 rounded-lg px-4 py-3 text-slate-700 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 resize-y"
+                                    rows={6}
+                                />
+                            </div>
+                        )}
+
+                        {detailDrawerTab === "history" && (
+                            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Historique</h3>
+                                <div className="text-sm text-slate-700 space-y-2">
+                                    <p><span className="font-semibold">Créé le:</span> {new Date(selectedMeeting.createdAt).toLocaleString("fr-FR")}</p>
+                                    <p><span className="font-semibold">Dernier statut:</span> {selectedMeeting.result === "MEETING_CANCELLED" ? "Annulé" : "Confirmé"}</p>
+                                    {selectedMeeting.cancellationReason && (
+                                        <p><span className="font-semibold">Raison annulation:</span> {getMeetingCancellationLabel(selectedMeeting.cancellationReason)}</p>
+                                    )}
+                                    {selectedMeeting.note && (
+                                        <p className="italic text-slate-600">"{selectedMeeting.note}"</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </Drawer>
             )}

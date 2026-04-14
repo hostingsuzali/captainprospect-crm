@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { Card, Badge, Button, DataTable, ConfirmModal, useToast } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { CompanyDrawer, ContactDrawer } from "@/components/drawers";
+import dynamic from "next/dynamic";
 import {
     ArrowLeft,
     List,
@@ -22,6 +23,11 @@ import {
     Plus,
 } from "lucide-react";
 import Link from "next/link";
+
+const UnifiedActionDrawer = dynamic(
+    () => import("@/components/drawers/UnifiedActionDrawer").then((m) => ({ default: m.UnifiedActionDrawer })),
+    { ssr: false }
+);
 
 // ============================================
 // TYPES
@@ -76,6 +82,17 @@ interface Contact {
     companyName?: string;
 }
 
+interface ClientInterlocuteur {
+    id: string;
+    firstName: string;
+    lastName: string;
+    title?: string;
+    emails: Array<{ value: string; label: string; isPrimary: boolean }>;
+    phones: Array<{ value: string; label: string; isPrimary: boolean }>;
+    bookingLinks: Array<{ label: string; url: string; durationMinutes: number }>;
+    isActive: boolean;
+}
+
 // ============================================
 // STATUS CONFIG
 // ============================================
@@ -113,6 +130,9 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     const [showContactDrawer, setShowContactDrawer] = useState(false);
     const [isCreatingCompany, setIsCreatingCompany] = useState(false);
     const [isCreatingContact, setIsCreatingContact] = useState(false);
+    const [unifiedDrawerTarget, setUnifiedDrawerTarget] = useState<{ contactId: string | null; companyId: string } | null>(null);
+    const [clientBookingUrl, setClientBookingUrl] = useState("");
+    const [clientInterlocuteurs, setClientInterlocuteurs] = useState<ClientInterlocuteur[]>([]);
 
     const hasAppliedUrlDrawers = useRef(false);
 
@@ -162,6 +182,28 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
         }
     }, [listId]);
 
+    useEffect(() => {
+        const missionId = list?.mission?.id;
+        if (!missionId) return;
+        let mounted = true;
+        (async () => {
+            try {
+                const res = await fetch(`/api/missions/${missionId}/client-booking`);
+                const json = await res.json();
+                if (!mounted || !json?.success) return;
+                setClientBookingUrl(json.data?.bookingUrl ?? "");
+                setClientInterlocuteurs(Array.isArray(json.data?.interlocuteurs) ? json.data.interlocuteurs : []);
+            } catch {
+                if (!mounted) return;
+                setClientBookingUrl("");
+                setClientInterlocuteurs([]);
+            }
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, [list?.mission?.id]);
+
     // Open contact + company drawers from URL (e.g. from global search)
     useEffect(() => {
         const contactId = searchParams.get("contactId");
@@ -191,13 +233,11 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
     // ============================================
 
     const handleCompanyClick = (company: Company) => {
-        setSelectedCompany(company);
-        setShowCompanyDrawer(true);
+        setUnifiedDrawerTarget({ contactId: null, companyId: company.id });
     };
 
     const handleContactClick = (contact: Contact & { companyName: string }) => {
-        setSelectedContact(contact);
-        setShowContactDrawer(true);
+        setUnifiedDrawerTarget({ contactId: contact.id, companyId: contact.companyId });
     };
 
     const handleCompanyUpdate = (updatedCompany: Company) => {
@@ -851,6 +891,24 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                 companies={companies}
                 isCreating={isCreatingContact}
             />
+
+            {/* Unified Action Drawer (open on row click) */}
+            {unifiedDrawerTarget && (
+                <UnifiedActionDrawer
+                    isOpen={!!unifiedDrawerTarget}
+                    onClose={() => setUnifiedDrawerTarget(null)}
+                    contactId={unifiedDrawerTarget.contactId}
+                    companyId={unifiedDrawerTarget.companyId}
+                    missionId={list.mission.id}
+                    missionName={list.mission.name}
+                    clientBookingUrl={clientBookingUrl || undefined}
+                    clientInterlocuteurs={clientInterlocuteurs}
+                    onActionRecorded={fetchList}
+                    onContactSelect={(newContactId) => {
+                        setUnifiedDrawerTarget((prev) => (prev ? { ...prev, contactId: newContactId } : prev));
+                    }}
+                />
+            )}
 
             {/* Delete Confirmation */}
             <ConfirmModal
