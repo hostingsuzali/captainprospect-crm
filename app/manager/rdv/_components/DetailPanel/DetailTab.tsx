@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Meeting } from "../../_types";
 import type { ConfirmationFilter } from "../../_types";
 import {
@@ -81,6 +81,12 @@ export function DetailTab({
   const [interlocuteurOptions, setInterlocuteurOptions] = useState<InterlocuteurOption[]>([]);
   const [interlocuteurLoading, setInterlocuteurLoading] = useState(false);
   const [interlocuteurSaving, setInterlocuteurSaving] = useState(false);
+  const [interlocuteursClientId, setInterlocuteursClientId] = useState<string | null>(null);
+  const latestClientIdRef = useRef<string | null>(meeting.client?.id ?? null);
+
+  useEffect(() => {
+    latestClientIdRef.current = meeting.client?.id ?? null;
+  }, [meeting.client?.id]);
 
   // Fetch interlocuteurs when the selector opens
   const fetchInterlocuteurs = useCallback(async () => {
@@ -92,7 +98,10 @@ export function DetailTab({
       if (res.ok) {
         const json = await res.json();
         const data: InterlocuteurOption[] = (json.data ?? json) || [];
+        // Guard against async race when user switches to another meeting/client quickly.
+        if (clientId !== latestClientIdRef.current) return;
         setInterlocuteurOptions(data.filter((i: InterlocuteurOption) => i.isActive));
+        setInterlocuteursClientId(clientId);
       }
     } catch (e) {
       console.error("Failed to fetch interlocuteurs:", e);
@@ -102,10 +111,19 @@ export function DetailTab({
   }, [meeting.client?.id]);
 
   useEffect(() => {
-    if (showInterlocuteurSelect && interlocuteurOptions.length === 0) {
+    const currentClientId = meeting.client?.id ?? null;
+    if (!showInterlocuteurSelect || !currentClientId) return;
+    if (interlocuteursClientId !== currentClientId) {
       fetchInterlocuteurs();
     }
-  }, [showInterlocuteurSelect, fetchInterlocuteurs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showInterlocuteurSelect, interlocuteursClientId, meeting.client?.id, fetchInterlocuteurs]);
+
+  // Reset selector state when switching meeting/client to avoid mixed commercial lists.
+  useEffect(() => {
+    setShowInterlocuteurSelect(false);
+    setInterlocuteurOptions([]);
+    setInterlocuteursClientId(null);
+  }, [meeting.id, meeting.client?.id]);
 
   const handleInterlocuteurChange = async (interlocuteurId: string | null) => {
     setInterlocuteurSaving(true);

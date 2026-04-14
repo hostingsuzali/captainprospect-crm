@@ -46,6 +46,7 @@ interface Meeting {
     callbackDate?: string | null;
     cancellationReason?: string;
     meetingType?: "VISIO" | "PHYSIQUE" | "TELEPHONIQUE" | null;
+    meetingCategory?: "EXPLORATOIRE" | "BESOIN" | null;
     meetingAddress?: string | null;
     meetingJoinUrl?: string | null;
     meetingPhone?: string | null;
@@ -203,6 +204,12 @@ export default function SDRMeetingsPage() {
     const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
     const [editNote, setEditNote] = useState("");
     const [editResult, setEditResult] = useState<MeetingResult>("MEETING_BOOKED");
+    const [editCallbackDate, setEditCallbackDate] = useState("");
+    const [editMeetingType, setEditMeetingType] = useState<"" | "VISIO" | "PHYSIQUE" | "TELEPHONIQUE">("");
+    const [editMeetingCategory, setEditMeetingCategory] = useState<"" | "EXPLORATOIRE" | "BESOIN">("");
+    const [editMeetingAddress, setEditMeetingAddress] = useState("");
+    const [editMeetingJoinUrl, setEditMeetingJoinUrl] = useState("");
+    const [editMeetingPhone, setEditMeetingPhone] = useState("");
     const [saving, setSaving] = useState(false);
     const [savingError, setSavingError] = useState<string | null>(null);
     const [remettreSubmitting, setRemettreSubmitting] = useState(false);
@@ -247,6 +254,12 @@ export default function SDRMeetingsPage() {
         if (selectedMeeting) {
             setEditNote(selectedMeeting.note ?? "");
             setEditResult((selectedMeeting.result as MeetingResult) || "MEETING_BOOKED");
+            setEditCallbackDate(selectedMeeting.callbackDate ? new Date(selectedMeeting.callbackDate).toISOString().slice(0, 16) : "");
+            setEditMeetingType(selectedMeeting.meetingType ?? "");
+            setEditMeetingCategory(selectedMeeting.meetingCategory ?? "");
+            setEditMeetingAddress(selectedMeeting.meetingAddress ?? "");
+            setEditMeetingJoinUrl(selectedMeeting.meetingJoinUrl ?? "");
+            setEditMeetingPhone(selectedMeeting.meetingPhone ?? "");
             setSavingError(null);
         }
     }, [selectedMeeting]);
@@ -259,7 +272,16 @@ export default function SDRMeetingsPage() {
             const res = await fetch(`/api/actions/${selectedMeeting.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ result: editResult, note: editNote || undefined }),
+                body: JSON.stringify({
+                    result: editResult,
+                    note: editNote || undefined,
+                    callbackDate: editCallbackDate ? new Date(editCallbackDate).toISOString() : null,
+                    meetingType: editMeetingType || null,
+                    meetingCategory: editMeetingCategory || null,
+                    meetingAddress: editMeetingAddress.trim() ? editMeetingAddress.trim() : null,
+                    meetingJoinUrl: editMeetingJoinUrl.trim() ? editMeetingJoinUrl.trim() : null,
+                    meetingPhone: editMeetingPhone.trim() ? editMeetingPhone.trim() : null,
+                }),
             });
             const json = await res.json();
             if (!json.success) {
@@ -269,13 +291,33 @@ export default function SDRMeetingsPage() {
             setMeetings((prev) =>
                 prev.map((m) =>
                     m.id === selectedMeeting.id
-                        ? { ...m, result: editResult, note: editNote || undefined }
+                        ? {
+                            ...m,
+                            result: editResult,
+                            note: editNote || undefined,
+                            callbackDate: editCallbackDate ? new Date(editCallbackDate).toISOString() : null,
+                            meetingType: editMeetingType || null,
+                            meetingCategory: editMeetingCategory || null,
+                            meetingAddress: editMeetingAddress.trim() || null,
+                            meetingJoinUrl: editMeetingJoinUrl.trim() || null,
+                            meetingPhone: editMeetingPhone.trim() || null,
+                        }
                         : m
                 )
             );
             setSelectedMeeting((prev) =>
                 prev && prev.id === selectedMeeting.id
-                    ? { ...prev, result: editResult, note: editNote || undefined }
+                    ? {
+                        ...prev,
+                        result: editResult,
+                        note: editNote || undefined,
+                        callbackDate: editCallbackDate ? new Date(editCallbackDate).toISOString() : null,
+                        meetingType: editMeetingType || null,
+                        meetingCategory: editMeetingCategory || null,
+                        meetingAddress: editMeetingAddress.trim() || null,
+                        meetingJoinUrl: editMeetingJoinUrl.trim() || null,
+                        meetingPhone: editMeetingPhone.trim() || null,
+                    }
                     : prev
             );
         } catch (err) {
@@ -857,6 +899,81 @@ export default function SDRMeetingsPage() {
 
                             {/* Note de prise de RDV */}
                             <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Informations du RDV</h3>
+                                <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-3">
+                                    <DateTimePicker
+                                        label="Date & heure"
+                                        value={editCallbackDate}
+                                        onChange={setEditCallbackDate}
+                                        placeholder="Choisir date et heure…"
+                                    />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Format</label>
+                                            <Select
+                                                value={editMeetingType}
+                                                onChange={(v) => setEditMeetingType(v as "" | "VISIO" | "PHYSIQUE" | "TELEPHONIQUE")}
+                                                options={[
+                                                    { value: "", label: "Non précisé" },
+                                                    { value: "VISIO", label: "Visio" },
+                                                    { value: "PHYSIQUE", label: "Physique" },
+                                                    { value: "TELEPHONIQUE", label: "Téléphonique" },
+                                                ]}
+                                                className="w-full border border-slate-200 rounded-lg bg-white px-3 py-2"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Catégorie</label>
+                                            <Select
+                                                value={editMeetingCategory}
+                                                onChange={(v) => setEditMeetingCategory(v as "" | "EXPLORATOIRE" | "BESOIN")}
+                                                options={[
+                                                    { value: "", label: "Non précisée" },
+                                                    { value: "EXPLORATOIRE", label: "Exploratoire" },
+                                                    { value: "BESOIN", label: "Analyse de besoin" },
+                                                ]}
+                                                className="w-full border border-slate-200 rounded-lg bg-white px-3 py-2"
+                                            />
+                                        </div>
+                                    </div>
+                                    {(editMeetingType === "PHYSIQUE" || (!editMeetingType && selectedMeeting.meetingAddress)) && (
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Adresse</label>
+                                            <input
+                                                value={editMeetingAddress}
+                                                onChange={(e) => setEditMeetingAddress(e.target.value)}
+                                                placeholder="Adresse du rendez-vous"
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                                            />
+                                        </div>
+                                    )}
+                                    {(editMeetingType === "VISIO" || (!editMeetingType && selectedMeeting.meetingJoinUrl)) && (
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Lien visio</label>
+                                            <input
+                                                value={editMeetingJoinUrl}
+                                                onChange={(e) => setEditMeetingJoinUrl(e.target.value)}
+                                                placeholder="https://..."
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                                            />
+                                        </div>
+                                    )}
+                                    {(editMeetingType === "TELEPHONIQUE" || (!editMeetingType && (selectedMeeting.meetingPhone || selectedMeeting.contact.phone))) && (
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Téléphone RDV</label>
+                                            <input
+                                                value={editMeetingPhone}
+                                                onChange={(e) => setEditMeetingPhone(e.target.value)}
+                                                placeholder={selectedMeeting.contact.phone ?? "+33 ..."}
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Note de prise de RDV */}
+                            <div className="space-y-3">
                                 <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Note de prise de RDV</h3>
                                 <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4">
                                     <textarea
@@ -877,7 +994,7 @@ export default function SDRMeetingsPage() {
                                 <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 space-y-4">
                                     <div>
                                         <p className="text-xs text-slate-500 uppercase font-medium mb-0.5">Date & Heure</p>
-                                        <p className="font-semibold text-slate-900">{formatScheduledDate(selectedMeeting)}</p>
+                                        <p className="font-semibold text-slate-900">{editCallbackDate ? new Date(editCallbackDate).toLocaleString("fr-FR") : formatScheduledDate(selectedMeeting)}</p>
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-500 uppercase font-medium mb-2">Statut</p>
@@ -909,24 +1026,24 @@ export default function SDRMeetingsPage() {
                                     <div className="pt-3 border-t border-slate-200 space-y-2">
                                         <p className="text-xs text-slate-500 uppercase font-medium">Lieu</p>
                                         <div className="flex items-center gap-2 text-sm text-slate-700">
-                                            {selectedMeeting.meetingType === "VISIO" && <><Video className="w-4 h-4 text-indigo-500 shrink-0" /><span>Visio Conférence</span></>}
-                                            {selectedMeeting.meetingType === "PHYSIQUE" && <><User className="w-4 h-4 text-indigo-500 shrink-0" /><span>Physique {selectedMeeting.meetingAddress ? `(${selectedMeeting.meetingAddress})` : ""}</span></>}
-                                            {selectedMeeting.meetingType === "TELEPHONIQUE" && <><Phone className="w-4 h-4 text-indigo-500 shrink-0" /><span>Appel téléphonique</span></>}
-                                            {!selectedMeeting.meetingType && <><Video className="w-4 h-4 text-indigo-500 shrink-0" /><span>Visio Conférence</span></>}
+                                            {editMeetingType === "VISIO" && <><Video className="w-4 h-4 text-indigo-500 shrink-0" /><span>Visio Conférence</span></>}
+                                            {editMeetingType === "PHYSIQUE" && <><User className="w-4 h-4 text-indigo-500 shrink-0" /><span>Physique {editMeetingAddress ? `(${editMeetingAddress})` : ""}</span></>}
+                                            {editMeetingType === "TELEPHONIQUE" && <><Phone className="w-4 h-4 text-indigo-500 shrink-0" /><span>Appel téléphonique</span></>}
+                                            {!editMeetingType && <><Video className="w-4 h-4 text-indigo-500 shrink-0" /><span>Visio Conférence</span></>}
                                         </div>
                                         {/* Contextual action buttons by format */}
-                                        {selectedMeeting.meetingType === "VISIO" && selectedMeeting.meetingJoinUrl && (
-                                            <a href={selectedMeeting.meetingJoinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors">
+                                        {editMeetingType === "VISIO" && editMeetingJoinUrl && (
+                                            <a href={editMeetingJoinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors">
                                                 <Video className="w-4 h-4" /> Rejoindre
                                             </a>
                                         )}
-                                        {selectedMeeting.meetingType === "PHYSIQUE" && selectedMeeting.meetingAddress && (
-                                            <a href={`https://maps.google.com/?q=${encodeURIComponent(selectedMeeting.meetingAddress)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">
+                                        {editMeetingType === "PHYSIQUE" && editMeetingAddress && (
+                                            <a href={`https://maps.google.com/?q=${encodeURIComponent(editMeetingAddress)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">
                                                 <MapPin className="w-4 h-4" /> Itinéraire
                                             </a>
                                         )}
-                                        {selectedMeeting.meetingType === "TELEPHONIQUE" && (selectedMeeting.meetingPhone || selectedMeeting.contact.phone) && (
-                                            <a href={`tel:${selectedMeeting.meetingPhone || selectedMeeting.contact.phone}`} className="inline-flex items-center gap-2 mt-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">
+                                        {editMeetingType === "TELEPHONIQUE" && (editMeetingPhone || selectedMeeting.contact.phone) && (
+                                            <a href={`tel:${editMeetingPhone || selectedMeeting.contact.phone}`} className="inline-flex items-center gap-2 mt-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">
                                                 <Phone className="w-4 h-4" /> Appeler
                                             </a>
                                         )}

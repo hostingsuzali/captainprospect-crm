@@ -138,6 +138,7 @@ export async function GET(request: NextRequest) {
             callbackDate: meeting.callbackDate?.toISOString() ?? null,
             cancellationReason: meeting.cancellationReason ?? undefined,
             meetingType: meeting.meetingType ?? undefined,
+            meetingCategory: meeting.meetingCategory ?? undefined,
             meetingAddress: meeting.meetingAddress ?? undefined,
             meetingJoinUrl: meeting.meetingJoinUrl ?? undefined,
             meetingPhone: meeting.meetingPhone ?? undefined,

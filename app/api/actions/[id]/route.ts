@@ -29,6 +29,7 @@ const updateCallbackSchema = z.object({
         .refine((v) => MEETING_CANCELLATION_REASON_CODES.includes(v as MeetingCancellationReasonCode))
         .optional(),
     meetingType: z.enum(['VISIO', 'PHYSIQUE', 'TELEPHONIQUE']).optional(),
+    meetingCategory: z.enum(['EXPLORATOIRE', 'BESOIN']).optional().nullable(),
     meetingAddress: z.string().max(500).optional().nullable(),
     meetingJoinUrl: z.string().url('Lien de rejoindre invalide').max(2000).optional().nullable(),
     meetingPhone: z.string().max(50).optional().nullable(),
@@ -88,6 +89,7 @@ export const PATCH = withErrorHandler(async (
         result?: (typeof meetingResults)[number];
         cancellationReason?: string | null;
         meetingType?: string | null;
+        meetingCategory?: string | null;
         meetingAddress?: string | null;
         meetingJoinUrl?: string | null;
         meetingPhone?: string | null;
@@ -105,6 +107,7 @@ export const PATCH = withErrorHandler(async (
     }
     if (isMeetingAction && data.cancellationReason !== undefined) updateData.cancellationReason = data.cancellationReason;
     if (isMeetingAction && data.meetingType !== undefined) updateData.meetingType = data.meetingType;
+    if (isMeetingAction && data.meetingCategory !== undefined) updateData.meetingCategory = data.meetingCategory;
     if (isMeetingAction && data.meetingAddress !== undefined) updateData.meetingAddress = data.meetingAddress;
     if (isMeetingAction && data.meetingJoinUrl !== undefined) updateData.meetingJoinUrl = data.meetingJoinUrl;
     if (isMeetingAction && data.meetingPhone !== undefined) updateData.meetingPhone = data.meetingPhone;
