@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/ui";
-import { Loader2, PhoneCall, Search, X, Building2, Clock, Filter, ChevronDown } from "lucide-react";
+import { Loader2, PhoneCall, Search, X, Building2, Clock, Filter, ChevronDown, RefreshCw, CalendarCheck2, Timer, ListFilter } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CallItem {
@@ -68,6 +68,13 @@ function formatDuration(seconds: number | null | undefined): string {
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
+function averageDuration(calls: CallItem[]): string {
+    const withDuration = calls.filter((c) => typeof c.duration === "number" && (c.duration ?? 0) > 0);
+    if (withDuration.length === 0) return "—";
+    const total = withDuration.reduce((sum, c) => sum + (c.duration ?? 0), 0);
+    return formatDuration(Math.round(total / withDuration.length));
+}
+
 export default function ClientPortalCallsPage() {
     const { error: showError } = useToast();
     const [calls, setCalls] = useState<CallItem[]>([]);
@@ -120,59 +127,105 @@ export default function ClientPortalCallsPage() {
         return haystack.includes(search.toLowerCase());
     });
 
-    const uniqueResults = Array.from(new Set(calls.map((c) => c.result)));
+    const uniqueResults = useMemo(() => Array.from(new Set(calls.map((c) => c.result))), [calls]);
+    const totalCalls = calls.length;
+    const displayedCalls = filtered.length;
+    const meetingBookedCount = filtered.filter((c) => c.result === "MEETING_BOOKED").length;
+    const callbackRequestedCount = filtered.filter((c) => c.result === "CALLBACK_REQUESTED").length;
+    const avgDuration = averageDuration(filtered);
 
     return (
-        <div className="min-h-full bg-gradient-to-br from-[#F8F9FC] via-[#F4F6F9] to-[#ECEEF4] p-4 md:p-6 space-y-5">
+        <div className="min-h-full bg-[#F5F7FB] p-3 md:p-5 space-y-3">
             {/* Header */}
-            <div style={{ animation: "callsFadeUp 0.35s ease both" }}>
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-md shadow-violet-200">
-                        <PhoneCall className="w-5 h-5 text-white" />
+            <div className="bg-white border border-[#E7EAF2] rounded-2xl px-4 py-3 shadow-sm" style={{ animation: "callsFadeUp 0.35s ease both" }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-md shadow-violet-200/60">
+                            <PhoneCall className="w-[18px] h-[18px] text-white" />
+                        </div>
+                        <div className="min-w-0">
+                            <h1 className="text-lg font-bold text-[#12122A] tracking-tight">Historique des appels</h1>
+                            <p className="text-xs text-[#6B7194] truncate">Vue compacte des appels, résultats et notes associées</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="text-xl font-bold text-[#12122A] tracking-tight">Historique des appels</h1>
-                        <p className="text-xs text-[#6B7194] mt-0.5">Vue détaillée des appels effectués dans vos campagnes</p>
+                    <div className="inline-flex items-center gap-2 text-xs text-[#6B7194] bg-[#F6F8FE] border border-[#E8EBF4] rounded-full px-3 py-1.5">
+                        <ListFilter className="w-3.5 h-3.5" />
+                        <span>{displayedCalls} affichés / {totalCalls}</span>
                     </div>
                 </div>
             </div>
 
             {/* Filters */}
-            <div className="flex flex-wrap items-center gap-3" style={{ animation: "callsFadeUp 0.35s ease both", animationDelay: "50ms" }}>
-                <div className="relative flex-1 min-w-[220px] max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A0A3BD]" />
-                    <input
-                        type="search"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Rechercher (contact, entreprise...)"
-                        className="w-full h-10 pl-9 pr-8 rounded-xl border border-[#E8EBF0] bg-white text-sm text-[#12122A] placeholder:text-[#A0A3BD] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/30 focus:border-[#7C5CFC]/40 shadow-sm"
-                    />
-                    {search && (
-                        <button type="button" onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A0A3BD] hover:text-[#6B7194]">
-                            <X className="w-3.5 h-3.5" />
+            <div className="bg-white border border-[#E7EAF2] rounded-2xl p-3 shadow-sm space-y-3" style={{ animation: "callsFadeUp 0.35s ease both", animationDelay: "50ms" }}>
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 min-w-[220px]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A0A3BD]" />
+                        <input
+                            type="search"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Rechercher contact, entreprise, mission, note..."
+                            className="w-full h-9 pl-9 pr-8 rounded-xl border border-[#E8EBF0] bg-white text-sm text-[#12122A] placeholder:text-[#A0A3BD] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/25 focus:border-[#7C5CFC]/40"
+                        />
+                        {search && (
+                            <button type="button" onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A0A3BD] hover:text-[#6B7194]">
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+                    </div>
+                    <div className="relative">
+                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#A0A3BD]" />
+                        <select
+                            value={resultFilter}
+                            onChange={(e) => setResultFilter(e.target.value)}
+                            className="h-9 pl-9 pr-8 rounded-xl border border-[#E8EBF0] bg-white text-sm text-[#12122A] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/25 appearance-none"
+                        >
+                            <option value="all">Tous les résultats</option>
+                            {uniqueResults.map((r) => (
+                                <option key={r} value={r}>{getResultConfig(r).label}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#A0A3BD] pointer-events-none" />
+                    </div>
+                    {(search || resultFilter !== "all") && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSearch("");
+                                setResultFilter("all");
+                            }}
+                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-[#E8EBF0] text-xs font-medium text-[#475072] hover:bg-[#F7F9FF]"
+                        >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Réinitialiser
                         </button>
                     )}
                 </div>
-                <div className="relative">
-                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#A0A3BD]" />
-                    <select
-                        value={resultFilter}
-                        onChange={(e) => setResultFilter(e.target.value)}
-                        className="h-10 pl-9 pr-8 rounded-xl border border-[#E8EBF0] bg-white text-sm text-[#12122A] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/30 shadow-sm appearance-none"
-                    >
-                        <option value="all">Tous les résultats</option>
-                        {uniqueResults.map((r) => (
-                            <option key={r} value={r}>{getResultConfig(r).label}</option>
-                        ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#A0A3BD] pointer-events-none" />
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className="rounded-xl border border-[#E8EBF0] bg-[#FAFBFF] px-3 py-2">
+                        <p className="text-[11px] text-[#6B7194]">Appels visibles</p>
+                        <p className="text-sm font-semibold text-[#12122A] mt-0.5">{displayedCalls}</p>
+                    </div>
+                    <div className="rounded-xl border border-[#E8EBF0] bg-[#FAFBFF] px-3 py-2">
+                        <p className="text-[11px] text-[#6B7194]">RDV pris</p>
+                        <p className="text-sm font-semibold text-emerald-700 mt-0.5 inline-flex items-center gap-1">
+                            <CalendarCheck2 className="w-3.5 h-3.5" />
+                            {meetingBookedCount}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-[#E8EBF0] bg-[#FAFBFF] px-3 py-2">
+                        <p className="text-[11px] text-[#6B7194]">Rappels demandés</p>
+                        <p className="text-sm font-semibold text-sky-700 mt-0.5">{callbackRequestedCount}</p>
+                    </div>
+                    <div className="rounded-xl border border-[#E8EBF0] bg-[#FAFBFF] px-3 py-2">
+                        <p className="text-[11px] text-[#6B7194]">Durée moyenne</p>
+                        <p className="text-sm font-semibold text-[#12122A] mt-0.5 inline-flex items-center gap-1">
+                            <Timer className="w-3.5 h-3.5 text-[#8D93B3]" />
+                            {avgDuration}
+                        </p>
+                    </div>
                 </div>
-                {filtered.length !== calls.length && (
-                    <span className="text-xs text-[#6B7194] bg-white border border-[#E8EBF0] px-3 py-1.5 rounded-full shadow-sm">
-                        {filtered.length} / {calls.length} appels
-                    </span>
-                )}
             </div>
 
             {/* Content */}
@@ -194,7 +247,7 @@ export default function ClientPortalCallsPage() {
             ) : (
                 <div className="bg-white rounded-2xl border border-[#E8EBF0] overflow-hidden shadow-sm" style={{ animation: "callsFadeUp 0.35s ease both", animationDelay: "80ms" }}>
                     {/* Table header */}
-                    <div className="hidden md:grid grid-cols-[160px,1fr,1fr,140px,90px,40px] gap-4 px-5 py-3 border-b border-[#F0F1F7] bg-[#FAFAFA]">
+                    <div className="hidden md:grid grid-cols-[148px,1.1fr,1fr,132px,76px,28px] gap-3 px-4 py-2.5 border-b border-[#F0F1F7] bg-[#FAFAFA]">
                         <span className="text-[11px] font-bold text-[#A0A3BD] uppercase tracking-wider">Date</span>
                         <span className="text-[11px] font-bold text-[#A0A3BD] uppercase tracking-wider">Contact / Entreprise</span>
                         <span className="text-[11px] font-bold text-[#A0A3BD] uppercase tracking-wider">Mission / Campagne</span>
@@ -218,25 +271,33 @@ export default function ClientPortalCallsPage() {
                                 >
                                     <div
                                         className={cn(
-                                            "px-5 py-3.5 hover:bg-[#FAFBFF] transition-colors cursor-pointer",
+                                            "px-4 py-2.5 hover:bg-[#FAFBFF] transition-colors",
+                                            call.note ? "cursor-pointer" : "cursor-default",
                                             isExpanded && "bg-[#FAFBFF]"
                                         )}
-                                        onClick={() => setExpandedId(isExpanded ? null : call.id)}
+                                        onClick={() => {
+                                            if (call.note) {
+                                                setExpandedId(isExpanded ? null : call.id);
+                                            }
+                                        }}
                                     >
                                         {/* Mobile layout */}
                                         <div className="flex md:hidden items-start gap-3">
                                             <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", rc.dot)} />
-                                            <div className="flex-1 min-w-0 space-y-0.5">
+                                            <div className="flex-1 min-w-0 space-y-1">
                                                 <div className="flex items-center justify-between gap-2">
                                                     <span className="text-sm font-semibold text-[#12122A] truncate">{contactName}</span>
                                                     <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0", rc.color, rc.bg)}>{rc.label}</span>
                                                 </div>
-                                                <p className="text-xs text-[#6B7194] truncate">{companyName} · {missionName}</p>
-                                                <p className="text-[11px] text-[#A0A3BD]">{formatDateTime(call.callbackDate || call.createdAt)}</p>
+                                                <p className="text-[11px] text-[#6B7194] truncate">{companyName} · {missionName}</p>
+                                                <div className="flex items-center justify-between gap-2 text-[11px] text-[#8E93AE]">
+                                                    <span>{formatDateTime(call.callbackDate || call.createdAt)}</span>
+                                                    <span className="font-medium">{formatDuration(call.duration)}</span>
+                                                </div>
                                             </div>
                                         </div>
                                         {/* Desktop layout */}
-                                        <div className="hidden md:grid grid-cols-[160px,1fr,1fr,140px,90px,40px] gap-4 items-center">
+                                        <div className="hidden md:grid grid-cols-[148px,1.1fr,1fr,132px,76px,28px] gap-3 items-center">
                                             <div className="flex items-center gap-1.5 text-xs text-[#6B7194]">
                                                 <Clock className="w-3.5 h-3.5 text-[#A0A3BD] shrink-0" />
                                                 <span>{formatDateTime(call.callbackDate || call.createdAt)}</span>
@@ -245,34 +306,34 @@ export default function ClientPortalCallsPage() {
                                                 <p className="text-sm font-semibold text-[#12122A] truncate">{contactName}</p>
                                                 <div className="flex items-center gap-1 mt-0.5">
                                                     <Building2 className="w-3 h-3 text-[#A0A3BD] shrink-0" />
-                                                    <span className="text-xs text-[#6B7194] truncate">{companyName}</span>
+                                                    <span className="text-[11px] text-[#6B7194] truncate">{companyName}</span>
                                                 </div>
                                             </div>
                                             <div className="min-w-0">
                                                 <p className="text-sm font-medium text-[#12122A] truncate">{missionName}</p>
-                                                <p className="text-xs text-[#6B7194] truncate">{campaignName}</p>
+                                                <p className="text-[11px] text-[#6B7194] truncate">{campaignName}</p>
                                             </div>
                                             <div>
-                                                <span className={cn("inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded-full", rc.color, rc.bg)}>
+                                                <span className={cn("inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full", rc.color, rc.bg)}>
                                                     <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", rc.dot)} />
                                                     {rc.label}
                                                 </span>
                                             </div>
-                                            <div className="text-right text-xs text-[#6B7194] font-medium">
+                                            <div className="text-right text-[11px] text-[#6B7194] font-medium">
                                                 {formatDuration(call.duration)}
                                             </div>
                                             <div className="flex justify-end">
                                                 {call.note && (
-                                                    <ChevronDown className={cn("w-4 h-4 text-[#A0A3BD] transition-transform duration-200", isExpanded && "rotate-180")} />
+                                                    <ChevronDown className={cn("w-3.5 h-3.5 text-[#A0A3BD] transition-transform duration-200", isExpanded && "rotate-180")} />
                                                 )}
                                             </div>
                                         </div>
                                     </div>
                                     {/* Expanded note */}
                                     {isExpanded && call.note && (
-                                        <div className="px-5 pb-3.5 -mt-1">
-                                            <div className="ml-0 md:ml-[160px] md:pl-4 border-l-2 border-[#7C5CFC]/20 pl-3">
-                                                <p className="text-xs text-[#6B7194] italic leading-relaxed">« {call.note} »</p>
+                                        <div className="px-4 pb-3 -mt-0.5">
+                                            <div className="ml-0 md:ml-[148px] md:pl-3 border-l-2 border-[#7C5CFC]/20 pl-3">
+                                                <p className="text-[12px] text-[#5E6482] italic leading-relaxed">« {call.note} »</p>
                                             </div>
                                         </div>
                                     )}

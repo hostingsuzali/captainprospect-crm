@@ -24,6 +24,8 @@ const bookingSuccessSchema = z.object({
     meetingAddress: z.string().max(500).optional(),
     meetingJoinUrl: z.string().url('Lien de rejoindre invalide').max(2000).optional(),
     meetingPhone: z.string().max(50).optional(),
+    interlocuteurId: z.string().min(1).optional(),
+    interlocuteurName: z.string().max(200).optional(),
 })
     .refine((data) => !!data.contactId || !!data.companyId, {
         message: 'Contact ou société requis',
@@ -149,11 +151,14 @@ function extractMeetingJoinUrl(eventData: Record<string, unknown> | undefined): 
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await requireRole(['SDR', 'BUSINESS_DEVELOPER', 'MANAGER'], request);
-    const { contactId, companyId, eventData, rdvDate, meetingType, meetingCategory, meetingAddress, meetingJoinUrl, meetingPhone } = await validateRequest(request, bookingSuccessSchema);
+    const { contactId, companyId, eventData, rdvDate, meetingType, meetingCategory, meetingAddress, meetingJoinUrl, meetingPhone, interlocuteurId, interlocuteurName } = await validateRequest(request, bookingSuccessSchema);
 
-    const bookingNote = eventData
-        ? `RDV planifié via calendrier: ${JSON.stringify(eventData)}`
+    const bookingSourceLabel = interlocuteurName?.trim()
+        ? `RDV planifié via calendrier (${interlocuteurName.trim()})`
         : 'RDV planifié via calendrier';
+    const bookingNote = eventData
+        ? `${bookingSourceLabel}: ${JSON.stringify(eventData)}`
+        : bookingSourceLabel;
 
     const scheduledAt = rdvDate
         ? new Date(rdvDate)
@@ -202,8 +207,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             );
         }
 
-        const interlocuteurId =
-            (list as any).commercialInterlocuteurId ?? (mission as any).defaultInterlocuteurId ?? null;
+        const resolvedInterlocuteurId =
+            interlocuteurId
+            ?? (list as any).commercialInterlocuteurId
+            ?? (mission as any).defaultInterlocuteurId
+            ?? null;
 
         const action = await prisma.action.create({
             data: {
@@ -221,7 +229,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                 meetingAddress: meetingAddress ?? null,
                 meetingJoinUrl: resolvedMeetingJoinUrl,
                 meetingPhone: meetingPhone ?? null,
-                interlocuteurId: interlocuteurId ?? undefined,
+                interlocuteurId: resolvedInterlocuteurId ?? undefined,
             },
             include: {
                 contact: { select: { id: true, firstName: true, lastName: true } },
@@ -276,8 +284,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         );
     }
 
-    const interlocuteurId =
-        (company.list as any).commercialInterlocuteurId ?? (mission as any).defaultInterlocuteurId ?? null;
+    const resolvedInterlocuteurId =
+        interlocuteurId
+        ?? (company.list as any).commercialInterlocuteurId
+        ?? (mission as any).defaultInterlocuteurId
+        ?? null;
 
     const action = await prisma.action.create({
         data: {
@@ -295,7 +306,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             meetingAddress: meetingAddress ?? null,
             meetingJoinUrl: resolvedMeetingJoinUrl,
             meetingPhone: meetingPhone ?? null,
-            interlocuteurId: interlocuteurId ?? undefined,
+            interlocuteurId: resolvedInterlocuteurId ?? undefined,
         },
     });
 

@@ -93,6 +93,7 @@ interface CalendarOption {
     label: string;
     sublabel?: string;
     url: string;
+    interlocuteurId?: string;
     initials?: string;
     avatarColor?: string;
 }
@@ -343,6 +344,7 @@ export function BookingDrawer({
                 label: `${interl.firstName} ${interl.lastName}`,
                 sublabel: `${bl.label} · ${bl.durationMinutes} min`,
                 url: bl.url,
+                interlocuteurId: interl.id,
                 initials,
                 avatarColor: color,
             });
@@ -441,6 +443,8 @@ export function BookingDrawer({
                             ...(effectiveMeetingAddress?.trim() && { meetingAddress: effectiveMeetingAddress.trim() }),
                             ...(effectiveMeetingJoinUrl?.trim() && { meetingJoinUrl: effectiveMeetingJoinUrl.trim() }),
                             ...(effectiveMeetingPhone?.trim() && { meetingPhone: effectiveMeetingPhone.trim() }),
+                                    ...(selectedOption?.interlocuteurId && { interlocuteurId: selectedOption.interlocuteurId }),
+                                    ...(selectedOption?.interlocuteurId && { interlocuteurName: selectedOption.label }),
                         }),
                     });
                     const json = await res.json();
@@ -466,7 +470,7 @@ export function BookingDrawer({
 
         window.addEventListener("message", handleMessage);
         return () => window.removeEventListener("message", handleMessage);
-    }, [isOpen, contactId, companyId, contactName, effectiveRdvDate, effectiveMeetingType, effectiveMeetingCategory, effectiveMeetingAddress, effectiveMeetingJoinUrl, effectiveMeetingPhone, onBookingSuccess, onClose, success, showError]);
+    }, [isOpen, contactId, companyId, contactName, effectiveRdvDate, effectiveMeetingType, effectiveMeetingCategory, effectiveMeetingAddress, effectiveMeetingJoinUrl, effectiveMeetingPhone, selectedOption, onBookingSuccess, onClose, success, showError]);
 
     const handleConfirmRdv = useCallback(async () => {
         if (effectiveMeetingType === "PHYSIQUE" && !effectiveMeetingAddress.trim()) {
@@ -489,6 +493,8 @@ export function BookingDrawer({
                     ...(effectiveMeetingAddress?.trim() && { meetingAddress: effectiveMeetingAddress.trim() }),
                     ...(effectiveMeetingJoinUrl?.trim() && { meetingJoinUrl: effectiveMeetingJoinUrl.trim() }),
                     ...(effectiveMeetingPhone?.trim() && { meetingPhone: effectiveMeetingPhone.trim() }),
+                    ...(selectedOption?.interlocuteurId && { interlocuteurId: selectedOption.interlocuteurId }),
+                    ...(selectedOption?.interlocuteurId && { interlocuteurName: selectedOption.label }),
                 }),
             });
             const json = await res.json();
@@ -506,7 +512,7 @@ export function BookingDrawer({
         } finally {
             setIsProcessing(false);
         }
-    }, [contactId, companyId, contactName, effectiveRdvDate, effectiveMeetingType, effectiveMeetingCategory, effectiveMeetingAddress, effectiveMeetingJoinUrl, effectiveMeetingPhone, onBookingSuccess, onClose, success, showError]);
+    }, [contactId, companyId, contactName, effectiveRdvDate, effectiveMeetingType, effectiveMeetingCategory, effectiveMeetingAddress, effectiveMeetingJoinUrl, effectiveMeetingPhone, selectedOption, onBookingSuccess, onClose, success, showError]);
 
     if (!isOpen) return null;
 
