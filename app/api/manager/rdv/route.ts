@@ -267,6 +267,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     rdvFiche: m.rdvFiche,
     rdvFicheUpdatedAt: m.rdvFicheUpdatedAt,
     callbackDate: m.callbackDate,
+    channel: m.channel ?? "CALL",
     meetingType: m.meetingType,
     meetingCategory: m.meetingCategory,
     meetingAddress: m.meetingAddress,

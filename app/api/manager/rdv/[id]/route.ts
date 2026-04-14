@@ -26,6 +26,7 @@ const updateSchema = z.object({
   meetingAddress: z.string().optional(),
   meetingJoinUrl: z.string().optional(),
   meetingPhone: z.string().optional(),
+  channel: z.enum(["CALL", "EMAIL", "LINKEDIN"]).optional(),
   cancellationReason: z.string().optional(),
   feedbackOutcome: z.enum(["POSITIVE", "NEUTRAL", "NEGATIVE", "NO_SHOW"]).optional(),
   feedbackRecontact: z.enum(["YES", "NO", "MAYBE"]).optional(),
@@ -70,6 +71,7 @@ export const PUT = withErrorHandler(
     if (body.meetingAddress !== undefined) actionUpdate.meetingAddress = body.meetingAddress;
     if (body.meetingJoinUrl !== undefined) actionUpdate.meetingJoinUrl = body.meetingJoinUrl;
     if (body.meetingPhone !== undefined) actionUpdate.meetingPhone = body.meetingPhone;
+    if (body.channel !== undefined) actionUpdate.channel = body.channel;
     if (body.cancellationReason !== undefined) actionUpdate.cancellationReason = body.cancellationReason;
     if (body.rdvFiche !== undefined) {
       actionUpdate.rdvFiche = body.rdvFiche;

@@ -15,6 +15,7 @@ export interface Meeting {
   } | null;
   rdvFicheUpdatedAt?: string | null;
   callbackDate: string | null;
+  channel: "CALL" | "EMAIL" | "LINKEDIN" | null;
   meetingType: string | null;
   meetingCategory: string | null;
   meetingAddress: string | null;

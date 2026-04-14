@@ -76,6 +76,9 @@ export function DetailTab({
   onOpenEditCompany,
   onOpenLinkContact,
 }: DetailTabProps) {
+  const [showChannelSelect, setShowChannelSelect] = useState(false);
+  const [channelSaving, setChannelSaving] = useState(false);
+
   // Inline interlocuteur selector state
   const [showInterlocuteurSelect, setShowInterlocuteurSelect] = useState(false);
   const [interlocuteurOptions, setInterlocuteurOptions] = useState<InterlocuteurOption[]>([]);
@@ -120,10 +123,28 @@ export function DetailTab({
 
   // Reset selector state when switching meeting/client to avoid mixed commercial lists.
   useEffect(() => {
+    setShowChannelSelect(false);
     setShowInterlocuteurSelect(false);
     setInterlocuteurOptions([]);
     setInterlocuteursClientId(null);
   }, [meeting.id, meeting.client?.id]);
+
+  const effectiveChannel = meeting.channel ?? "CALL";
+
+  const handleChannelChange = async (channel: "CALL" | "EMAIL") => {
+    setChannelSaving(true);
+    try {
+      await updateMeeting(meeting.id, { channel });
+      const patch: Partial<Meeting> = { channel };
+      updateLocalMeeting(meeting.id, patch);
+      setSelectedMeeting({ ...meeting, ...patch });
+    } catch (e) {
+      console.error("Failed to update channel:", e);
+    } finally {
+      setChannelSaving(false);
+      setShowChannelSelect(false);
+    }
+  };
 
   const handleInterlocuteurChange = async (interlocuteurId: string | null) => {
     setInterlocuteurSaving(true);
@@ -266,6 +287,76 @@ export function DetailTab({
             {meetingTypeIcon(meeting.meetingType)} {meetingTypeLabel(meeting.meetingType)}
           </span>
         )}
+      </DetailRow>
+
+      <DetailRow label="Canal">
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 500 }}>
+              {effectiveChannel === "EMAIL" ? <Mail size={13} /> : <Phone size={13} />}
+              {effectiveChannel}
+            </span>
+            <button
+              type="button"
+              className="rdv-btn rdv-btn-ghost"
+              style={{ fontSize: 11, padding: "3px 8px", marginLeft: 4 }}
+              onClick={() => setShowChannelSelect((v) => !v)}
+              disabled={channelSaving}
+            >
+              {channelSaving ? (
+                <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
+              ) : (
+                <Pencil size={12} />
+              )}
+              {" "}Changer
+            </button>
+          </div>
+
+          {showChannelSelect && (
+            <div style={{
+              width: "100%",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              background: "var(--surface)",
+              padding: 6,
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}>
+              {(["CALL", "EMAIL"] as const).map((channel) => {
+                const isSelected = effectiveChannel === channel;
+                return (
+                  <button
+                    key={channel}
+                    type="button"
+                    onClick={() => handleChannelChange(channel)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "7px 10px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: isSelected ? "var(--surface2)" : "transparent",
+                      cursor: "pointer",
+                      width: "100%",
+                      textAlign: "left",
+                      fontSize: 12,
+                      color: "var(--ink)",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--surface2)"; }}
+                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    {channel === "EMAIL" ? <Mail size={13} /> : <Phone size={13} />}
+                    <span style={{ fontWeight: isSelected ? 600 : 400 }}>{channel}</span>
+                    {isSelected && <Check size={13} style={{ marginLeft: "auto", color: "var(--accent)" }} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </DetailRow>
 
       <DetailRow label="Catégorie">
