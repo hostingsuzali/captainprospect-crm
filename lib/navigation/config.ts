@@ -27,6 +27,7 @@ import {
   FileDown,
   Activity,
   Key,
+  Brain,
 } from "lucide-react";
 import { UserRole } from "@prisma/client";
 
@@ -115,6 +116,12 @@ export const MANAGER_NAV: NavSection[] = [
         href: "/manager/analytics",
         icon: BarChart3,
         label: "Statistiques",
+        permission: "pages.analytics",
+      },
+      {
+        href: "/manager/analyse-ia",
+        icon: Brain,
+        label: "Analyse IA",
         permission: "pages.analytics",
       },
       {

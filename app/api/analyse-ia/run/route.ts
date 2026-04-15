@@ -44,13 +44,13 @@ async function ingestData(
         createdAt: { gte: weekStart, lte: weekEnd },
     };
     if (missionIds.length > 0) actionWhere.campaign = { missionId: { in: missionIds } };
-    if (sdrIds.length > 0) actionWhere.userId = { in: sdrIds };
+    if (sdrIds.length > 0) actionWhere.sdrId = { in: sdrIds };
 
     // Fetch actions with enrichment data
     const actions = await prisma.action.findMany({
         where: actionWhere,
         include: {
-            contact: { select: { firstName: true, lastName: true, jobTitle: true } },
+            contact: { select: { firstName: true, lastName: true, title: true } },
             company: { select: { name: true, industry: true, size: true } },
             campaign: {
                 select: {
@@ -66,7 +66,7 @@ async function ingestData(
                     },
                 },
             },
-            user: { select: { name: true, id: true } },
+            sdr: { select: { name: true, id: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: 500, // cap for prompt size
@@ -88,7 +88,7 @@ async function ingestData(
             },
             client: { select: { name: true } },
             sdrAssignments: {
-                include: { user: { select: { name: true, id: true } } },
+                include: { sdr: { select: { name: true, id: true } } },
             },
         },
         take: 20,
@@ -117,7 +117,7 @@ async function ingestData(
         .slice(0, 30)
         .map(a => ({
             id: a.id,
-            sdr: a.user?.name,
+            sdr: a.sdr?.name,
             company: a.company?.name,
             result: a.result,
             transcription: a.callTranscription!.slice(0, 800), // truncate for prompt
@@ -133,7 +133,7 @@ async function ingestData(
             note: a.note!.slice(0, 300),
             company: a.company?.name,
             contactTitle: a.contact?.jobTitle,
-            sdr: a.user?.name,
+            sdr: a.sdr?.name,
         }));
 
     // RDV fiches
@@ -148,8 +148,8 @@ async function ingestData(
     // SDR performance
     const sdrPerf: Record<string, { name: string; calls: number; meetings: number; conversionRate: number }> = {};
     for (const a of actions) {
-        const uid = a.userId || 'unknown';
-        const name = a.user?.name || 'Inconnu';
+        const uid = a.sdrId || 'unknown';
+        const name = a.sdr?.name || 'Inconnu';
         if (!sdrPerf[uid]) sdrPerf[uid] = { name, calls: 0, meetings: 0, conversionRate: 0 };
         if (a.channel === 'CALL') sdrPerf[uid].calls++;
         if (a.result === 'MEETING_BOOKED') sdrPerf[uid].meetings++;
