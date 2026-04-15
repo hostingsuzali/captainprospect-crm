@@ -83,7 +83,7 @@ async function ingestData(
                     name: true,
                     icp: true,
                     pitch: true,
-                    channel: true,
+                    commsChannel: true,
                 },
             },
             client: { select: { name: true } },
@@ -166,7 +166,7 @@ async function ingestData(
             campaignName: c.name,
             icp: c.icp,
             pitch: c.pitch,
-            channel: c.channel,
+            channel: c.commsChannel,
         }))
     );
 
