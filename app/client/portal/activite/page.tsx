@@ -222,7 +222,7 @@ function CallCard({
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                             <ResultBadge result={call.result} resultMeta={resultMeta} />
-                            <span className="text-[11px] text-slate-400 tabular-nums">
+                            <span className="text-[10px] text-slate-300 tabular-nums font-medium">
                                 {fmtTime(call.createdAt)}
                             </span>
                         </div>
