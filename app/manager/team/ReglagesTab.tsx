@@ -24,6 +24,7 @@ interface User {
     email: string;
     role: string;
     isActive: boolean;
+    alloPhoneNumber?: string | null;
     createdAt: string;
     lastSignInAt?: string | null;
     lastSignInIp?: string | null;
@@ -99,6 +100,7 @@ export function ReglagesTab() {
         password: "",
         role: "SDR",
         clientId: "",
+        alloPhoneNumber: "",
     });
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
     const [formLoading, setFormLoading] = useState(false);
@@ -199,6 +201,7 @@ export function ReglagesTab() {
                 email: formData.email,
                 password: formData.password || undefined,
                 role: formData.role,
+                alloPhoneNumber: formData.alloPhoneNumber.trim() || undefined,
             };
             if (formData.role === "CLIENT" && formData.clientId) {
                 payload.clientId = formData.clientId;
@@ -244,6 +247,7 @@ export function ReglagesTab() {
                 name: formData.name,
                 email: formData.email,
                 role: formData.role,
+                alloPhoneNumber: formData.alloPhoneNumber.trim() || null,
             };
             if (formData.password) {
                 updateData.password = formData.password;
@@ -362,7 +366,7 @@ export function ReglagesTab() {
     };
 
     const resetForm = () => {
-        setFormData({ name: "", email: "", password: "", role: "SDR", clientId: "" });
+        setFormData({ name: "", email: "", password: "", role: "SDR", clientId: "", alloPhoneNumber: "" });
         setFormErrors({});
         setSelectedUser(null);
     };
@@ -375,6 +379,7 @@ export function ReglagesTab() {
             password: "",
             role: user.role,
             clientId: user.client?.id ?? "",
+            alloPhoneNumber: user.alloPhoneNumber ?? "",
         });
         setShowEditModal(true);
     };
@@ -461,6 +466,7 @@ export function ReglagesTab() {
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Client</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Missions</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions (total)</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Numéro Allo</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Connexion</th>
                                 <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                             </tr>
@@ -468,7 +474,7 @@ export function ReglagesTab() {
                         <tbody className="divide-y divide-slate-200">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={8} className="px-6 py-12 text-center">
+                                    <td colSpan={9} className="px-6 py-12 text-center">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
                                             <span className="text-slate-500">Chargement...</span>
@@ -477,7 +483,7 @@ export function ReglagesTab() {
                                 </tr>
                             ) : users.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="px-6 py-12 text-center">
+                                    <td colSpan={9} className="px-6 py-12 text-center">
                                         <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                                         <p className="text-slate-500">Aucun utilisateur trouvé</p>
                                     </td>
@@ -529,6 +535,13 @@ export function ReglagesTab() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="text-slate-900 font-medium">{user._count.actions}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {user.alloPhoneNumber ? (
+                                                <span className="text-slate-700 font-medium">{user.alloPhoneNumber}</span>
+                                            ) : (
+                                                <span className="text-slate-400">—</span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4">
                                             {(user.lastConnectedAt || user.lastSignInAt || user.lastSignInIp || user.lastSignInCountry) ? (
@@ -632,6 +645,18 @@ export function ReglagesTab() {
                     </div>
                     <div className="space-y-1.5">
                         <label className="block text-sm font-medium text-slate-700">
+                            Numéro Allo <span className="text-slate-400 font-normal">(optionnel)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.alloPhoneNumber}
+                            onChange={(e) => setFormData({ ...formData, alloPhoneNumber: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm transition-all duration-200 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                            placeholder="+33612345678"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="block text-sm font-medium text-slate-700">
                             Mot de passe <span className="text-slate-400 font-normal">(optionnel)</span>
                         </label>
                         <input
@@ -724,6 +749,18 @@ export function ReglagesTab() {
                             value={formData.email}
                             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                             className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm transition-all duration-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="block text-sm font-medium text-slate-700">
+                            Numéro Allo <span className="text-slate-400 font-normal">(optionnel)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.alloPhoneNumber}
+                            onChange={(e) => setFormData({ ...formData, alloPhoneNumber: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm transition-all duration-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                            placeholder="+33612345678"
                         />
                     </div>
                     <div className="space-y-1.5">

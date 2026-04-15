@@ -123,6 +123,7 @@ export const PUT = withErrorHandler(
           meetingJoinUrl: updated.meetingJoinUrl ?? null,
           meetingAddress: updated.meetingAddress ?? null,
           meetingPhone: updated.meetingPhone ?? null,
+          interlocuteurId: updated.interlocuteur?.id ?? (updated as any).interlocuteurId ?? undefined,
         });
       }
     }

@@ -8,6 +8,7 @@ import {
     errorResponse,
 } from '@/lib/api-utils';
 import { validateApiKey, extractApiKey, logApiKeyUsage } from '@/lib/api-keys';
+import { parseAlloCallsListResponse } from '@/lib/call-enrichment/allo-response';
 
 // ============================================
 // GET /api/stats - Dashboard statistics
@@ -248,18 +249,41 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const uniqueContacts = uniqueContactsById.length;
     const talkTimeSeconds = totalTalkTimeAgg._sum.duration ?? 0;
 
-    let leaderboard: { id: string; name: string; actions: number }[] = [];
+    let leaderboard: { id: string; name: string; calls: number; connectedCalls: number; actions: number }[] = [];
     let rdvLeaderboard: { id: string; name: string; rdv: number; actions: number }[] = [];
     const allSdrIds = [...new Set([...topSDRs.map((s) => s.sdrId), ...rdvBySdr.map((s) => s.sdrId)])];
     if (allSdrIds.length > 0) {
+        const alloApiKey = process.env.ALLO_API_KEY;
         const sdrs = await prisma.user.findMany({
             where: { id: { in: allSdrIds } },
-            select: { id: true, name: true },
+            select: { id: true, name: true, alloPhoneNumber: true },
         });
+        const alloMetricsByNumber = new Map<string, { calls: number; connectedCalls: number }>();
+        if (userRole === 'MANAGER' && alloApiKey) {
+            const uniqueAlloNumbers = [...new Set(
+                sdrs
+                    .map((u) => u.alloPhoneNumber?.trim())
+                    .filter((n): n is string => !!n)
+            )];
+            if (uniqueAlloNumbers.length > 0) {
+                const metrics = await fetchAlloCallMetricsByLine(
+                    uniqueAlloNumbers,
+                    dateFrom,
+                    dateTo,
+                    alloApiKey
+                );
+                for (const [number, value] of Object.entries(metrics)) {
+                    alloMetricsByNumber.set(number, value);
+                }
+            }
+        }
         const nameMap = new Map(sdrs.map((u) => [u.id, u.name]));
         const actionMap = new Map(topSDRs.map((s) => [s.sdrId, s._count._all]));
+        const alloNumberByUser = new Map(sdrs.map((u) => [u.id, u.alloPhoneNumber?.trim() || null]));
 
         leaderboard = topSDRs.map((s) => ({
+            calls: alloMetricsByNumber.get(alloNumberByUser.get(s.sdrId) || '')?.calls || 0,
+            connectedCalls: alloMetricsByNumber.get(alloNumberByUser.get(s.sdrId) || '')?.connectedCalls || 0,
             id: s.sdrId,
             name: nameMap.get(s.sdrId) || 'Unknown',
             actions: s._count._all,
@@ -331,4 +355,77 @@ async function getClientIdFromSession(userId: string): Promise<string | null> {
         select: { clientId: true },
     });
     return user?.clientId || null;
+}
+
+const ALLO_BASE_URL = 'https://api.withallo.com';
+const ALLO_CONNECTED_RESULTS = new Set([
+    'ANSWERED',
+    'TRANSFERRED_AI',
+    'TRANSFERRED_EXTERNAL',
+    'RECEIVED',
+    'CLOSED',
+]);
+
+function normalizeIsoDate(d: Date): string {
+    return d.toISOString().split('T')[0];
+}
+
+async function fetchAlloCallMetricsByLine(
+    alloNumbers: string[],
+    dateFrom: Date,
+    dateTo: Date,
+    apiKey: string
+): Promise<Record<string, { calls: number; connectedCalls: number }>> {
+    const byNumber: Record<string, { calls: number; connectedCalls: number }> = {};
+    const fromIso = normalizeIsoDate(dateFrom);
+    const toIso = normalizeIsoDate(dateTo);
+
+    for (const alloNumber of alloNumbers) {
+        const totals = { calls: 0, connectedCalls: 0 };
+        let page = 0;
+        let totalPages = 1;
+
+        while (page < totalPages) {
+            const url = new URL(`${ALLO_BASE_URL}/v1/api/calls`);
+            url.searchParams.set('allo_number', alloNumber);
+            url.searchParams.set('size', '100');
+            url.searchParams.set('page', String(page));
+
+            const res = await fetch(url.toString(), {
+                headers: { Authorization: apiKey },
+                cache: 'no-store',
+            });
+            if (!res.ok) {
+                break;
+            }
+
+            const body = await res.json();
+            const parsed = parseAlloCallsListResponse(body);
+            totalPages = parsed.totalPages;
+
+            for (const call of parsed.rawCalls) {
+                const rawStart = call.start_date ?? call.start_time ?? call.created_at;
+                if (!rawStart) continue;
+                const callDate = new Date(String(rawStart));
+                if (Number.isNaN(callDate.getTime())) continue;
+
+                const callDay = normalizeIsoDate(callDate);
+                if (callDay < fromIso || callDay > toIso) {
+                    continue;
+                }
+
+                totals.calls += 1;
+                const result = typeof call.result === 'string' ? call.result.toUpperCase() : '';
+                if (ALLO_CONNECTED_RESULTS.has(result)) {
+                    totals.connectedCalls += 1;
+                }
+            }
+
+            page += 1;
+        }
+
+        byNumber[alloNumber] = totals;
+    }
+
+    return byNumber;
 }

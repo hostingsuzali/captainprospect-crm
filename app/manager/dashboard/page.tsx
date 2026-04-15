@@ -30,7 +30,7 @@ interface DashboardStats {
         NO_RESPONSE: number; BAD_CONTACT: number; INTERESTED: number;
         CALLBACK_REQUESTED: number; MEETING_BOOKED: number; DISQUALIFIED: number;
     };
-    leaderboard: { id: string; name: string; actions: number }[];
+    leaderboard: { id: string; name: string; calls: number; connectedCalls: number; actions: number }[];
     rdvLeaderboard: { id: string; name: string; rdv: number; actions: number }[];
 }
 interface MissionSummaryItem {
@@ -582,6 +582,7 @@ export default function ManagerDashboard() {
                                     const isFirst = i === 0;
                                     const maxRdv = stats.rdvLeaderboard[0]?.rdv || 1;
                                     const barPct = Math.round((person.rdv / maxRdv) * 100);
+                                    const callStats = stats.leaderboard.find((entry) => entry.id === person.id);
                                     return (
                                         <div key={person.id}
                                             className={cn(
@@ -612,6 +613,17 @@ export default function ManagerDashboard() {
                                                         isFirst ? "text-violet-700" : "text-slate-700"
                                                     )}>{person.name}</span>
                                                     <span className="text-[13px] font-black text-slate-800 flex-shrink-0 ml-2">{person.rdv}<span className="text-[10px] font-normal text-slate-400 ml-0.5">RDV</span></span>
+                                                </div>
+                                                <div className="flex items-center gap-2 mb-1.5">
+                                                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                                        Appels {callStats?.calls ?? 0}
+                                                    </span>
+                                                    <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                                        Connectés {callStats?.connectedCalls ?? 0}
+                                                    </span>
+                                                    <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                                                        Actions CRM {person.actions}
+                                                    </span>
                                                 </div>
                                                 <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                                                     <div className="h-full rounded-full transition-all duration-700"

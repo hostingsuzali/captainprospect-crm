@@ -10,6 +10,8 @@ export interface RdvNotificationData {
   meetingAddress?: string | null;
   meetingPhone?: string | null;
   appUrl?: string;
+  /** Override the portal path used in the CTA button. Defaults to /client/portal/meetings. */
+  portalPath?: string;
 }
 
 function formatDate(date: Date): string {
@@ -144,6 +146,7 @@ export function buildRdvNotificationEmail(data: RdvNotificationData): {
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.NEXTAUTH_URL ||
     "https://app.captainprospect.fr";
+  const portalPath = data.portalPath || "/client/portal/meetings";
 
   const contactName = [data.contactFirstName, data.contactLastName]
     .filter(Boolean)
@@ -304,7 +307,7 @@ export function buildRdvNotificationEmail(data: RdvNotificationData): {
               <table cellpadding="0" cellspacing="0" width="100%">
                 <tr>
                   <td align="center" style="padding: 8px 0 0;">
-                    <a href="${appUrl}/client/portal/meetings"
+                    <a href="${appUrl}${portalPath}"
                        style="display: inline-block; padding: 13px 32px; background-color: #0f172a; color: #ffffff; font-size: 14px; font-weight: 700; border-radius: 8px; text-decoration: none; letter-spacing: 0.01em;">
                       Voir tous mes RDVs →
                     </a>
@@ -368,6 +371,7 @@ export function substituteTemplateVariables(
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.NEXTAUTH_URL ||
     "https://app.captainprospect.fr";
+  const portalPath = data.portalPath || "/client/portal/meetings";
 
   const contactName = [data.contactFirstName, data.contactLastName]
     .filter(Boolean)
@@ -389,7 +393,7 @@ export function substituteTemplateVariables(
     "{{meetingJoinUrl}}": data.meetingJoinUrl || "",
     "{{meetingAddress}}": data.meetingAddress || "",
     "{{meetingPhone}}": data.meetingPhone || "",
-    "{{portalUrl}}": `${appUrl}/client/portal/meetings`,
+    "{{portalUrl}}": `${appUrl}${portalPath}`,
   };
 
   return Object.entries(vars).reduce(

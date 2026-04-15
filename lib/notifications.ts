@@ -326,7 +326,7 @@ export async function createMilestoneNotification(
 // ============================================
 
 export interface RdvEmailNotificationData extends RdvNotificationData {
-    // all fields inherited from RdvNotificationData
+    interlocuteurId?: string;
 }
 
 /**
@@ -344,7 +344,7 @@ export async function sendNewRdvEmailNotification(
     data: RdvEmailNotificationData
 ): Promise<void> {
     try {
-        const [clientUsers, client, customTemplate] = await Promise.all([
+        const [clientUsers, client, customTemplate, interlocuteur] = await Promise.all([
             prisma.user.findMany({
                 where: { role: "CLIENT", clientId, isActive: true },
                 select: { email: true },
@@ -357,6 +357,15 @@ export async function sendNewRdvEmailNotification(
                 where: { key: "rdv_notification" },
                 select: { subject: true, bodyHtml: true },
             }),
+            data.interlocuteurId
+                ? prisma.clientInterlocuteur.findUnique({
+                      where: { id: data.interlocuteurId },
+                      select: {
+                          emails: true,
+                          portalUser: { select: { email: true } },
+                      },
+                  })
+                : Promise.resolve(null),
         ]);
 
         // Respect per-client opt-out (default true if field doesn't exist yet)
@@ -370,20 +379,64 @@ export async function sendNewRdvEmailNotification(
         }
         if (client?.email) recipients.add(client.email);
 
-        if (recipients.size === 0) {
-            return;
+        const interlocuteurRecipients = new Set<string>();
+        if (interlocuteur) {
+            const rawEmails = Array.isArray(interlocuteur.emails) ? interlocuteur.emails : [];
+            for (const item of rawEmails) {
+                if (typeof item === "string") {
+                    const value = item.trim();
+                    if (value) interlocuteurRecipients.add(value);
+                    continue;
+                }
+                if (item && typeof item === "object") {
+                    const maybeValue = (item as { value?: unknown }).value;
+                    if (typeof maybeValue === "string" && maybeValue.trim()) {
+                        interlocuteurRecipients.add(maybeValue.trim());
+                    }
+                }
+            }
+            if (interlocuteur.portalUser?.email) {
+                interlocuteurRecipients.add(interlocuteur.portalUser.email);
+            }
         }
 
-        // Use custom DB template if available, otherwise use default dynamic builder
-        const { subject, html } = customTemplate
-            ? buildRdvEmailFromCustomTemplate(customTemplate.subject, customTemplate.bodyHtml, data)
-            : buildRdvNotificationEmail(data);
+        // If an email belongs to the interlocuteur, prefer the commercial CTA version.
+        for (const email of interlocuteurRecipients) {
+            recipients.delete(email);
+        }
 
-        await Promise.allSettled(
-            Array.from(recipients).map((email) =>
-                sendTransactionalEmail({ to: email, subject, html })
-            )
-        );
+        if (recipients.size > 0) {
+            // Use custom DB template if available, otherwise use default dynamic builder
+            const { subject, html } = customTemplate
+                ? buildRdvEmailFromCustomTemplate(customTemplate.subject, customTemplate.bodyHtml, data)
+                : buildRdvNotificationEmail(data);
+
+            await Promise.allSettled(
+                Array.from(recipients).map((email) =>
+                    sendTransactionalEmail({ to: email, subject, html })
+                )
+            );
+        }
+
+        if (interlocuteurRecipients.size > 0) {
+            const interlocuteurData: RdvNotificationData = {
+                ...data,
+                portalPath: "/commercial/portal/meetings",
+            };
+            const { subject, html } = customTemplate
+                ? buildRdvEmailFromCustomTemplate(
+                      customTemplate.subject,
+                      customTemplate.bodyHtml,
+                      interlocuteurData
+                  )
+                : buildRdvNotificationEmail(interlocuteurData);
+
+            await Promise.allSettled(
+                Array.from(interlocuteurRecipients).map((email) =>
+                    sendTransactionalEmail({ to: email, subject, html })
+                )
+            );
+        }
     } catch (error) {
         console.error("[sendNewRdvEmailNotification] Failed:", error);
     }

@@ -41,6 +41,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     select: {
       id: true,
       callbackDate: true,
+      interlocuteurId: true,
       meetingType: true,
       meetingJoinUrl: true,
       meetingAddress: true,
@@ -85,6 +86,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             meetingJoinUrl: m.meetingJoinUrl ?? null,
             meetingAddress: m.meetingAddress ?? null,
             meetingPhone: m.meetingPhone ?? null,
+            interlocuteurId: m.interlocuteurId ?? undefined,
           });
         })
     );

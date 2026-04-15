@@ -380,6 +380,7 @@ model User {
 
   // Profile (all roles)
   phone                String?
+  alloPhoneNumber      String?
   timezone             String?   @default("Europe/Paris")
   preferences          Json?     // notifications, appearance, workingHours
 

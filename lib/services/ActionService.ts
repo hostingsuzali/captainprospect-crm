@@ -284,6 +284,7 @@ export class ActionService {
                         meetingJoinUrl: anyRecord.meetingJoinUrl ?? undefined,
                         meetingAddress: anyRecord.meetingAddress ?? undefined,
                         meetingPhone: anyRecord.meetingPhone ?? undefined,
+                        interlocuteurId: anyRecord.interlocuteurId ?? undefined,
                     });
                 } else {
                     await createClientPortalNotification(clientId, {
