@@ -6,6 +6,7 @@ import {
     withErrorHandler,
 } from '@/lib/api-utils';
 import { ActionResult, Prisma } from '@prisma/client';
+import { parseAlloCallsListResponse } from '@/lib/call-enrichment/allo-response';
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
     // Only Managers and Developers can see full team stats
@@ -198,6 +199,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         `),
     ]);
 
+    const sdrPerformanceWithAllo = await enrichSdrPerformanceWithAlloCalls(
+        sdrPerformanceData,
+        dateFrom,
+        dateTo
+    );
+
     // Formatting Status Distribution
     const statuses: Record<string, number> = {};
     statusBreakdown.forEach(curr => {
@@ -240,7 +247,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         statusBreakdown: statuses,
         segments,
         funnel,
-        sdrPerformance: sdrPerformanceData,
+        sdrPerformance: sdrPerformanceWithAllo,
         missionStates: missionStatesData.map(m => ({
             ...m,
             sdrNames: m.sdrNames ? m.sdrNames.split(',') : []
@@ -255,3 +262,133 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     });
 
 });
+
+const ALLO_BASE_URL = 'https://api.withallo.com';
+const ALLO_CONNECTED_RESULTS = new Set([
+    'ANSWERED',
+    'TRANSFERRED_AI',
+    'TRANSFERRED_EXTERNAL',
+    'RECEIVED',
+    'CLOSED',
+]);
+
+async function enrichSdrPerformanceWithAlloCalls(
+    rows: any[],
+    dateFrom: Date,
+    dateTo: Date
+): Promise<any[]> {
+    if (!Array.isArray(rows) || rows.length === 0) {
+        return rows;
+    }
+
+    const apiKey = process.env.ALLO_API_KEY;
+    if (!apiKey) {
+        return rows.map((r) => ({
+            ...r,
+            crmActions: r.calls ?? 0,
+            alloCalls: 0,
+            connectedCalls: 0,
+        }));
+    }
+
+    const sdrIds = rows
+        .map((r) => String(r.sdrId || ''))
+        .filter(Boolean);
+    if (sdrIds.length === 0) {
+        return rows;
+    }
+
+    const users = await prisma.user.findMany({
+        where: { id: { in: sdrIds } },
+        select: { id: true, alloPhoneNumber: true },
+    });
+
+    const lineBySdrId = new Map(
+        users.map((u) => [u.id, (u.alloPhoneNumber || '').trim()])
+    );
+    const uniqueLines = [...new Set(
+        users
+            .map((u) => (u.alloPhoneNumber || '').trim())
+            .filter((n) => !!n)
+    )];
+
+    const metricsByLine = await fetchAlloCallMetricsByLine(
+        uniqueLines,
+        dateFrom,
+        dateTo,
+        apiKey
+    );
+
+    return rows.map((r) => {
+        const line = lineBySdrId.get(String(r.sdrId || '')) || '';
+        const metrics = line ? (metricsByLine[line] || { calls: 0, connectedCalls: 0 }) : { calls: 0, connectedCalls: 0 };
+        return {
+            ...r,
+            crmActions: r.calls ?? 0,
+            alloCalls: metrics.calls,
+            connectedCalls: metrics.connectedCalls,
+        };
+    });
+}
+
+function normalizeDay(date: Date): string {
+    return date.toISOString().split('T')[0];
+}
+
+async function fetchAlloCallMetricsByLine(
+    alloNumbers: string[],
+    dateFrom: Date,
+    dateTo: Date,
+    apiKey: string
+): Promise<Record<string, { calls: number; connectedCalls: number }>> {
+    const byLine: Record<string, { calls: number; connectedCalls: number }> = {};
+    const fromIso = normalizeDay(dateFrom);
+    const toIso = normalizeDay(dateTo);
+
+    for (const alloNumber of alloNumbers) {
+        let page = 0;
+        let totalPages = 1;
+        const totals = { calls: 0, connectedCalls: 0 };
+
+        while (page < totalPages) {
+            const url = new URL(`${ALLO_BASE_URL}/v1/api/calls`);
+            url.searchParams.set('allo_number', alloNumber);
+            url.searchParams.set('size', '100');
+            url.searchParams.set('page', String(page));
+
+            const res = await fetch(url.toString(), {
+                headers: { Authorization: apiKey },
+                cache: 'no-store',
+            });
+            if (!res.ok) {
+                break;
+            }
+
+            const body = await res.json();
+            const parsed = parseAlloCallsListResponse(body);
+            totalPages = parsed.totalPages;
+
+            for (const call of parsed.rawCalls) {
+                const rawStart = call.start_date ?? call.start_time ?? call.created_at;
+                if (!rawStart) continue;
+                const start = new Date(String(rawStart));
+                if (Number.isNaN(start.getTime())) continue;
+
+                const isoDay = normalizeDay(start);
+                if (isoDay < fromIso || isoDay > toIso) continue;
+
+                totals.calls += 1;
+                const result = typeof call.result === 'string' ? call.result.toUpperCase() : '';
+                if (ALLO_CONNECTED_RESULTS.has(result)) {
+                    totals.connectedCalls += 1;
+                }
+            }
+
+            page += 1;
+        }
+
+        byLine[alloNumber] = totals;
+    }
+
+    return byLine;
+}

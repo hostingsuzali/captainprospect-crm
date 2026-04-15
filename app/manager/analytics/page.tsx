@@ -1283,7 +1283,9 @@ export default function AnalyticsPage() {
                             <tr className="bg-slate-50/50">
                                 <th className="px-5 py-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 w-10 text-center">#</th>
                                 <th className="px-5 py-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100">SDR</th>
-                                <th className="px-5 py-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Appels</th>
+                                <th className="px-5 py-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Appels (Allo)</th>
+                                <th className="px-5 py-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Connectés</th>
+                                <th className="px-5 py-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Actions CRM</th>
                                 <th className="px-5 py-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Rappels</th>
                                 <th className="px-5 py-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Meetings</th>
                                 <th className="px-5 py-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100">Taux Contact</th>
@@ -1291,7 +1293,8 @@ export default function AnalyticsPage() {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {(sdrPerformance || []).map((s: any, i: number) => {
-                                const contactRate = Math.round((s.contacts / s.calls) * 100) || 0;
+                                const crmActions = s.crmActions ?? s.calls ?? 0;
+                                const contactRate = Math.round((s.contacts / Math.max(1, crmActions)) * 100) || 0;
                                 const isFirst = i === 0;
                                 return (
                                     <tr key={s.sdrId} className={cn("transition-colors", isFirst ? "bg-gradient-to-r from-violet-50/50 to-transparent" : "hover:bg-slate-50")}>
@@ -1311,7 +1314,9 @@ export default function AnalyticsPage() {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-5 py-4 text-center text-[13.5px] font-black text-slate-700">{s.calls}</td>
+                                        <td className="px-5 py-4 text-center text-[13.5px] font-black text-slate-700">{s.alloCalls ?? 0}</td>
+                                        <td className="px-5 py-4 text-center text-[13.5px] font-black text-indigo-600">{s.connectedCalls ?? 0}</td>
+                                        <td className="px-5 py-4 text-center text-[13.5px] font-black text-slate-700">{crmActions}</td>
                                         <td className="px-5 py-4 text-center text-[13.5px] font-bold text-amber-500">{s.callbacks}</td>
                                         <td className="px-5 py-4 text-center">
                                             <span className={cn("text-[13px] font-black", s.meetings > 0 ? "text-emerald-600" : "text-slate-400")}>{s.meetings}</span>
