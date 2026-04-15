@@ -10,6 +10,7 @@
     "start": "next start -p 5000 -H 0.0.0.0",
     "lint": "eslint",
     "test:call-enrichment": "tsx --test lib/call-enrichment/allo-response.test.ts",
+    "test:list-health": "tsx --test lib/services/ListHealthService.test.ts",
     "db:reset": "tsx prisma/reset.ts",
     "db:verify": "tsx prisma/verify-reset.ts",
     "db:seed-endpoints": "tsx prisma/seed-endpoints.ts",

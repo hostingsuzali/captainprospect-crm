@@ -23,6 +23,7 @@ import {
     Plus,
 } from "lucide-react";
 import Link from "next/link";
+import { ProspectionHealthPanel } from "@/components/lists/ProspectionHealthPanel";
 
 const UnifiedActionDrawer = dynamic(
     () => import("@/components/drawers/UnifiedActionDrawer").then((m) => ({ default: m.UnifiedActionDrawer })),
@@ -739,6 +740,17 @@ export default function ListDetailPage({ params }: { params: Promise<{ id: strin
                     </div>
                 </div>
             </div>
+
+            {/* Prospection Health */}
+            <Card className="p-5">
+                <div className="mb-3">
+                    <h2 className="text-lg font-bold text-slate-900">Santé de prospection</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                        Indicateurs calculés sur les actions réelles (couverture, cadence, ETA, alertes).
+                    </p>
+                </div>
+                <ProspectionHealthPanel listId={list.id} />
+            </Card>
 
             {/* Data Table */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[500px]">

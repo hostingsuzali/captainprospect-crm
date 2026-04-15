@@ -3,10 +3,10 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-    AlertTriangle, TrendingUp, TrendingDown, Minus,
-    Search, SlidersHorizontal, RefreshCw, Loader2,
-    Trophy, Flame, Building2, Users, Target, Zap,
-    Clock, ChevronRight, Info, ArrowUpRight,
+    AlertTriangle, TrendingDown,
+    Search, Loader2,
+    Trophy, Flame, Target, Zap,
+    Clock, ChevronRight, Info,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -20,7 +20,6 @@ import {
     ProspectionHealthBadge,
     ActivityScoreBar,
     VelocityTrendBadge,
-    STATUS_CONFIG,
 } from "./ProspectionHealthBadge";
 
 // ============================================
@@ -341,8 +340,6 @@ export function ListHealthDashboard({
         missionId: initialMissionId ?? '',
         sortBy: 'activityScore',
     });
-    const [showFilters, setShowFilters] = useState(false);
-
     // Determine query mode
     const useIntelligence = !!clientId;
 

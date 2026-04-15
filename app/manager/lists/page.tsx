@@ -8,6 +8,7 @@ import {
     List,
     Building2,
     Users,
+    Activity,
     Plus,
     Upload,
     Search,
@@ -26,6 +27,9 @@ import Link from "next/link";
 import { ListingSearchTab } from "@/components/listing/ListingSearchTab";
 import type { ListingResult } from "@/components/listing/ListingSearchTab";
 import { ImportToListModal } from "@/components/listing/ImportToListModal";
+import { ListHealthDashboard } from "@/components/lists/ListHealthDashboard";
+import { ProspectionHealthBadge } from "@/components/lists/ProspectionHealthBadge";
+import type { ListHealthSummary } from "@/lib/types/health";
 
 // ============================================
 // TYPES
@@ -100,6 +104,20 @@ async function fetchListsApi(): Promise<ListData[]> {
     return allLists;
 }
 
+async function fetchHealthByListIds(listIds: string[]): Promise<Map<string, ListHealthSummary>> {
+    if (listIds.length === 0) return new Map();
+    const params = new URLSearchParams();
+    listIds.forEach((id) => params.append("listIds[]", id));
+    const res = await fetch(`/api/lists/health?${params.toString()}`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || "Impossible de charger la santé des listes");
+    const map = new Map<string, ListHealthSummary>();
+    for (const item of (json.data as ListHealthSummary[])) {
+        map.set(item.listId, item);
+    }
+    return map;
+}
+
 export default function ListsPage() {
     const router = useRouter();
     const queryClient = useQueryClient();
@@ -120,9 +138,16 @@ export default function ListsPage() {
     // ============================================
     // TABS (Lists vs Search)
     // ============================================
-    const [activeTab, setActiveTab] = useState<"lists" | "search">("lists");
+    const [activeTab, setActiveTab] = useState<"lists" | "search" | "health">("lists");
     const [importModalOpen, setImportModalOpen] = useState(false);
     const [resultsToImport, setResultsToImport] = useState<ListingResult[]>([]);
+    const visibleListIds = lists.filter((l) => !l.isArchived).map((l) => l.id);
+    const { data: healthByListId = new Map<string, ListHealthSummary>() } = useQuery({
+        queryKey: ["manager", "lists-health", visibleListIds],
+        queryFn: () => fetchHealthByListIds(visibleListIds),
+        enabled: activeTab === "lists" && visibleListIds.length > 0,
+        staleTime: 2 * 60 * 1000,
+    });
 
     const handleImportRequest = (results: ListingResult[]) => {
         setResultsToImport(results);
@@ -326,6 +351,16 @@ export default function ListsPage() {
                             <Database className={`w-4 h-4 ${activeTab === "search" ? "text-indigo-500" : "text-slate-400"}`} />
                             Recherche de Leads
                         </button>
+                        <button
+                            onClick={() => setActiveTab("health")}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${activeTab === "health"
+                                ? "bg-white text-indigo-700 shadow border-b border-indigo-100"
+                                : "text-slate-500 hover:text-slate-700"
+                                }`}
+                        >
+                            <Activity className={`w-4 h-4 ${activeTab === "health" ? "text-indigo-500" : "text-slate-400"}`} />
+                            Santé Prospection
+                        </button>
                     </div>
 
                     {activeTab === "lists" && (
@@ -524,12 +559,13 @@ export default function ListsPage() {
                     ) : (
                         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                             {/* Table header */}
-                            <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_80px_80px_80px_100px_90px_36px] gap-3 px-5 py-2.5 bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_80px_80px_80px_120px_100px_36px] gap-3 px-5 py-2.5 bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                                 <span>Nom</span>
                                 <span>Mission</span>
                                 <span className="text-center">Type</span>
                                 <span className="text-center">Sociétés</span>
                                 <span className="text-center">Contacts</span>
+                                <span className="text-center">Santé</span>
                                 <span className="text-center">Source</span>
                                 <span></span>
                             </div>
@@ -546,7 +582,7 @@ export default function ListsPage() {
                                             key={list.id}
                                             onClick={() => router.push(`/manager/lists/${list.id}`)}
                                             onContextMenu={(e) => handleContextMenu(e, list)}
-                                            className={`group grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_80px_80px_80px_100px_90px_36px] gap-3 px-5 py-3 cursor-pointer transition-colors hover:bg-indigo-50/40 ${list.isArchived ? "opacity-60" : ""}`}
+                                            className={`group grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_80px_80px_80px_120px_100px_36px] gap-3 px-5 py-3 cursor-pointer transition-colors hover:bg-indigo-50/40 ${list.isArchived ? "opacity-60" : ""}`}
                                         >
                                             {/* Name + badges */}
                                             <div className="flex items-center gap-3 min-w-0">
@@ -589,6 +625,23 @@ export default function ListsPage() {
 
                                             
 
+                                            {/* Health */}
+                                            <div className="flex items-center justify-center">
+                                                {(() => {
+                                                    const health = healthByListId.get(list.id);
+                                                    if (!health) {
+                                                        return <span className="text-[11px] text-slate-400">—</span>;
+                                                    }
+                                                    return (
+                                                        <ProspectionHealthBadge
+                                                            status={health.status}
+                                                            statusLabel={health.statusLabel}
+                                                            compact
+                                                        />
+                                                    );
+                                                })()}
+                                            </div>
+
                                             {/* Source */}
                                             <div className="flex items-center justify-center">
                                                 <span className="text-[11px] font-medium text-slate-400 truncate">{list.source || "—"}</span>
@@ -613,9 +666,13 @@ export default function ListsPage() {
                         </div>
                     )}
                 </>
-            ) : (
+            ) : activeTab === "search" ? (
                 <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm min-h-[600px] flex flex-col">
                     <ListingSearchTab onImport={handleImportRequest} />
+                </div>
+            ) : (
+                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm p-5">
+                    <ListHealthDashboard />
                 </div>
             )}
 

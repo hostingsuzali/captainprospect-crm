@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-    TrendingUp, TrendingDown, Minus, Users, Zap, Clock,
+    TrendingUp, Users, Zap,
     Calendar, Target, AlertTriangle, CheckCircle2, Info,
     ChevronDown, ChevronUp, Loader2, HelpCircle,
 } from "lucide-react";
@@ -212,7 +213,7 @@ export function ProspectionHealthPanel({
     collapsible = false,
     defaultExpanded = true,
 }: ProspectionHealthPanelProps) {
-    const [expanded, setExpanded] = [defaultExpanded, () => {}];
+    const [expanded, setExpanded] = useState(defaultExpanded);
     const toggleExpanded = collapsible ? () => setExpanded(!expanded) : undefined;
 
     const { data: health, isLoading, error } = useQuery({
