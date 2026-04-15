@@ -12,6 +12,14 @@ const querySchema = z.object({
     from: z.string().optional(),
     to: z.string().optional(),
     missionId: z.string().optional(),
+    sdrId: z.string().optional(),
+    search: z.string().trim().max(200).optional(),
+    minScore: z.coerce.number().int().min(1).max(5).optional(),
+    maxScore: z.coerce.number().int().min(1).max(5).optional(),
+    withObjections: z.enum(["true", "false"]).optional(),
+    withMissionComment: z.enum(["true", "false"]).optional(),
+    sortBy: z.enum(["submittedAt", "score", "sdr"]).default("submittedAt"),
+    sortOrder: z.enum(["asc", "desc"]).default("desc"),
     limit: z.coerce.number().int().min(1).max(500).default(100),
 });
 
@@ -42,6 +50,14 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         from: searchParams.get("from") ?? undefined,
         to: searchParams.get("to") ?? undefined,
         missionId: searchParams.get("missionId") ?? undefined,
+        sdrId: searchParams.get("sdrId") ?? undefined,
+        search: searchParams.get("search") ?? undefined,
+        minScore: searchParams.get("minScore") ?? undefined,
+        maxScore: searchParams.get("maxScore") ?? undefined,
+        withObjections: searchParams.get("withObjections") ?? undefined,
+        withMissionComment: searchParams.get("withMissionComment") ?? undefined,
+        sortBy: searchParams.get("sortBy") ?? undefined,
+        sortOrder: searchParams.get("sortOrder") ?? undefined,
         limit: searchParams.get("limit") ?? undefined,
     });
     if (!parsed.success) {
@@ -65,14 +81,60 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
               ],
           }
         : {};
+    const sdrId = parsed.data.sdrId?.trim();
+    const scoreFilters = {
+        ...(parsed.data.minScore ? { gte: parsed.data.minScore } : {}),
+        ...(parsed.data.maxScore ? { lte: parsed.data.maxScore } : {}),
+    };
+    const scoreFilter = Object.keys(scoreFilters).length ? { score: scoreFilters } : {};
+    const search = parsed.data.search?.trim();
+
     const where = {
         ...submittedAtFilter,
         ...missionFilter,
+        ...(sdrId ? { sdrId } : {}),
+        ...scoreFilter,
+        ...(parsed.data.withObjections === "true"
+            ? { objections: { not: null } }
+            : parsed.data.withObjections === "false"
+              ? { objections: null }
+              : {}),
+        ...(parsed.data.withMissionComment === "true"
+            ? { missionComment: { not: null } }
+            : parsed.data.withMissionComment === "false"
+              ? { missionComment: null }
+              : {}),
+        ...(search
+            ? {
+                  OR: [
+                      { review: { contains: search, mode: "insensitive" as const } },
+                      { objections: { contains: search, mode: "insensitive" as const } },
+                      { missionComment: { contains: search, mode: "insensitive" as const } },
+                      { sdr: { name: { contains: search, mode: "insensitive" as const } } },
+                      {
+                          missions: {
+                              some: {
+                                  mission: {
+                                      name: { contains: search, mode: "insensitive" as const },
+                                  },
+                              },
+                          },
+                      },
+                  ],
+              }
+            : {}),
     };
+
+    const orderBy =
+        parsed.data.sortBy === "score"
+            ? { score: parsed.data.sortOrder }
+            : parsed.data.sortBy === "sdr"
+              ? { sdr: { name: parsed.data.sortOrder } }
+              : { submittedAt: parsed.data.sortOrder };
 
     const rows = await prisma.sdrDailyFeedback.findMany({
         where,
-        orderBy: { submittedAt: "desc" },
+        orderBy,
         take: parsed.data.limit,
         select: {
             id: true,

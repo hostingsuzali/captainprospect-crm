@@ -10,9 +10,9 @@ import {
 
 const createFeedbackSchema = z.object({
     score: z.number().int().min(1).max(5),
-    review: z.string().trim().min(3).max(4000),
-    objections: z.string().trim().max(4000).optional().nullable(),
-    missionComment: z.string().trim().max(4000).optional().nullable(),
+    review: z.string().trim().min(20).max(4000),
+    objections: z.string().trim().min(10).max(4000),
+    missionComment: z.string().trim().min(10).max(4000),
     missionIds: z.array(z.string().trim().min(1)).min(1).max(20),
     pagePath: z.string().trim().max(255).optional().nullable(),
 });
@@ -48,8 +48,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             missionId: missionIds[0] ?? null,
             score: data.score,
             review: data.review,
-            objections: data.objections?.trim() || null,
-            missionComment: data.missionComment?.trim() || null,
+            objections: data.objections.trim(),
+            missionComment: data.missionComment.trim(),
             pagePath: data.pagePath?.trim() || null,
             missions: {
                 create: missionIds.map((missionId) => ({ missionId })),

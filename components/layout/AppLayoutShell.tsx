@@ -189,7 +189,18 @@ function InnerLayout({
 
     const handleSubmitDailyReview = async () => {
         const trimmedReview = dailyReviewText.trim();
-        if (!trimmedReview) return;
+        const trimmedObjections = dailyReviewObjections.trim();
+        const trimmedMissionComment = dailyReviewMissionComment.trim();
+        if (
+            trimmedReview.length < 20 ||
+            trimmedObjections.length < 10 ||
+            trimmedMissionComment.length < 10
+        ) {
+            setDailyReviewError(
+                "Merci de remplir tous les champs requis (avis 20 caractères min, objections 10 min, commentaire mission 10 min).",
+            );
+            return;
+        }
 
         try {
             setDailyReviewSubmitting(true);
@@ -202,8 +213,8 @@ function InnerLayout({
                 body: JSON.stringify({
                     score: dailyReviewScore,
                     review: trimmedReview,
-                    objections: dailyReviewObjections.trim() || null,
-                    missionComment: dailyReviewMissionComment.trim() || null,
+                    objections: trimmedObjections,
+                    missionComment: trimmedMissionComment,
                     missionIds: dailyReviewMissionIds.length
                         ? dailyReviewMissionIds
                         : missionId
@@ -358,38 +369,47 @@ function InnerLayout({
 
                         <div>
                             <label className="block text-[12px] font-semibold text-[#12122A] mb-2">
-                                Comment s'est passée votre journée ?
+                                Comment s'est passée votre journée ? *
                             </label>
                             <textarea
                                 value={dailyReviewText}
                                 onChange={(e) => setDailyReviewText(e.target.value)}
-                                placeholder="Résumez votre performance, vos difficultés et vos succès..."
+                                placeholder="Résumez votre performance, vos difficultés et vos succès (min. 20 caractères)..."
                                 className="w-full min-h-[92px] rounded-xl border border-[#E8EBF0] px-3 py-2.5 text-[13px] text-[#12122A] placeholder:text-[#8B8BA7] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/25 focus:border-[#7C5CFC] resize-y"
                             />
+                            <p className="mt-1 text-[11px] text-[#8B8BA7]">
+                                {dailyReviewText.trim().length}/20 minimum
+                            </p>
                         </div>
 
                         <div>
                             <label className="block text-[12px] font-semibold text-[#12122A] mb-2">
-                                Objections rencontrées aujourd'hui
+                                Objections rencontrées aujourd'hui *
                             </label>
                             <textarea
                                 value={dailyReviewObjections}
                                 onChange={(e) => setDailyReviewObjections(e.target.value)}
-                                placeholder="Ex: budget, timing, concurrence, pas le bon contact..."
+                                placeholder="Ex: budget, timing, concurrence, pas le bon contact... (min. 10 caractères)"
                                 className="w-full min-h-[82px] rounded-xl border border-[#E8EBF0] px-3 py-2.5 text-[13px] text-[#12122A] placeholder:text-[#8B8BA7] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/25 focus:border-[#7C5CFC] resize-y"
                             />
+                            <p className="mt-1 text-[11px] text-[#8B8BA7]">
+                                {dailyReviewObjections.trim().length}/10 minimum
+                            </p>
                         </div>
 
                         <div>
                             <label className="block text-[12px] font-semibold text-[#12122A] mb-2">
-                                Commentaires sur la mission (optionnel)
+                                Commentaires sur la mission *
                             </label>
                             <textarea
                                 value={dailyReviewMissionComment}
                                 onChange={(e) => setDailyReviewMissionComment(e.target.value)}
-                                placeholder="Besoin de script, meilleure accroche, feedback ciblage..."
+                                placeholder="Besoin de script, meilleure accroche, feedback ciblage... (min. 10 caractères)"
                                 className="w-full min-h-[82px] rounded-xl border border-[#E8EBF0] px-3 py-2.5 text-[13px] text-[#12122A] placeholder:text-[#8B8BA7] focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/25 focus:border-[#7C5CFC] resize-y"
                             />
+                            <p className="mt-1 text-[11px] text-[#8B8BA7]">
+                                {dailyReviewMissionComment.trim().length}/10 minimum
+                            </p>
                         </div>
 
                         <div>
@@ -428,7 +448,9 @@ function InnerLayout({
                                 type="button"
                                 onClick={() => void handleSubmitDailyReview()}
                                 disabled={
-                                    !dailyReviewText.trim() ||
+                                    dailyReviewText.trim().length < 20 ||
+                                    dailyReviewObjections.trim().length < 10 ||
+                                    dailyReviewMissionComment.trim().length < 10 ||
                                     dailyReviewSubmitting ||
                                     dailyReviewMissionIds.length === 0
                                 }

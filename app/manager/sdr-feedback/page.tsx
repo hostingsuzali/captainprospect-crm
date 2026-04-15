@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, MessageSquare, RefreshCw } from "lucide-react";
+import { ArrowUpDown, Loader2, MessageSquare, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type FeedbackItem = {
@@ -40,18 +40,35 @@ export default function ManagerSdrFeedbackPage() {
     const [items, setItems] = useState<FeedbackItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [search, setSearch] = useState("");
     const [from, setFrom] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 7);
         return toInputDate(d);
     });
     const [to, setTo] = useState(() => toInputDate(new Date()));
+    const [selectedSdrId, setSelectedSdrId] = useState("all");
+    const [selectedScore, setSelectedScore] = useState("all");
+    const [objectionsFilter, setObjectionsFilter] = useState("all");
+    const [missionCommentFilter, setMissionCommentFilter] = useState("all");
+    const [sortBy, setSortBy] = useState<"submittedAt" | "score" | "sdr">("submittedAt");
+    const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
     const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const params = new URLSearchParams({ from, to, limit: "300" });
+            const params = new URLSearchParams({ from, to, limit: "500", sortBy, sortOrder });
+            if (search.trim()) params.set("search", search.trim());
+            if (selectedSdrId !== "all") params.set("sdrId", selectedSdrId);
+            if (selectedScore !== "all") {
+                params.set("minScore", selectedScore);
+                params.set("maxScore", selectedScore);
+            }
+            if (objectionsFilter !== "all") params.set("withObjections", objectionsFilter);
+            if (missionCommentFilter !== "all") {
+                params.set("withMissionComment", missionCommentFilter);
+            }
             const res = await fetch(`/api/manager/sdr-feedback?${params.toString()}`);
             const json = await res.json();
             if (!json.success) {
@@ -66,11 +83,19 @@ export default function ManagerSdrFeedbackPage() {
         } finally {
             setLoading(false);
         }
-    }, [from, to]);
+    }, [from, to, search, selectedSdrId, selectedScore, objectionsFilter, missionCommentFilter, sortBy, sortOrder]);
 
     useEffect(() => {
         void load();
     }, [load]);
+
+    const sdrOptions = useMemo(
+        () =>
+            Array.from(new Map(items.map((item) => [item.sdr.id, item.sdr])).values()).sort((a, b) =>
+                a.name.localeCompare(b.name, "fr"),
+            ),
+        [items],
+    );
 
     const stats = useMemo(() => {
         if (items.length === 0) {
@@ -148,6 +173,84 @@ export default function ManagerSdrFeedbackPage() {
                     <MessageSquare className="w-4 h-4 text-[#7C5CFC]" />
                     <h2 className="text-[14px] font-semibold text-[#12122A]">Derniers retours</h2>
                 </div>
+                <div className="px-4 py-3 border-b border-[#E8EBF0] bg-[#FCFCFF] space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                        <div className="relative min-w-[220px] flex-1">
+                            <Search className="w-3.5 h-3.5 text-[#8B8BA7] absolute left-2.5 top-1/2 -translate-y-1/2" />
+                            <input
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Rechercher (avis, objections, mission, SDR)..."
+                                className="w-full h-9 pl-8 pr-3 rounded-lg border border-[#E8EBF0] text-[12px] bg-white"
+                            />
+                        </div>
+                        <select
+                            value={selectedSdrId}
+                            onChange={(e) => setSelectedSdrId(e.target.value)}
+                            className="h-9 min-w-[170px] px-2.5 rounded-lg border border-[#E8EBF0] text-[12px] bg-white"
+                        >
+                            <option value="all">Tous les SDR</option>
+                            {sdrOptions.map((sdr) => (
+                                <option key={sdr.id} value={sdr.id}>
+                                    {sdr.name}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            value={selectedScore}
+                            onChange={(e) => setSelectedScore(e.target.value)}
+                            className="h-9 min-w-[120px] px-2.5 rounded-lg border border-[#E8EBF0] text-[12px] bg-white"
+                        >
+                            <option value="all">Tous scores</option>
+                            {[5, 4, 3, 2, 1].map((score) => (
+                                <option key={score} value={String(score)}>
+                                    {score}/5
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            value={objectionsFilter}
+                            onChange={(e) => setObjectionsFilter(e.target.value)}
+                            className="h-9 min-w-[160px] px-2.5 rounded-lg border border-[#E8EBF0] text-[12px] bg-white"
+                        >
+                            <option value="all">Objections: tous</option>
+                            <option value="true">Avec objections</option>
+                            <option value="false">Sans objections</option>
+                        </select>
+                        <select
+                            value={missionCommentFilter}
+                            onChange={(e) => setMissionCommentFilter(e.target.value)}
+                            className="h-9 min-w-[185px] px-2.5 rounded-lg border border-[#E8EBF0] text-[12px] bg-white"
+                        >
+                            <option value="all">Commentaires mission: tous</option>
+                            <option value="true">Avec commentaire mission</option>
+                            <option value="false">Sans commentaire mission</option>
+                        </select>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-[#8B8BA7]">
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                            Tri
+                        </span>
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as "submittedAt" | "score" | "sdr")}
+                            className="h-8 px-2.5 rounded-lg border border-[#E8EBF0] text-[12px] bg-white"
+                        >
+                            <option value="submittedAt">Date</option>
+                            <option value="score">Score</option>
+                            <option value="sdr">SDR</option>
+                        </select>
+                        <button
+                            type="button"
+                            onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
+                            className="h-8 px-2.5 rounded-lg border border-[#E8EBF0] text-[12px] bg-white inline-flex items-center gap-1 hover:bg-[#F9FAFB]"
+                        >
+                            <ArrowUpDown className="w-3.5 h-3.5" />
+                            {sortOrder === "asc" ? "Croissant" : "Décroissant"}
+                        </button>
+                    </div>
+                </div>
 
                 {loading ? (
                     <div className="py-16 flex items-center justify-center">
@@ -160,53 +263,66 @@ export default function ManagerSdrFeedbackPage() {
                         Aucun retour sur cette période.
                     </div>
                 ) : (
-                    <div className="divide-y divide-[#EEF1F6]">
-                        {items.map((item) => (
-                            <div key={item.id} className="p-4 space-y-2">
-                                <div className="flex flex-wrap items-center gap-2 text-[12px]">
-                                    <span className="font-semibold text-[#12122A]">{item.sdr.name}</span>
-                                    <span className="text-[#8B8BA7]">•</span>
-                                    <span className="text-[#5A5A7A]">
-                                        {new Date(item.submittedAt).toLocaleString("fr-FR")}
-                                    </span>
-                                    <span
-                                        className={cn(
-                                            "ml-auto px-2 py-0.5 rounded-full text-[11px] font-semibold",
-                                            item.score >= 4
-                                                ? "bg-emerald-50 text-emerald-700"
-                                                : item.score >= 3
-                                                  ? "bg-amber-50 text-amber-700"
-                                                  : "bg-red-50 text-red-700",
-                                        )}
-                                    >
-                                        {item.score}/5
-                                    </span>
-                                </div>
-
-                                <p className="text-[13px] text-[#12122A] whitespace-pre-wrap">{item.review}</p>
-
-                                {item.objections && (
-                                    <p className="text-[12px] text-[#5A5A7A]">
-                                        <span className="font-semibold text-[#12122A]">Objections:</span>{" "}
-                                        {item.objections}
-                                    </p>
-                                )}
-                                {item.missionComment && (
-                                    <p className="text-[12px] text-[#5A5A7A]">
-                                        <span className="font-semibold text-[#12122A]">Mission:</span>{" "}
-                                        {item.missionComment}
-                                    </p>
-                                )}
-
-                                <p className="text-[11px] text-[#8B8BA7]">
-                                    Mission{item.missions?.length > 1 ? "s" : ""}:{" "}
-                                    {item.missions?.length
-                                        ? item.missions.map((m) => m.mission.name).join(", ")
-                                        : item.mission?.name ?? "Aucune"}{" "}
-                                    {item.pagePath ? `• Page: ${item.pagePath}` : ""}
-                                </p>
-                            </div>
-                        ))}
+                    <div className="overflow-auto">
+                        <table className="w-full min-w-[980px] text-left">
+                            <thead className="bg-[#FAFBFE] border-b border-[#EEF1F6]">
+                                <tr className="text-[11px] uppercase tracking-wide text-[#8B8BA7]">
+                                    <th className="px-4 py-2.5 font-semibold">Date</th>
+                                    <th className="px-4 py-2.5 font-semibold">SDR</th>
+                                    <th className="px-4 py-2.5 font-semibold">Score</th>
+                                    <th className="px-4 py-2.5 font-semibold">Missions</th>
+                                    <th className="px-4 py-2.5 font-semibold">Avis</th>
+                                    <th className="px-4 py-2.5 font-semibold">Objections</th>
+                                    <th className="px-4 py-2.5 font-semibold">Commentaire mission</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.map((item) => (
+                                    <tr key={item.id} className="border-b border-[#EEF1F6] align-top">
+                                        <td className="px-4 py-3 text-[12px] text-[#5A5A7A] whitespace-nowrap">
+                                            {new Date(item.submittedAt).toLocaleString("fr-FR")}
+                                        </td>
+                                        <td className="px-4 py-3 text-[12px]">
+                                            <p className="font-semibold text-[#12122A]">{item.sdr.name}</p>
+                                            <p className="text-[#8B8BA7]">{item.sdr.email}</p>
+                                        </td>
+                                        <td className="px-4 py-3 text-[12px]">
+                                            <span
+                                                className={cn(
+                                                    "inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold",
+                                                    item.score >= 4
+                                                        ? "bg-emerald-50 text-emerald-700"
+                                                        : item.score >= 3
+                                                          ? "bg-amber-50 text-amber-700"
+                                                          : "bg-red-50 text-red-700",
+                                                )}
+                                            >
+                                                {item.score}/5
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-[12px] text-[#5A5A7A]">
+                                            {item.missions?.length
+                                                ? item.missions.map((m) => m.mission.name).join(", ")
+                                                : item.mission?.name ?? "Aucune"}
+                                            {item.pagePath ? (
+                                                <p className="text-[11px] text-[#8B8BA7] mt-1">
+                                                    Origine: {item.pagePath}
+                                                </p>
+                                            ) : null}
+                                        </td>
+                                        <td className="px-4 py-3 text-[12px] text-[#12122A] whitespace-pre-wrap">
+                                            {item.review}
+                                        </td>
+                                        <td className="px-4 py-3 text-[12px] text-[#5A5A7A] whitespace-pre-wrap">
+                                            {item.objections || "—"}
+                                        </td>
+                                        <td className="px-4 py-3 text-[12px] text-[#5A5A7A] whitespace-pre-wrap">
+                                            {item.missionComment || "—"}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 )}
             </div>
