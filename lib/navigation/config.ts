@@ -3,6 +3,7 @@ import {
   Building2,
   Target,
   FileText,
+  LayoutGrid,
   List,
   BarChart3,
   Users,
@@ -96,6 +97,12 @@ export const MANAGER_NAV: NavSection[] = [
         href: "/manager/clients",
         icon: Building2,
         label: "Clients",
+        permission: "pages.clients",
+      },
+      {
+        href: "/manager/testclient",
+        icon: LayoutGrid,
+        label: "TestClient",
         permission: "pages.clients",
       },
       {
