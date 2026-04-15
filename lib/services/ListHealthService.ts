@@ -486,14 +486,14 @@ async function fetchRawMetrics(
                 WHERE la."contactId" IS NOT NULL
                 AND la."createdAt" >= NOW() - INTERVAL '30 days'
             )                                                                                   AS new_contacts_30d,
-            COUNT(*) FILTER (WHERE la.result IN (${positiveList}))                             AS positive_count,
-            COUNT(*) FILTER (WHERE la.result = 'MEETING_BOOKED')                              AS meetings_count,
-            COUNT(*) FILTER (WHERE la.result IN (${badContactList}))                           AS bad_contact_count,
-            COUNT(*) FILTER (WHERE la.result IN (${negativeList}))                             AS negative_count,
+            COUNT(*) FILTER (WHERE CAST(la.result AS TEXT) IN (${positiveList}))              AS positive_count,
+            COUNT(*) FILTER (WHERE CAST(la.result AS TEXT) = 'MEETING_BOOKED')                AS meetings_count,
+            COUNT(*) FILTER (WHERE CAST(la.result AS TEXT) IN (${badContactList}))            AS bad_contact_count,
+            COUNT(*) FILTER (WHERE CAST(la.result AS TEXT) IN (${negativeList}))              AS negative_count,
             COUNT(*) FILTER (
-                WHERE la.result NOT IN (${positiveList})
-                AND la.result NOT IN (${badContactList})
-                AND la.result NOT IN (${negativeList})
+                WHERE CAST(la.result AS TEXT) NOT IN (${positiveList})
+                AND CAST(la.result AS TEXT) NOT IN (${badContactList})
+                AND CAST(la.result AS TEXT) NOT IN (${negativeList})
             )                                                                                   AS neutral_count
         FROM list_actions la
     `;
@@ -577,14 +577,14 @@ async function fetchBulkRawMetrics(
                 COUNT(DISTINCT "contactId") FILTER (
                     WHERE "contactId" IS NOT NULL AND "createdAt" >= NOW() - INTERVAL '30 days'
                 )                                                                                   AS new_contacts_30d,
-                COUNT(*) FILTER (WHERE result IN (${positiveList}))                               AS positive_count,
-                COUNT(*) FILTER (WHERE result = 'MEETING_BOOKED')                                AS meetings_count,
-                COUNT(*) FILTER (WHERE result IN (${badContactList}))                             AS bad_contact_count,
-                COUNT(*) FILTER (WHERE result IN (${negativeList}))                               AS negative_count,
+                COUNT(*) FILTER (WHERE CAST(result AS TEXT) IN (${positiveList}))                AS positive_count,
+                COUNT(*) FILTER (WHERE CAST(result AS TEXT) = 'MEETING_BOOKED')                  AS meetings_count,
+                COUNT(*) FILTER (WHERE CAST(result AS TEXT) IN (${badContactList}))              AS bad_contact_count,
+                COUNT(*) FILTER (WHERE CAST(result AS TEXT) IN (${negativeList}))                AS negative_count,
                 COUNT(*) FILTER (
-                    WHERE result NOT IN (${positiveList})
-                    AND result NOT IN (${badContactList})
-                    AND result NOT IN (${negativeList})
+                    WHERE CAST(result AS TEXT) NOT IN (${positiveList})
+                    AND CAST(result AS TEXT) NOT IN (${badContactList})
+                    AND CAST(result AS TEXT) NOT IN (${negativeList})
                 )                                                                                   AS neutral_count
             FROM list_actions
             GROUP BY list_id
@@ -643,7 +643,7 @@ async function fetchSDRBreakdown(listId: string, limit = 5): Promise<SDRContribu
                 a."sdrId",
                 COUNT(*) AS action_count,
                 COUNT(DISTINCT a."contactId") FILTER (WHERE a."contactId" IS NOT NULL) AS contacts_reached,
-                COUNT(*) FILTER (WHERE a.result = 'MEETING_BOOKED') AS meetings_booked
+                COUNT(*) FILTER (WHERE CAST(a.result AS TEXT) = 'MEETING_BOOKED') AS meetings_booked
             FROM "Action" a
             WHERE (
                 a."contactId" IN (SELECT id FROM list_contacts)
@@ -1033,7 +1033,7 @@ export async function computeClientListsIntelligence(
     const clientActionStats = await prisma.$queryRaw<{ total_actions: bigint; total_meetings: bigint }[]>`
         SELECT
             COUNT(*) AS total_actions,
-            COUNT(*) FILTER (WHERE a.result = 'MEETING_BOOKED') AS total_meetings
+            COUNT(*) FILTER (WHERE CAST(a.result AS TEXT) = 'MEETING_BOOKED') AS total_meetings
         FROM "Action" a
         INNER JOIN "Campaign" c ON a."campaignId" = c.id
         INNER JOIN "Mission" m ON c."missionId" = m.id

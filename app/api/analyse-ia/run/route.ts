@@ -23,11 +23,33 @@ const runAnalysisSchema = z.object({
 });
 
 // ============================================
-// Mistral Config
+// OpenAI Config
 // ============================================
 
-const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
-const MISTRAL_MODEL = 'mistral-large-latest';
+const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_MODEL = 'gpt-4o';
+
+function safeParseJsonFromModel(content: string): any {
+    const trimmed = content.trim();
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        // Handle fenced markdown: ```json ... ```
+        const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        if (fenced?.[1]) {
+            return JSON.parse(fenced[1].trim());
+        }
+
+        // Last resort: parse between first "{" and last "}"
+        const firstBrace = trimmed.indexOf('{');
+        const lastBrace = trimmed.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            const candidate = trimmed.slice(firstBrace, lastBrace + 1);
+            return JSON.parse(candidate);
+        }
+        throw new Error('INVALID_JSON');
+    }
+}
 
 // ============================================
 // DATA INGESTION — pull all context for the period
@@ -417,8 +439,8 @@ Important:
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await requireRole(['MANAGER', 'BUSINESS_DEVELOPER'], request);
-    const apiKey = process.env.MISTRAL_API_KEY;
-    if (!apiKey) return errorResponse('Clé API Mistral manquante', 500);
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return errorResponse('OPENAI_API_KEY non configurée', 503);
 
     const body = await validateRequest(request, runAnalysisSchema);
 
@@ -478,15 +500,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         // 3. Build prompt
         const userPrompt = buildAnalysisPrompt(ingestedData, priorSummary);
 
-        // 4. Call Mistral
-        const mistralResponse = await fetch(MISTRAL_API_URL, {
+        // 4. Call OpenAI
+        const openAiResponse = await fetch(OPENAI_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-                model: MISTRAL_MODEL,
+                model: OPENAI_MODEL,
                 messages: [
                     {
                         role: 'system',
@@ -503,20 +525,20 @@ Tu réponds toujours en JSON valide strictement conformé au format demandé.`,
             }),
         });
 
-        if (!mistralResponse.ok) {
-            const err = await mistralResponse.json().catch(() => ({}));
-            throw new Error(`Mistral API error: ${err?.error?.message || mistralResponse.statusText}`);
+        if (!openAiResponse.ok) {
+            const err = await openAiResponse.json().catch(() => ({}));
+            throw new Error(`OpenAI API error: ${err?.error?.message || openAiResponse.statusText}`);
         }
 
-        const mistralResult = await mistralResponse.json();
-        const content = mistralResult.choices?.[0]?.message?.content;
-        if (!content) throw new Error('Réponse vide de Mistral');
+        const openAiResult = await openAiResponse.json();
+        const content = openAiResult.choices?.[0]?.message?.content;
+        if (!content) throw new Error('Réponse vide de OpenAI');
 
         let parsed: any;
         try {
-            parsed = JSON.parse(content);
+            parsed = safeParseJsonFromModel(content);
         } catch {
-            throw new Error('Impossible de parser la réponse JSON de Mistral');
+            throw new Error('Impossible de parser la réponse JSON de OpenAI');
         }
 
         const durationMs = Date.now() - startTime;
@@ -542,8 +564,8 @@ Tu réponds toujours en JSON valide strictement conformé au format demandé.`,
                 priorAnalysisId: priorAnalysis?.id || null,
                 deltaInsights: parsed.deltaInsights || null,
                 trendAlerts: parsed.trendAlerts || null,
-                modelUsed: MISTRAL_MODEL,
-                tokensUsed: mistralResult.usage?.total_tokens || null,
+                modelUsed: OPENAI_MODEL,
+                tokensUsed: openAiResult.usage?.total_tokens || null,
                 durationMs,
             },
         });
