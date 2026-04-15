@@ -271,6 +271,7 @@ const ALLO_CONNECTED_RESULTS = new Set([
     'RECEIVED',
     'CLOSED',
 ]);
+const ALLO_MAX_PAGES = Math.max(1, parseInt(process.env.CALL_ENRICHMENT_ALLO_MAX_PAGES ?? '60', 10));
 
 async function enrichSdrPerformanceWithAlloCalls(
     rows: any[],
@@ -347,10 +348,9 @@ async function fetchAlloCallMetricsByLine(
 
     for (const alloNumber of alloNumbers) {
         let page = 0;
-        let totalPages = 1;
         const totals = { calls: 0, connectedCalls: 0 };
 
-        while (page < totalPages) {
+        while (page < ALLO_MAX_PAGES) {
             const url = new URL(`${ALLO_BASE_URL}/v1/api/calls`);
             url.searchParams.set('allo_number', alloNumber);
             url.searchParams.set('size', '100');
@@ -366,10 +366,12 @@ async function fetchAlloCallMetricsByLine(
 
             const body = await res.json();
             const parsed = parseAlloCallsListResponse(body);
-            totalPages = parsed.totalPages;
+            if (!parsed.rawCalls.length) {
+                break;
+            }
 
             for (const call of parsed.rawCalls) {
-                const rawStart = call.start_date ?? call.start_time ?? call.created_at;
+                const rawStart = call.start_date ?? call.start_time ?? call.created_at ?? call.date;
                 if (!rawStart) continue;
                 const start = new Date(String(rawStart));
                 if (Number.isNaN(start.getTime())) continue;
