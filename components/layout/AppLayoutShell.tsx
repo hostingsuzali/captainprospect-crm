@@ -27,14 +27,24 @@ type SdrMissionOption = {
     client?: { name: string };
 };
 
-const SDR_DAILY_REVIEW_HOUR = 15;
-const SDR_REVIEW_LAST_PROMPT_KEY = "sdr_daily_review_last_prompt_date";
+const SDR_DAILY_REVIEW_TIME = "15:45";
+const SDR_REVIEW_LAST_SUBMITTED_KEY = "sdr_daily_review_last_submitted_date";
 
 function toLocalDateKey(date: Date): string {
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, "0");
     const dd = String(date.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
+}
+
+function parsePromptTime(value: string | undefined): { hour: number; minute: number } {
+    const raw = value ?? SDR_DAILY_REVIEW_TIME;
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(raw);
+    if (!match) return { hour: 15, minute: 45 };
+    return {
+        hour: Number(match[1]),
+        minute: Number(match[2]),
+    };
 }
 
 function InnerLayout({
@@ -61,6 +71,8 @@ function InnerLayout({
     const [dailyReviewSubmitting, setDailyReviewSubmitting] = useState(false);
     const [dailyReviewMissionOptions, setDailyReviewMissionOptions] = useState<SdrMissionOption[]>([]);
     const [dailyReviewMissionsLoading, setDailyReviewMissionsLoading] = useState(false);
+    const [dailyReviewPromptTime, setDailyReviewPromptTime] = useState(SDR_DAILY_REVIEW_TIME);
+    const [dailyReviewRequiredDaily, setDailyReviewRequiredDaily] = useState(true);
 
     useEffect(() => {
         if (status === "loading") return;
@@ -80,16 +92,35 @@ function InnerLayout({
     useEffect(() => {
         if (!isSdrArea) return;
 
+        const loadReviewPreferences = async () => {
+            try {
+                const res = await fetch("/api/users/me/profile");
+                const json = await res.json();
+                if (!res.ok || !json.success) return;
+                const feedbackPrefs = json.data?.preferences?.sdrFeedback;
+                if (typeof feedbackPrefs?.promptTime === "string") {
+                    setDailyReviewPromptTime(feedbackPrefs.promptTime);
+                }
+                if (typeof feedbackPrefs?.requiredDaily === "boolean") {
+                    setDailyReviewRequiredDaily(feedbackPrefs.requiredDaily);
+                }
+            } catch {
+                // keep defaults
+            }
+        };
+        void loadReviewPreferences();
+
         const checkAndOpenDailyReview = () => {
+            if (!dailyReviewRequiredDaily) return;
             const now = new Date();
             const todayKey = toLocalDateKey(now);
-            const lastPromptDate = localStorage.getItem(SDR_REVIEW_LAST_PROMPT_KEY);
-            if (lastPromptDate === todayKey) return;
+            const lastSubmittedDate = localStorage.getItem(SDR_REVIEW_LAST_SUBMITTED_KEY);
+            if (lastSubmittedDate === todayKey) return;
 
             const triggerTime = new Date(now);
-            triggerTime.setHours(SDR_DAILY_REVIEW_HOUR, 0, 0, 0);
+            const { hour, minute } = parsePromptTime(dailyReviewPromptTime);
+            triggerTime.setHours(hour, minute, 0, 0);
             if (now >= triggerTime) {
-                localStorage.setItem(SDR_REVIEW_LAST_PROMPT_KEY, todayKey);
                 setIsDailyReviewModalOpen(true);
             }
         };
@@ -97,10 +128,10 @@ function InnerLayout({
         checkAndOpenDailyReview();
         const interval = window.setInterval(checkAndOpenDailyReview, 60 * 1000);
         return () => window.clearInterval(interval);
-    }, [isSdrArea]);
+    }, [isSdrArea, dailyReviewPromptTime, dailyReviewRequiredDaily]);
 
     useEffect(() => {
-        if (!isSdrArea || !isDailyReviewModalOpen) return;
+        if (!isSdrArea || !dailyReviewRequiredDaily || !isDailyReviewModalOpen) return;
 
         const loadMissions = async () => {
             setDailyReviewMissionsLoading(true);
@@ -132,6 +163,18 @@ function InnerLayout({
         };
 
         void loadMissions();
+    }, [isSdrArea, dailyReviewRequiredDaily, isDailyReviewModalOpen]);
+
+    useEffect(() => {
+        if (!isSdrArea || !isDailyReviewModalOpen) return;
+
+        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = "";
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
     }, [isSdrArea, isDailyReviewModalOpen]);
 
     if (status === "loading" || !session) {
@@ -230,6 +273,7 @@ function InnerLayout({
             }
 
             setIsDailyReviewModalOpen(false);
+            localStorage.setItem(SDR_REVIEW_LAST_SUBMITTED_KEY, toLocalDateKey(new Date()));
             setDailyReviewScore(4);
             setDailyReviewText("");
             setDailyReviewObjections("");
@@ -316,9 +360,17 @@ function InnerLayout({
 
                 <Modal
                     isOpen={isDailyReviewModalOpen}
-                    onClose={() => setIsDailyReviewModalOpen(false)}
+                    onClose={() => {
+                        if (isSdrArea && dailyReviewRequiredDaily) {
+                            setDailyReviewError(
+                                "Le feedback quotidien est obligatoire. Merci de le compléter pour continuer.",
+                            );
+                            return;
+                        }
+                        setIsDailyReviewModalOpen(false);
+                    }}
                     title="Point SDR de fin de journée"
-                    description="Partagez rapidement votre feedback sur la journée."
+                    description={`Partagez rapidement votre feedback sur la journée (déclenchement: ${dailyReviewPromptTime}).`}
                     size="md"
                 >
                     <div className="space-y-4">
@@ -434,16 +486,6 @@ function InnerLayout({
                         </div>
 
                         <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF1F6]">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setIsDailyReviewModalOpen(false);
-                                    setDailyReviewError(null);
-                                }}
-                                className="h-9 px-4 rounded-lg border border-[#E8EBF0] text-[13px] font-medium text-[#5A5A7A] hover:bg-[#F9FAFB] transition-colors"
-                            >
-                                Fermer
-                            </button>
                             <button
                                 type="button"
                                 onClick={() => void handleSubmitDailyReview()}

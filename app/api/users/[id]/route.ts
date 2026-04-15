@@ -36,6 +36,7 @@ export const GET = withErrorHandler(async (
             lastSignInIp: true,
             lastSignInCountry: true,
             lastConnectedAt: true,
+            preferences: true,
             clientId: true,
             client: {
                 select: {
@@ -85,6 +86,16 @@ const updateUserSchema = z.object({
     password: z.string().min(6).optional(),
     clientId: z.string().nullable().optional(),
     alloPhoneNumber: z.string().nullable().optional(),
+    preferences: z
+        .object({
+            sdrFeedback: z
+                .object({
+                    promptTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
+                    requiredDaily: z.boolean().optional(),
+                })
+                .optional(),
+        })
+        .optional(),
 });
 
 export const PUT = withErrorHandler(async (
@@ -98,6 +109,11 @@ export const PUT = withErrorHandler(async (
     // Check user exists
     const existingUser = await prisma.user.findUnique({
         where: { id },
+        select: {
+            id: true,
+            email: true,
+            preferences: true,
+        },
     });
 
     if (!existingUser) {
@@ -126,6 +142,18 @@ export const PUT = withErrorHandler(async (
     if (data.password) {
         updateData.password = await bcrypt.hash(data.password, 10);
     }
+    if (data.preferences?.sdrFeedback !== undefined) {
+        const currentPrefs = (existingUser.preferences as Record<string, unknown> | null) ?? {};
+        const currentSdrFeedback =
+            (currentPrefs.sdrFeedback as Record<string, unknown> | undefined) ?? {};
+        updateData.preferences = {
+            ...currentPrefs,
+            sdrFeedback: {
+                ...currentSdrFeedback,
+                ...data.preferences.sdrFeedback,
+            },
+        };
+    }
 
     const updatedUser = await prisma.user.update({
         where: { id },
@@ -137,6 +165,7 @@ export const PUT = withErrorHandler(async (
             role: true,
             isActive: true,
             alloPhoneNumber: true,
+            preferences: true,
             clientId: true,
             createdAt: true,
             updatedAt: true,

@@ -30,6 +30,12 @@ interface User {
     lastSignInIp?: string | null;
     lastSignInCountry?: string | null;
     lastConnectedAt?: string | null;
+    preferences?: {
+        sdrFeedback?: {
+            promptTime?: string;
+            requiredDaily?: boolean;
+        };
+    } | null;
     client?: { id: string; name: string } | null;
     _count: {
         assignedMissions: number;
@@ -101,6 +107,8 @@ export function ReglagesTab() {
         role: "SDR",
         clientId: "",
         alloPhoneNumber: "",
+        sdrFeedbackPromptTime: "15:45",
+        sdrFeedbackRequiredDaily: true,
     });
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
     const [formLoading, setFormLoading] = useState(false);
@@ -249,6 +257,14 @@ export function ReglagesTab() {
                 role: formData.role,
                 alloPhoneNumber: formData.alloPhoneNumber.trim() || null,
             };
+            if (formData.role === "SDR") {
+                updateData.preferences = {
+                    sdrFeedback: {
+                        promptTime: formData.sdrFeedbackPromptTime || "15:45",
+                        requiredDaily: formData.sdrFeedbackRequiredDaily,
+                    },
+                };
+            }
             if (formData.password) {
                 updateData.password = formData.password;
             }
@@ -366,7 +382,16 @@ export function ReglagesTab() {
     };
 
     const resetForm = () => {
-        setFormData({ name: "", email: "", password: "", role: "SDR", clientId: "", alloPhoneNumber: "" });
+        setFormData({
+            name: "",
+            email: "",
+            password: "",
+            role: "SDR",
+            clientId: "",
+            alloPhoneNumber: "",
+            sdrFeedbackPromptTime: "15:45",
+            sdrFeedbackRequiredDaily: true,
+        });
         setFormErrors({});
         setSelectedUser(null);
     };
@@ -380,6 +405,8 @@ export function ReglagesTab() {
             role: user.role,
             clientId: user.client?.id ?? "",
             alloPhoneNumber: user.alloPhoneNumber ?? "",
+            sdrFeedbackPromptTime: user.preferences?.sdrFeedback?.promptTime ?? "15:45",
+            sdrFeedbackRequiredDaily: user.preferences?.sdrFeedback?.requiredDaily ?? true,
         });
         setShowEditModal(true);
     };
@@ -467,6 +494,7 @@ export function ReglagesTab() {
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Missions</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions (total)</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Numéro Allo</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Avis SDR</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Connexion</th>
                                 <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                             </tr>
@@ -474,7 +502,7 @@ export function ReglagesTab() {
                         <tbody className="divide-y divide-slate-200">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={9} className="px-6 py-12 text-center">
+                                    <td colSpan={10} className="px-6 py-12 text-center">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
                                             <span className="text-slate-500">Chargement...</span>
@@ -483,7 +511,7 @@ export function ReglagesTab() {
                                 </tr>
                             ) : users.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="px-6 py-12 text-center">
+                                    <td colSpan={10} className="px-6 py-12 text-center">
                                         <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                                         <p className="text-slate-500">Aucun utilisateur trouvé</p>
                                     </td>
@@ -539,6 +567,28 @@ export function ReglagesTab() {
                                         <td className="px-6 py-4">
                                             {user.alloPhoneNumber ? (
                                                 <span className="text-slate-700 font-medium">{user.alloPhoneNumber}</span>
+                                            ) : (
+                                                <span className="text-slate-400">—</span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {user.role === "SDR" ? (
+                                                <div className="text-xs text-slate-600 space-y-0.5">
+                                                    <div>
+                                                        Heure:{" "}
+                                                        <span className="font-semibold text-slate-800">
+                                                            {user.preferences?.sdrFeedback?.promptTime ?? "15:45"}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        Statut:{" "}
+                                                        <span className="font-semibold text-slate-800">
+                                                            {user.preferences?.sdrFeedback?.requiredDaily === false
+                                                                ? "Optionnel"
+                                                                : "Obligatoire"}
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             ) : (
                                                 <span className="text-slate-400">—</span>
                                             )}
@@ -803,6 +853,43 @@ export function ReglagesTab() {
                                 ))}
                             </select>
                             <p className="text-xs text-slate-500">Lien vers le client pour l'accès portail client.</p>
+                        </div>
+                    )}
+                    {formData.role === "SDR" && (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+                            <p className="text-sm font-semibold text-slate-800">Feedback SDR quotidien</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <label className="block text-sm font-medium text-slate-700">
+                                        Heure d'affichage
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={formData.sdrFeedbackPromptTime}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                sdrFeedbackPromptTime: e.target.value || "15:45",
+                                            })
+                                        }
+                                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm transition-all duration-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                                    />
+                                </div>
+                                <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 mt-7">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.sdrFeedbackRequiredDaily}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                sdrFeedbackRequiredDaily: e.target.checked,
+                                            })
+                                        }
+                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    Feedback obligatoire chaque jour
+                                </label>
+                            </div>
                         </div>
                     )}
                 </div>

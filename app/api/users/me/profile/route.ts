@@ -34,6 +34,12 @@ const preferencesSchema = z.object({
     notifications: notificationsSchema.optional(),
     appearance: appearanceSchema.optional(),
     workingHours: workingHoursSchema.optional(),
+    sdrFeedback: z
+        .object({
+            promptTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
+            requiredDaily: z.boolean().optional(),
+        })
+        .optional(),
 });
 
 const putProfileSchema = z.object({
@@ -48,6 +54,10 @@ type PreferencesJson = {
     notifications?: Record<string, boolean>;
     appearance?: Record<string, boolean>;
     workingHours?: Record<string, string>;
+    sdrFeedback?: {
+        promptTime?: string;
+        requiredDaily?: boolean;
+    };
 };
 
 // ============================================
@@ -107,6 +117,11 @@ export async function GET() {
                         pauseStart: "12:00",
                         pauseEnd: "13:00",
                         ...prefs.workingHours,
+                    },
+                    sdrFeedback: {
+                        promptTime: "15:45",
+                        requiredDaily: true,
+                        ...prefs.sdrFeedback,
                     },
                 },
             },
@@ -171,6 +186,10 @@ export async function PUT(request: NextRequest) {
                     newPrefs.workingHours !== undefined
                         ? { ...currentPrefs.workingHours, ...newPrefs.workingHours }
                         : currentPrefs.workingHours,
+                sdrFeedback:
+                    newPrefs.sdrFeedback !== undefined
+                        ? { ...currentPrefs.sdrFeedback, ...newPrefs.sdrFeedback }
+                        : currentPrefs.sdrFeedback,
             };
             if (language !== undefined) {
                 (updateData.preferences as Record<string, unknown>).language = language;

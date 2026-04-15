@@ -89,41 +89,42 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const scoreFilter = Object.keys(scoreFilters).length ? { score: scoreFilters } : {};
     const search = parsed.data.search?.trim();
 
-    const where = {
-        ...submittedAtFilter,
-        ...missionFilter,
-        ...(sdrId ? { sdrId } : {}),
-        ...scoreFilter,
-        ...(parsed.data.withObjections === "true"
+    const whereClauses: Array<Record<string, unknown>> = [
+        submittedAtFilter,
+        missionFilter,
+        sdrId ? { sdrId } : {},
+        scoreFilter,
+        parsed.data.withObjections === "true"
             ? { objections: { not: null } }
             : parsed.data.withObjections === "false"
               ? { objections: null }
-              : {}),
-        ...(parsed.data.withMissionComment === "true"
+              : {},
+        parsed.data.withMissionComment === "true"
             ? { missionComment: { not: null } }
             : parsed.data.withMissionComment === "false"
               ? { missionComment: null }
-              : {}),
-        ...(search
-            ? {
-                  OR: [
-                      { review: { contains: search, mode: "insensitive" as const } },
-                      { objections: { contains: search, mode: "insensitive" as const } },
-                      { missionComment: { contains: search, mode: "insensitive" as const } },
-                      { sdr: { name: { contains: search, mode: "insensitive" as const } } },
-                      {
-                          missions: {
-                              some: {
-                                  mission: {
-                                      name: { contains: search, mode: "insensitive" as const },
-                                  },
-                              },
-                          },
-                      },
-                  ],
-              }
-            : {}),
-    };
+              : {},
+    ];
+    if (search) {
+        whereClauses.push({
+            OR: [
+                { review: { contains: search, mode: "insensitive" as const } },
+                { objections: { contains: search, mode: "insensitive" as const } },
+                { missionComment: { contains: search, mode: "insensitive" as const } },
+                { sdr: { name: { contains: search, mode: "insensitive" as const } } },
+                {
+                    missions: {
+                        some: {
+                            mission: {
+                                name: { contains: search, mode: "insensitive" as const },
+                            },
+                        },
+                    },
+                },
+            ],
+        });
+    }
+    const where = { AND: whereClauses };
 
     const orderBy =
         parsed.data.sortBy === "score"

@@ -53,13 +53,24 @@ export default function ManagerSdrFeedbackPage() {
     const [missionCommentFilter, setMissionCommentFilter] = useState("all");
     const [sortBy, setSortBy] = useState<"submittedAt" | "score" | "sdr">("submittedAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(50);
+
+    useEffect(() => {
+        const timeout = window.setTimeout(() => {
+            setDebouncedSearch(search.trim());
+            setPage(1);
+        }, 280);
+        return () => window.clearTimeout(timeout);
+    }, [search]);
 
     const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
             const params = new URLSearchParams({ from, to, limit: "500", sortBy, sortOrder });
-            if (search.trim()) params.set("search", search.trim());
+            if (debouncedSearch) params.set("search", debouncedSearch);
             if (selectedSdrId !== "all") params.set("sdrId", selectedSdrId);
             if (selectedScore !== "all") {
                 params.set("minScore", selectedScore);
@@ -83,7 +94,7 @@ export default function ManagerSdrFeedbackPage() {
         } finally {
             setLoading(false);
         }
-    }, [from, to, search, selectedSdrId, selectedScore, objectionsFilter, missionCommentFilter, sortBy, sortOrder]);
+    }, [from, to, debouncedSearch, selectedSdrId, selectedScore, objectionsFilter, missionCommentFilter, sortBy, sortOrder]);
 
     useEffect(() => {
         void load();
@@ -107,6 +118,25 @@ export default function ManagerSdrFeedbackPage() {
         const comments = items.filter((item) => !!item.missionComment?.trim()).length;
         return { total, avg, objections, comments };
     }, [items]);
+
+    const totalPages = useMemo(() => Math.max(1, Math.ceil(items.length / pageSize)), [items.length, pageSize]);
+    const paginatedItems = useMemo(() => {
+        const start = (page - 1) * pageSize;
+        return items.slice(start, start + pageSize);
+    }, [items, page, pageSize]);
+
+    useEffect(() => {
+        if (page > totalPages) setPage(totalPages);
+    }, [page, totalPages]);
+
+    const setLastDays = (days: number) => {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - days);
+        setFrom(toInputDate(start));
+        setTo(toInputDate(end));
+        setPage(1);
+    };
 
     return (
         <div className="min-h-full bg-[#F4F6F9] p-4 md:p-6">
@@ -147,6 +177,18 @@ export default function ManagerSdrFeedbackPage() {
                         Actualiser
                     </button>
                 </div>
+            </div>
+            <div className="mb-4 flex flex-wrap gap-2">
+                {[1, 7, 14, 30].map((days) => (
+                    <button
+                        key={days}
+                        type="button"
+                        onClick={() => setLastDays(days)}
+                        className="h-8 px-3 rounded-lg border border-[#E8EBF0] bg-white text-[12px] text-[#5A5A7A] hover:bg-[#F9FAFB]"
+                    >
+                        {days === 1 ? "Aujourd'hui" : `${days} derniers jours`}
+                    </button>
+                ))}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
@@ -249,6 +291,9 @@ export default function ManagerSdrFeedbackPage() {
                             <ArrowUpDown className="w-3.5 h-3.5" />
                             {sortOrder === "asc" ? "Croissant" : "Décroissant"}
                         </button>
+                        <span className="ml-auto text-[11px] text-[#8B8BA7]">
+                            {items.length} ligne(s) chargée(s)
+                        </span>
                     </div>
                 </div>
 
@@ -265,7 +310,7 @@ export default function ManagerSdrFeedbackPage() {
                 ) : (
                     <div className="overflow-auto">
                         <table className="w-full min-w-[980px] text-left">
-                            <thead className="bg-[#FAFBFE] border-b border-[#EEF1F6]">
+                            <thead className="bg-[#FAFBFE] border-b border-[#EEF1F6] sticky top-0 z-10">
                                 <tr className="text-[11px] uppercase tracking-wide text-[#8B8BA7]">
                                     <th className="px-4 py-2.5 font-semibold">Date</th>
                                     <th className="px-4 py-2.5 font-semibold">SDR</th>
@@ -277,7 +322,7 @@ export default function ManagerSdrFeedbackPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {items.map((item) => (
+                                {paginatedItems.map((item) => (
                                     <tr key={item.id} className="border-b border-[#EEF1F6] align-top">
                                         <td className="px-4 py-3 text-[12px] text-[#5A5A7A] whitespace-nowrap">
                                             {new Date(item.submittedAt).toLocaleString("fr-FR")}
@@ -325,6 +370,48 @@ export default function ManagerSdrFeedbackPage() {
                         </table>
                     </div>
                 )}
+                {!loading && !error && items.length > 0 ? (
+                    <div className="px-4 py-3 border-t border-[#E8EBF0] bg-white flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2">
+                            <label className="text-[12px] text-[#8B8BA7]">Lignes / page</label>
+                            <select
+                                value={pageSize}
+                                onChange={(e) => {
+                                    setPageSize(Number(e.target.value));
+                                    setPage(1);
+                                }}
+                                className="h-8 px-2 rounded-lg border border-[#E8EBF0] text-[12px] bg-white"
+                            >
+                                {[25, 50, 100].map((size) => (
+                                    <option key={size} value={size}>
+                                        {size}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="ml-auto flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                disabled={page === 1}
+                                className="h-8 px-3 rounded-lg border border-[#E8EBF0] text-[12px] disabled:opacity-40"
+                            >
+                                Precedent
+                            </button>
+                            <span className="text-[12px] text-[#5A5A7A]">
+                                Page {page} / {totalPages}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                disabled={page === totalPages}
+                                className="h-8 px-3 rounded-lg border border-[#E8EBF0] text-[12px] disabled:opacity-40"
+                            >
+                                Suivant
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
             </div>
         </div>
     );
