@@ -3280,3 +3280,67 @@ model PasswordResetToken {
   @@index([email])
   @@index([token])
 }
+
+// ============================================
+// WEEKLY AI STRATEGIC ANALYSIS — Persistent Memory
+// ============================================
+
+model WeeklyAnalysis {
+  id            String   @id @default(cuid())
+
+  // Time window
+  weekStart     DateTime
+  weekEnd       DateTime
+
+  // Scope
+  missionIds    String[]
+  clientIds     String[]
+  sdrIds        String[]
+  label         String?  // Human-readable label e.g. "Semaine 15 — Mission Alpha"
+
+  // Raw data snapshot used for this analysis (for reproducibility & audit)
+  dataSnapshot  Json     // { actionCount, callCount, meetingCount, metrics, topObjections, ... }
+
+  // ---- Core Analysis Output ----
+  executiveSummary      String   @db.Text
+  confidenceScore       Float    // 0.0–1.0 overall confidence
+  dataQualityScore      Float    // 0.0–1.0 data quality / completeness
+  uncertainties         String[] // Explicit uncertainty statements
+
+  // Structured deliverables (JSON arrays of typed objects)
+  topInsights           Json     // { insight, evidence[], impact, confidence }[]
+  rootCauses            Json     // { cause, evidence[], affectedArea, severity }[]
+  scriptImprovements    Json     // { section, current, suggested, rationale, expectedLift }[]
+  icpRefinements        Json     // { dimension, finding, action, confidence }[]
+  objectionHandling     Json     // { objection, frequency, currentResponse?, suggestedResponse, whyItWorks, evidence[] }[]
+  sdrCoachingActions    Json     // { sdrId?, sdrName?, issue, action, priority, metric }[]
+  recommendations       Json     // { id, title, priority, category, expectedImpact, confidenceScore, rationale, citations[], actionSteps[] }[]
+  expectedImpacts       Json     // { metric, current, projected, confidence }[]
+
+  // ---- Trend & Comparison (populated when priorAnalysisId exists) ----
+  priorAnalysisId       String?
+  priorAnalysis         WeeklyAnalysis?  @relation("AnalysisChain", fields: [priorAnalysisId], references: [id])
+  nextAnalyses          WeeklyAnalysis[] @relation("AnalysisChain")
+  deltaInsights         Json?    // What changed vs prior week: { improved[], degraded[], new[], resolved[] }
+  trendAlerts           Json?    // { metric, trend, severity, description }[]
+
+  // ---- Recommendation Feedback Loop ----
+  // After analysis is applied, manager records outcomes
+  recommendationOutcomes Json?   // { recommendationId, status: "applied"|"ignored"|"partial", outcome?, appliedAt }[]
+
+  // ---- Meta ----
+  status        String   @default("completed") // "running"|"completed"|"failed"
+  errorMessage  String?  @db.Text
+  modelUsed     String   @default("mistral-large-latest")
+  tokensUsed    Int?
+  durationMs    Int?
+
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([weekStart])
+  @@index([weekEnd])
+  @@index([createdById])
+  @@index([status])
+}

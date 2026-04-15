@@ -10,7 +10,8 @@
       "Bash(ls:*)",
       "Bash(xargs -I {} basename {})",
       "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")"
     ]
   }
 }
