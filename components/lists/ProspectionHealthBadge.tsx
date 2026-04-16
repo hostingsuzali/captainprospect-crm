@@ -64,6 +64,8 @@ export function ProspectionHealthBadge({
     const normalizedStatusLabel =
         status === "FULLY_PROSPECTED" || status === "IN_PROGRESS"
             ? "ACTIVE"
+            : status === "STALLED" || status === "INSUFFICIENT_DATA"
+                ? "INACTIVE"
             : statusLabel;
 
     if (compact) {

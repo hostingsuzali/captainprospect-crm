@@ -128,6 +128,10 @@ function CoverageBar({
     rate: number | null;
 }) {
     const pct = rate ?? 0;
+    const pctTextColor =
+        pct >= 70 ? "text-rose-600" :
+        pct >= 50 ? "text-amber-600" :
+        "text-emerald-600";
     const barColor =
         pct >= 80 ? "bg-emerald-500" :
         pct >= 40 ? "bg-blue-500" :
@@ -139,7 +143,7 @@ function CoverageBar({
                 <span className="font-medium text-slate-600">
                     {contacted} / {total} contacts prospectés
                 </span>
-                <span className="font-bold text-slate-800">{pct.toFixed(1)}%</span>
+                <span className={`font-bold ${pctTextColor}`}>{pct.toFixed(1)}%</span>
             </div>
             <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div

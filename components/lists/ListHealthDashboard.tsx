@@ -62,10 +62,16 @@ async function fetchIntelligence(clientId: string, params: {
 
 interface FilterState {
     search: string;
-    status: HealthStatus | 'ACTIVE' | 'ALL';
+    status: HealthStatus | 'ACTIVE' | 'INACTIVE' | 'ALL';
     sdrId: string;
     missionId: string;
     sortBy: 'activityScore' | 'coverageRate' | 'daysSinceLastAction' | 'totalContacts';
+}
+
+function getCoverageTextColor(coverageRate: number): string {
+    if (coverageRate >= 70) return "text-rose-600";
+    if (coverageRate >= 50) return "text-amber-600";
+    return "text-emerald-600";
 }
 
 // ============================================
@@ -105,16 +111,16 @@ function StatusDistributionBar({ intel }: { intel: ClientListsIntelligence }) {
     const total = intel.totalLists;
     if (total === 0) return null;
 
-    type StatusSegment = HealthStatus | 'ACTIVE';
+    type StatusSegment = HealthStatus | 'ACTIVE' | 'INACTIVE';
     const segments: { count: number; status: StatusSegment }[] = [
         { count: intel.fullyProspectedCount + intel.inProgressCount, status: 'ACTIVE' },
         { count: intel.atRiskCount, status: 'AT_RISK' },
-        { count: intel.stalledCount, status: 'STALLED' },
-        { count: intel.insufficientDataCount, status: 'INSUFFICIENT_DATA' },
+        { count: intel.stalledCount + intel.insufficientDataCount, status: 'INACTIVE' },
     ].filter(s => s.count > 0);
 
     const DOT_COLORS: Record<StatusSegment, string> = {
         ACTIVE: 'bg-emerald-500',
+        INACTIVE: 'bg-slate-400',
         AT_RISK: 'bg-amber-400',
         STALLED: 'bg-rose-400',
         INSUFFICIENT_DATA: 'bg-slate-300',
@@ -123,6 +129,7 @@ function StatusDistributionBar({ intel }: { intel: ClientListsIntelligence }) {
     };
     const BAR_COLORS: Record<StatusSegment, string> = {
         ACTIVE: 'bg-emerald-500',
+        INACTIVE: 'bg-slate-300',
         AT_RISK: 'bg-amber-400',
         STALLED: 'bg-rose-400',
         INSUFFICIENT_DATA: 'bg-slate-200',
@@ -132,6 +139,7 @@ function StatusDistributionBar({ intel }: { intel: ClientListsIntelligence }) {
 
     const LABELS: Record<StatusSegment, string> = {
         ACTIVE: 'ACTIVE',
+        INACTIVE: 'INACTIVE',
         AT_RISK: 'À risque',
         STALLED: 'Stagnante',
         INSUFFICIENT_DATA: 'Insuff.',
@@ -237,7 +245,7 @@ function PerformerCard({
                                 compact
                             />
                             {summary.coverageRate !== null && (
-                                <span className="text-[10px] text-slate-400">
+                                <span className={`text-[10px] font-semibold ${getCoverageTextColor(summary.coverageRate)}`}>
                                     {summary.coverageRate.toFixed(0)}% couverts
                                 </span>
                             )}
@@ -278,7 +286,7 @@ function HealthTableRow({ summary }: { summary: ListHealthSummary }) {
 
             <div className="flex items-center justify-center">
                 {summary.coverageRate !== null ? (
-                    <span className="text-sm font-semibold text-slate-700">
+                    <span className={`text-sm font-semibold ${getCoverageTextColor(summary.coverageRate)}`}>
                         {summary.coverageRate.toFixed(0)}%
                     </span>
                 ) : (
@@ -383,6 +391,9 @@ export function ListHealthDashboard({
             items = items.filter((s) => {
                 if (filters.status === "ACTIVE") {
                     return s.status === "FULLY_PROSPECTED" || s.status === "IN_PROGRESS";
+                }
+                if (filters.status === "INACTIVE") {
+                    return s.status === "STALLED" || s.status === "INSUFFICIENT_DATA";
                 }
                 return s.status === filters.status;
             });
@@ -537,7 +548,7 @@ export function ListHealthDashboard({
                 <div className="h-4 w-px bg-slate-200" />
 
                 {/* Status filter */}
-                {(['ALL', 'ACTIVE', 'AT_RISK', 'STALLED'] as const).map(s => (
+                {(['ALL', 'ACTIVE', 'AT_RISK', 'INACTIVE'] as const).map(s => (
                     <button
                         key={s}
                         onClick={() => setFilters(f => ({ ...f, status: s }))}
@@ -549,7 +560,7 @@ export function ListHealthDashboard({
                     >
                         {s === 'ALL' ? 'Tous' :
                          s === 'ACTIVE' ? 'ACTIVE' :
-                         s === 'AT_RISK' ? 'À risque' : 'Stagnante'}
+                         s === 'AT_RISK' ? 'À risque' : 'INACTIVE'}
                     </button>
                 ))}
 
@@ -618,8 +629,7 @@ export function ListHealthDashboard({
                         <ul className="space-y-1 text-slate-500">
                             <li><strong className="text-emerald-600">ACTIVE</strong> — Regroupe les listes « Prospecté » et « En cours »</li>
                             <li><strong className="text-amber-600">À risque</strong> — Couverture &lt;{HEALTH_THRESHOLDS.AT_RISK_COVERAGE_MAX}% ET inactivité &gt;{HEALTH_THRESHOLDS.AT_RISK_INACTIVITY_DAYS} jours</li>
-                            <li><strong className="text-rose-600">Stagnante</strong> — Aucune activité depuis &gt;{HEALTH_THRESHOLDS.STALLED_INACTIVITY_DAYS} jours</li>
-                            <li><strong className="text-slate-500">Données insuff.</strong> — Moins de {HEALTH_THRESHOLDS.SPARSE_CONTACT_MIN} contacts</li>
+                            <li><strong className="text-slate-600">INACTIVE</strong> — Regroupe les listes stagnantes et les listes avec données insuffisantes</li>
                         </ul>
                     </div>
                     <div>
