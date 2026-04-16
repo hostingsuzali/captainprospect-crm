@@ -42,6 +42,7 @@ export function Modal({
     className,
 }: ModalProps) {
     const modalRef = useRef<HTMLDivElement>(null);
+    const overlayPointerDownRef = useRef(false);
 
     // Handle ESC key
     const handleKeyDown = useCallback(
@@ -53,11 +54,21 @@ export function Modal({
         [closeOnEscape, onClose]
     );
 
+    // Track whether interaction started on overlay
+    const handleOverlayPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        overlayPointerDownRef.current = e.target === e.currentTarget;
+    };
+
     // Handle overlay click
     const handleOverlayClick = (e: React.MouseEvent) => {
-        if (e.target === e.currentTarget && closeOnOverlay) {
+        if (
+            e.target === e.currentTarget &&
+            overlayPointerDownRef.current &&
+            closeOnOverlay
+        ) {
             onClose();
         }
+        overlayPointerDownRef.current = false;
     };
 
     // Lock body scroll when modal is open
@@ -87,6 +98,7 @@ export function Modal({
     return (
         <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+            onPointerDown={handleOverlayPointerDown}
             onClick={handleOverlayClick}
         >
             {/* Overlay */}
