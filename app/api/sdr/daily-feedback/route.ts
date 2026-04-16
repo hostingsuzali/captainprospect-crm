@@ -37,7 +37,43 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         select: { missionId: true },
     });
     const assignedMissionIds = new Set(assignments.map((row) => row.missionId));
-    const unauthorizedMission = missionIds.find((id) => !assignedMissionIds.has(id));
+
+    // Also allow missions the SDR has effectively worked on,
+    // even if the assignment record is missing/stale.
+    const scheduledBlocks = await prisma.scheduleBlock.findMany({
+        where: {
+            missionId: { in: missionIds },
+            sdrId: session.user.id,
+            status: { not: "CANCELLED" },
+        },
+        select: { missionId: true },
+    });
+    const scheduledMissionIds = new Set(scheduledBlocks.map((row) => row.missionId));
+
+    const actionMissions = await prisma.action.findMany({
+        where: {
+            sdrId: session.user.id,
+            campaign: {
+                missionId: { in: missionIds },
+            },
+        },
+        select: {
+            campaign: {
+                select: {
+                    missionId: true,
+                },
+            },
+        },
+    });
+    const actionMissionIds = new Set(actionMissions.map((row) => row.campaign.missionId));
+
+    const accessibleMissionIds = new Set<string>([
+        ...assignedMissionIds,
+        ...scheduledMissionIds,
+        ...actionMissionIds,
+    ]);
+
+    const unauthorizedMission = missionIds.find((id) => !accessibleMissionIds.has(id));
     if (unauthorizedMission) {
         return errorResponse("Mission non accessible", 403);
     }
