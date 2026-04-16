@@ -1,12 +1,13 @@
 "use client";
 
+
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
     AlertTriangle, TrendingDown,
     Search, Loader2,
     Trophy, Flame, Target, Zap,
-    Clock, ChevronRight, Info,
+    Clock, ChevronRight, Info, ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -22,9 +23,11 @@ import {
     VelocityTrendBadge,
 } from "./ProspectionHealthBadge";
 
+
 // ============================================
 // DATA FETCHING
 // ============================================
+
 
 async function fetchBulkHealth(params: {
     clientId?: string;
@@ -41,6 +44,7 @@ async function fetchBulkHealth(params: {
     return json.data as ListHealthSummary[];
 }
 
+
 async function fetchIntelligence(clientId: string, params: {
     sdrIds?: string[];
     from?: string;
@@ -56,9 +60,11 @@ async function fetchIntelligence(clientId: string, params: {
     return json.data as ClientListsIntelligence;
 }
 
+
 // ============================================
 // FILTER BAR
 // ============================================
+
 
 interface FilterState {
     search: string;
@@ -68,15 +74,18 @@ interface FilterState {
     sortBy: 'activityScore' | 'coverageRate' | 'daysSinceLastAction' | 'totalContacts';
 }
 
+
 function getCoverageTextColor(coverageRate: number): string {
     if (coverageRate >= 70) return "text-rose-600";
     if (coverageRate >= 50) return "text-amber-600";
     return "text-emerald-600";
 }
 
+
 // ============================================
 // STAT CARD (mini)
 // ============================================
+
 
 function MiniStatCard({
     label,
@@ -103,13 +112,16 @@ function MiniStatCard({
     );
 }
 
+
 // ============================================
 // STATUS DISTRIBUTION BAR
 // ============================================
 
+
 function StatusDistributionBar({ intel }: { intel: ClientListsIntelligence }) {
     const total = intel.totalLists;
     if (total === 0) return null;
+
 
     type StatusSegment = HealthStatus | 'ACTIVE' | 'INACTIVE';
     const segments: { count: number; status: StatusSegment }[] = [
@@ -117,6 +129,7 @@ function StatusDistributionBar({ intel }: { intel: ClientListsIntelligence }) {
         { count: intel.atRiskCount, status: 'AT_RISK' },
         { count: intel.stalledCount + intel.insufficientDataCount, status: 'INACTIVE' },
     ].filter(s => s.count > 0);
+
 
     const DOT_COLORS: Record<StatusSegment, string> = {
         ACTIVE: 'bg-emerald-500',
@@ -137,6 +150,7 @@ function StatusDistributionBar({ intel }: { intel: ClientListsIntelligence }) {
         IN_PROGRESS: 'bg-emerald-500',
     };
 
+
     const LABELS: Record<StatusSegment, string> = {
         ACTIVE: 'ACTIVE',
         INACTIVE: 'INACTIVE',
@@ -146,6 +160,7 @@ function StatusDistributionBar({ intel }: { intel: ClientListsIntelligence }) {
         FULLY_PROSPECTED: 'ACTIVE',
         IN_PROGRESS: 'ACTIVE',
     };
+
 
     return (
         <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
@@ -174,9 +189,11 @@ function StatusDistributionBar({ intel }: { intel: ClientListsIntelligence }) {
     );
 }
 
+
 // ============================================
 // STAGNATION ALERT CARD
 // ============================================
+
 
 function StagnationAlertCard({ alert }: { alert: StagnationAlert }) {
     const SEVERITY_STYLES = {
@@ -189,6 +206,7 @@ function StagnationAlertCard({ alert }: { alert: StagnationAlert }) {
         HIGH: "Élevé",
         MODERATE: "Modéré",
     };
+
 
     return (
         <div className={`flex items-center gap-3 p-3 rounded-lg border ${SEVERITY_STYLES[alert.severity]}`}>
@@ -208,9 +226,11 @@ function StagnationAlertCard({ alert }: { alert: StagnationAlert }) {
     );
 }
 
+
 // ============================================
 // PERFORMER CARD
 // ============================================
+
 
 function PerformerCard({
     summary,
@@ -223,6 +243,7 @@ function PerformerCard({
 }) {
     const borderColor = variant === 'top' ? 'border-emerald-200' : 'border-rose-100';
     const rankColor = variant === 'top' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600';
+
 
     return (
         <Link
@@ -257,26 +278,29 @@ function PerformerCard({
     );
 }
 
+
 // ============================================
-// LIST TABLE ROW
+// DENSE LIST ROW (compact, for mission cards)
 // ============================================
 
-function HealthTableRow({ summary }: { summary: ListHealthSummary }) {
+
+function DenseListRow({ summary }: { summary: ListHealthSummary }) {
     return (
         <Link
             href={`/manager/lists/${summary.listId}`}
-            className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_80px_80px_100px_100px] gap-3 px-5 py-3 hover:bg-slate-50 transition-colors group"
+            className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_60px_60px_80px_80px] gap-2 px-3 py-2 hover:bg-slate-50 transition-colors group text-[10px]"
         >
-            <div className="flex items-center gap-2 min-w-0">
+            {/* List name */}
+            <div className="flex items-center gap-1.5 min-w-0">
                 <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
+                    <p className="text-xs font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
                         {summary.listName}
                     </p>
-                    <p className="text-[10px] text-slate-400 truncate">{summary.missionName}</p>
                 </div>
             </div>
 
-            <div className="flex items-center min-w-0">
+            {/* Health badge */}
+            <div className="flex items-center">
                 <ProspectionHealthBadge
                     status={summary.status}
                     statusLabel={summary.statusLabel}
@@ -284,44 +308,151 @@ function HealthTableRow({ summary }: { summary: ListHealthSummary }) {
                 />
             </div>
 
+            {/* Coverage % */}
             <div className="flex items-center justify-center">
                 {summary.coverageRate !== null ? (
-                    <span className={`text-sm font-semibold ${getCoverageTextColor(summary.coverageRate)}`}>
+                    <span className={`text-xs font-semibold ${getCoverageTextColor(summary.coverageRate)}`}>
                         {summary.coverageRate.toFixed(0)}%
                     </span>
                 ) : (
-                    <span className="text-xs text-slate-400">—</span>
+                    <span className="text-slate-400">—</span>
                 )}
             </div>
 
+            {/* Actions 7d */}
             <div className="flex items-center justify-center">
-                <span className="text-sm font-semibold text-slate-700">{summary.actions7d}</span>
+                <span className="text-xs font-semibold text-slate-700">{summary.actions7d}</span>
             </div>
 
+            {/* Velocity trend */}
             <div className="flex items-center justify-center">
                 <VelocityTrendBadge
                     trend={summary.velocity.trend}
                     explanation={summary.velocity.trendExplanation}
-                    showLabel
+                    showLabel={false}
                 />
             </div>
 
+            {/* ETA */}
             <div className="flex items-center justify-center">
                 {summary.eta.etaDays !== null ? (
                     <span className="text-xs font-medium text-slate-600 tabular-nums">
                         {summary.eta.etaDays === 0 ? "Terminé" : `~${summary.eta.etaDays}j`}
                     </span>
                 ) : (
-                    <span className="text-xs text-slate-400">—</span>
+                    <span className="text-slate-400">—</span>
                 )}
             </div>
         </Link>
     );
 }
 
+
+// ============================================
+// MISSION CARD (grouped lists)
+// ============================================
+
+
+function MissionCard({
+    missionId,
+    missionName,
+    lists,
+    isExpanded,
+    onToggle,
+}: {
+    missionId: string;
+    missionName: string;
+    lists: ListHealthSummary[];
+    isExpanded: boolean;
+    onToggle: () => void;
+}) {
+    // Compute mission-level stats
+    const activeCount = lists.filter(l => l.status === 'FULLY_PROSPECTED' || l.status === 'IN_PROGRESS').length;
+    const atRiskCount = lists.filter(l => l.status === 'AT_RISK').length;
+    const inactiveCount = lists.filter(l => l.status === 'STALLED' || l.status === 'INSUFFICIENT_DATA').length;
+    const avgActivityScore = lists.length > 0
+        ? Math.round(lists.reduce((sum, l) => sum + l.activityScore, 0) / lists.length)
+        : 0;
+
+    // Find worst status
+    const statusPriority: Record<HealthStatus, number> = {
+        INSUFFICIENT_DATA: 0,
+        STALLED: 1,
+        AT_RISK: 2,
+        IN_PROGRESS: 3,
+        FULLY_PROSPECTED: 4,
+    };
+    const worstStatus = lists.reduce((worst, l) => 
+        statusPriority[l.status] < statusPriority[worst.status] ? l : worst
+    );
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+            {/* Mission header */}
+            <button
+                onClick={onToggle}
+                className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-50 transition-colors border-b border-slate-100"
+            >
+                <ChevronDown
+                    className={`w-4 h-4 text-slate-400 transition-transform flex-shrink-0 ${
+                        isExpanded ? '' : '-rotate-90'
+                    }`}
+                />
+                <div className="flex-1 text-left min-w-0">
+                    <p className="text-xs font-bold text-slate-800 truncate">{missionName}</p>
+                </div>
+
+                {/* Mission stats badges */}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {activeCount > 0 && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {activeCount} ACTIVE
+                        </span>
+                    )}
+                    {atRiskCount > 0 && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            {atRiskCount} À risque
+                        </span>
+                    )}
+                    {inactiveCount > 0 && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-50 text-slate-700 border border-slate-200">
+                            {inactiveCount} INACTIVE
+                        </span>
+                    )}
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        Score: {avgActivityScore}
+                    </span>
+                </div>
+            </button>
+
+            {/* Mission lists (expanded) */}
+            {isExpanded && (
+                <div className="divide-y divide-slate-100">
+                    {/* Table header */}
+                    <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_60px_60px_80px_80px] gap-2 px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+                        <span>Liste</span>
+                        <span>Santé</span>
+                        <span className="text-center">Couverture</span>
+                        <span className="text-center">Actions 7j</span>
+                        <span className="text-center">Cadence</span>
+                        <span className="text-center">ETA</span>
+                    </div>
+
+                    {/* List rows */}
+                    {lists.map(summary => (
+                        <DenseListRow key={summary.listId} summary={summary} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+
 // ============================================
 // MAIN DASHBOARD
 // ============================================
+
 
 interface ListHealthDashboardProps {
     /** If provided, shows intelligence for a specific client */
@@ -333,6 +464,7 @@ interface ListHealthDashboardProps {
     /** Available missions for filter */
     availableMissions?: { id: string; name: string }[];
 }
+
 
 export function ListHealthDashboard({
     clientId,
@@ -347,8 +479,13 @@ export function ListHealthDashboard({
         missionId: initialMissionId ?? '',
         sortBy: 'activityScore',
     });
+
+    // Track expanded/collapsed state for each mission
+    const [expandedMissions, setExpandedMissions] = useState<Record<string, boolean>>({});
+
     // Determine query mode
     const useIntelligence = !!clientId;
+
 
     const intelligenceQuery = useQuery({
         queryKey: ['lists-intelligence', clientId, filters.sdrId],
@@ -358,6 +495,7 @@ export function ListHealthDashboard({
         enabled: useIntelligence,
         staleTime: 3 * 60 * 1000,
     });
+
 
     const bulkHealthQuery = useQuery({
         queryKey: ['lists-health-bulk', clientId, filters.missionId, filters.sdrId],
@@ -370,14 +508,18 @@ export function ListHealthDashboard({
         staleTime: 3 * 60 * 1000,
     });
 
+
     const intel = intelligenceQuery.data;
     const allSummaries: ListHealthSummary[] = intel?.lists ?? bulkHealthQuery.data ?? [];
 
+
     const isLoading = intelligenceQuery.isLoading || bulkHealthQuery.isLoading;
+
 
     // Apply client-side filters & sort
     const filteredSummaries = useMemo(() => {
         let items = [...allSummaries];
+
 
         if (filters.search) {
             const q = filters.search.toLowerCase();
@@ -386,6 +528,7 @@ export function ListHealthDashboard({
                     s.missionName.toLowerCase().includes(q)
             );
         }
+
 
         if (filters.status !== 'ALL') {
             items = items.filter((s) => {
@@ -399,9 +542,11 @@ export function ListHealthDashboard({
             });
         }
 
+
         if (filters.missionId && !initialMissionId) {
             items = items.filter(s => s.missionId === filters.missionId);
         }
+
 
         // Sort
         items.sort((a, b) => {
@@ -414,8 +559,48 @@ export function ListHealthDashboard({
             }
         });
 
+
         return items;
     }, [allSummaries, filters, initialMissionId]);
+
+
+    // Group filtered summaries by mission
+    const groupedByMission = useMemo(() => {
+        const groups: Record<string, { missionName: string; lists: ListHealthSummary[] }> = {};
+
+        filteredSummaries.forEach(summary => {
+            if (!groups[summary.missionId]) {
+                groups[summary.missionId] = {
+                    missionName: summary.missionName,
+                    lists: [],
+                };
+            }
+            groups[summary.missionId].lists.push(summary);
+        });
+
+        return groups;
+    }, [filteredSummaries]);
+
+    // Initialize expanded state for all missions (default: expanded)
+    useMemo(() => {
+        const newExpanded: Record<string, boolean> = {};
+        Object.keys(groupedByMission).forEach(missionId => {
+            if (!(missionId in expandedMissions)) {
+                newExpanded[missionId] = true;
+            }
+        });
+        if (Object.keys(newExpanded).length > 0) {
+            setExpandedMissions(prev => ({ ...prev, ...newExpanded }));
+        }
+    }, [groupedByMission]);
+
+    const toggleMission = (missionId: string) => {
+        setExpandedMissions(prev => ({
+            ...prev,
+            [missionId]: !prev[missionId],
+        }));
+    };
+
 
     if (isLoading) {
         return (
@@ -426,6 +611,7 @@ export function ListHealthDashboard({
             </div>
         );
     }
+
 
     if (allSummaries.length === 0) {
         return (
@@ -438,6 +624,7 @@ export function ListHealthDashboard({
             </div>
         );
     }
+
 
     return (
         <div className="space-y-6">
@@ -474,13 +661,15 @@ export function ListHealthDashboard({
                             label="Listes à risque"
                             value={intel.atRiskCount + intel.stalledCount}
                             sub={`${intel.atRiskCount} à risque, ${intel.stalledCount} stagnantes`}
-                            color={intel.atRiskCount + intel.stalledCount > 0 ? "border-amber-200" : "border-slate-200"}
-                            icon={<AlertTriangle className={`w-4 h-4 ${intel.atRiskCount + intel.stalledCount > 0 ? "text-amber-500" : "text-slate-300"}`} />}
+                            color="border-rose-200"
+                            icon={<AlertTriangle className="w-4 h-4 text-rose-500" />}
                         />
                     </div>
 
+
                     {/* Status distribution */}
                     <StatusDistributionBar intel={intel} />
+
 
                     {/* Top/Bottom + Stagnation */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -497,6 +686,7 @@ export function ListHealthDashboard({
                             </div>
                         )}
 
+
                         {/* Bottom performers */}
                         {intel.bottomPerformers.length > 0 && (
                             <div className="space-y-2">
@@ -509,6 +699,7 @@ export function ListHealthDashboard({
                                 ))}
                             </div>
                         )}
+
 
                         {/* Stagnation alerts */}
                         {intel.stagnationAlerts.length > 0 && (
@@ -531,6 +722,7 @@ export function ListHealthDashboard({
                 </div>
             )}
 
+
             {/* ── Filter bar ── */}
             <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2 flex-wrap">
                 {/* Search */}
@@ -545,7 +737,9 @@ export function ListHealthDashboard({
                     />
                 </div>
 
+
                 <div className="h-4 w-px bg-slate-200" />
+
 
                 {/* Status filter */}
                 {(['ALL', 'ACTIVE', 'AT_RISK', 'INACTIVE'] as const).map(s => (
@@ -564,7 +758,9 @@ export function ListHealthDashboard({
                     </button>
                 ))}
 
+
                 <div className="h-4 w-px bg-slate-200" />
+
 
                 {/* Sort */}
                 <select
@@ -578,43 +774,41 @@ export function ListHealthDashboard({
                     <option value="totalContacts">Taille</option>
                 </select>
 
+
                 <div className="flex-1" />
                 <span className="text-xs font-medium text-slate-400">
                     {filteredSummaries.length} liste{filteredSummaries.length !== 1 ? 's' : ''}
                 </span>
             </div>
 
-            {/* ── Lists table ── */}
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                {/* Header */}
-                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_80px_80px_100px_100px] gap-3 px-5 py-2.5 bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    <span>Liste</span>
-                    <span>Statut santé</span>
-                    <span className="text-center">Couverture</span>
-                    <span className="text-center">
-                        Actions 7j
-                        <span title="Nombre d'actions sur les 7 derniers jours" className="ml-1 cursor-help">ⓘ</span>
-                    </span>
-                    <span className="text-center">Cadence</span>
-                    <span className="text-center">
-                        Date de fin
-                        <span title="Date estimée de fin de prospection, calculée selon les contacts restants et la cadence moyenne des 7 derniers jours." className="ml-1 cursor-help">ⓘ</span>
-                    </span>
-                </div>
 
-                {/* Rows */}
-                <div className="divide-y divide-slate-100">
-                    {filteredSummaries.length === 0 ? (
-                        <div className="py-12 text-center text-sm text-slate-400">
-                            Aucune liste ne correspond aux filtres sélectionnés.
-                        </div>
-                    ) : (
-                        filteredSummaries.map(summary => (
-                            <HealthTableRow key={summary.listId} summary={summary} />
+            {/* ── Lists grouped by mission (dense cards) ── */}
+            <div className="space-y-3">
+                {filteredSummaries.length === 0 ? (
+                    <div className="bg-white border border-slate-200 rounded-xl py-12 text-center text-sm text-slate-400">
+                        Aucune liste ne correspond aux filtres sélectionnés.
+                    </div>
+                ) : (
+                    Object.entries(groupedByMission)
+                        .sort(([, a], [, b]) => {
+                            // Sort missions by their best list's activity score (descending)
+                            const maxScoreA = Math.max(...a.lists.map(l => l.activityScore), 0);
+                            const maxScoreB = Math.max(...b.lists.map(l => l.activityScore), 0);
+                            return maxScoreB - maxScoreA;
+                        })
+                        .map(([missionId, { missionName, lists }]) => (
+                            <MissionCard
+                                key={missionId}
+                                missionId={missionId}
+                                missionName={missionName}
+                                lists={lists}
+                                isExpanded={expandedMissions[missionId] ?? true}
+                                onToggle={() => toggleMission(missionId)}
+                            />
                         ))
-                    )}
-                </div>
+                )}
             </div>
+
 
             {/* ── Legend / How it works ── */}
             <details className="group">
