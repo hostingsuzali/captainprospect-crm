@@ -62,7 +62,7 @@ async function fetchIntelligence(clientId: string, params: {
 
 interface FilterState {
     search: string;
-    status: HealthStatus | 'ALL';
+    status: HealthStatus | 'ACTIVE' | 'ALL';
     sdrId: string;
     missionId: string;
     sortBy: 'activityScore' | 'coverageRate' | 'daysSinceLastAction' | 'totalContacts';
@@ -105,35 +105,38 @@ function StatusDistributionBar({ intel }: { intel: ClientListsIntelligence }) {
     const total = intel.totalLists;
     if (total === 0) return null;
 
-    const segments: { count: number; status: HealthStatus }[] = [
-        { count: intel.fullyProspectedCount, status: 'FULLY_PROSPECTED' },
-        { count: intel.inProgressCount, status: 'IN_PROGRESS' },
+    type StatusSegment = HealthStatus | 'ACTIVE';
+    const segments: { count: number; status: StatusSegment }[] = [
+        { count: intel.fullyProspectedCount + intel.inProgressCount, status: 'ACTIVE' },
         { count: intel.atRiskCount, status: 'AT_RISK' },
         { count: intel.stalledCount, status: 'STALLED' },
         { count: intel.insufficientDataCount, status: 'INSUFFICIENT_DATA' },
     ].filter(s => s.count > 0);
 
-    const DOT_COLORS: Record<HealthStatus, string> = {
-        FULLY_PROSPECTED: 'bg-emerald-500',
-        IN_PROGRESS: 'bg-blue-500',
+    const DOT_COLORS: Record<StatusSegment, string> = {
+        ACTIVE: 'bg-emerald-500',
         AT_RISK: 'bg-amber-400',
         STALLED: 'bg-rose-400',
         INSUFFICIENT_DATA: 'bg-slate-300',
-    };
-    const BAR_COLORS: Record<HealthStatus, string> = {
         FULLY_PROSPECTED: 'bg-emerald-500',
-        IN_PROGRESS: 'bg-blue-500',
+        IN_PROGRESS: 'bg-emerald-500',
+    };
+    const BAR_COLORS: Record<StatusSegment, string> = {
+        ACTIVE: 'bg-emerald-500',
         AT_RISK: 'bg-amber-400',
         STALLED: 'bg-rose-400',
         INSUFFICIENT_DATA: 'bg-slate-200',
+        FULLY_PROSPECTED: 'bg-emerald-500',
+        IN_PROGRESS: 'bg-emerald-500',
     };
 
-    const LABELS: Record<HealthStatus, string> = {
-        FULLY_PROSPECTED: 'Prospecté',
-        IN_PROGRESS: 'En cours',
+    const LABELS: Record<StatusSegment, string> = {
+        ACTIVE: 'ACTIVE',
         AT_RISK: 'À risque',
         STALLED: 'Stagnante',
         INSUFFICIENT_DATA: 'Insuff.',
+        FULLY_PROSPECTED: 'ACTIVE',
+        IN_PROGRESS: 'ACTIVE',
     };
 
     return (
@@ -254,7 +257,7 @@ function HealthTableRow({ summary }: { summary: ListHealthSummary }) {
     return (
         <Link
             href={`/manager/lists/${summary.listId}`}
-            className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_120px_80px_80px_100px_80px] gap-3 px-5 py-3 hover:bg-slate-50 transition-colors group"
+            className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_80px_80px_100px_100px] gap-3 px-5 py-3 hover:bg-slate-50 transition-colors group"
         >
             <div className="flex items-center gap-2 min-w-0">
                 <div className="min-w-0">
@@ -271,10 +274,6 @@ function HealthTableRow({ summary }: { summary: ListHealthSummary }) {
                     statusLabel={summary.statusLabel}
                     compact
                 />
-            </div>
-
-            <div className="flex items-center">
-                <ActivityScoreBar score={summary.activityScore} size="sm" />
             </div>
 
             <div className="flex items-center justify-center">
@@ -381,7 +380,12 @@ export function ListHealthDashboard({
         }
 
         if (filters.status !== 'ALL') {
-            items = items.filter(s => s.status === filters.status);
+            items = items.filter((s) => {
+                if (filters.status === "ACTIVE") {
+                    return s.status === "FULLY_PROSPECTED" || s.status === "IN_PROGRESS";
+                }
+                return s.status === filters.status;
+            });
         }
 
         if (filters.missionId && !initialMissionId) {
@@ -533,7 +537,7 @@ export function ListHealthDashboard({
                 <div className="h-4 w-px bg-slate-200" />
 
                 {/* Status filter */}
-                {(['ALL', 'FULLY_PROSPECTED', 'IN_PROGRESS', 'AT_RISK', 'STALLED'] as const).map(s => (
+                {(['ALL', 'ACTIVE', 'AT_RISK', 'STALLED'] as const).map(s => (
                     <button
                         key={s}
                         onClick={() => setFilters(f => ({ ...f, status: s }))}
@@ -544,8 +548,7 @@ export function ListHealthDashboard({
                         }`}
                     >
                         {s === 'ALL' ? 'Tous' :
-                         s === 'FULLY_PROSPECTED' ? 'Prospecté' :
-                         s === 'IN_PROGRESS' ? 'En cours' :
+                         s === 'ACTIVE' ? 'ACTIVE' :
                          s === 'AT_RISK' ? 'À risque' : 'Stagnante'}
                     </button>
                 ))}
@@ -573,13 +576,9 @@ export function ListHealthDashboard({
             {/* ── Lists table ── */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                 {/* Header */}
-                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_120px_80px_80px_100px_80px] gap-3 px-5 py-2.5 bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_80px_80px_100px_100px] gap-3 px-5 py-2.5 bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     <span>Liste</span>
                     <span>Statut santé</span>
-                    <span>
-                        Score
-                        <span title="Score d'activité = 40% couverture + 20% activité récente + 20% taux positif + 20% tendance de cadence" className="ml-1 cursor-help">ⓘ</span>
-                    </span>
                     <span className="text-center">Couverture</span>
                     <span className="text-center">
                         Actions 7j
@@ -587,8 +586,8 @@ export function ListHealthDashboard({
                     </span>
                     <span className="text-center">Cadence</span>
                     <span className="text-center">
-                        ETA
-                        <span title="Estimation de la date de fin de prospection basée sur la cadence actuelle" className="ml-1 cursor-help">ⓘ</span>
+                        Date de fin
+                        <span title="Date estimée de fin de prospection, calculée selon les contacts restants et la cadence moyenne des 7 derniers jours." className="ml-1 cursor-help">ⓘ</span>
                     </span>
                 </div>
 
@@ -617,8 +616,7 @@ export function ListHealthDashboard({
                     <div>
                         <p className="font-bold mb-1">Statut de santé</p>
                         <ul className="space-y-1 text-slate-500">
-                            <li><strong className="text-emerald-600">Prospecté</strong> — ≥{HEALTH_THRESHOLDS.FULLY_PROSPECTED_COVERAGE}% des contacts ont été contactés</li>
-                            <li><strong className="text-blue-600">En cours</strong> — Activité récente, couverture entre 20% et 79%</li>
+                            <li><strong className="text-emerald-600">ACTIVE</strong> — Regroupe les listes « Prospecté » et « En cours »</li>
                             <li><strong className="text-amber-600">À risque</strong> — Couverture &lt;{HEALTH_THRESHOLDS.AT_RISK_COVERAGE_MAX}% ET inactivité &gt;{HEALTH_THRESHOLDS.AT_RISK_INACTIVITY_DAYS} jours</li>
                             <li><strong className="text-rose-600">Stagnante</strong> — Aucune activité depuis &gt;{HEALTH_THRESHOLDS.STALLED_INACTIVITY_DAYS} jours</li>
                             <li><strong className="text-slate-500">Données insuff.</strong> — Moins de {HEALTH_THRESHOLDS.SPARSE_CONTACT_MIN} contacts</li>

@@ -61,26 +61,30 @@ export function ProspectionHealthBadge({
     coverageRate,
 }: ProspectionHealthBadgeProps) {
     const cfg = STATUS_CONFIG[status];
+    const normalizedStatusLabel =
+        status === "FULLY_PROSPECTED" || status === "IN_PROGRESS"
+            ? "ACTIVE"
+            : statusLabel;
 
     if (compact) {
         return (
             <span
-                title={statusExplanation ?? statusLabel}
+                title={statusExplanation ?? normalizedStatusLabel}
                 className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${cfg.color}`}
             >
                 <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotColor} flex-shrink-0`} />
-                {statusLabel}
+                {normalizedStatusLabel}
             </span>
         );
     }
 
     return (
         <span
-            title={statusExplanation ?? statusLabel}
+            title={statusExplanation ?? normalizedStatusLabel}
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg.color}`}
         >
             <span className={`w-2 h-2 rounded-full ${cfg.dotColor} flex-shrink-0`} />
-            {statusLabel}
+            {normalizedStatusLabel}
             {coverageRate !== null && coverageRate !== undefined && (
                 <span className="opacity-70">· {Math.round(coverageRate)}%</span>
             )}
