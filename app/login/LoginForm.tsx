@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Shield, Loader2, Zap } from "lucide-react";
 
-/** Same-origin path for post-login gateway (blocks open redirects). */
+/** Same-origin path for post-login redirect (blocks open redirects). */
 function normalizeInternalPath(href: string | null): string | null {
     if (!href || href === "/") return null;
     try {
@@ -47,20 +47,7 @@ export default function LoginForm() {
                 setIsLoading(false);
                 return;
             }
-
-            const response = await fetch("/api/auth/session");
-            const session = await response.json();
-
-            if (session?.user?.role) {
-                const nextPath = normalizeInternalPath(callbackUrl);
-                router.push(
-                    nextPath
-                        ? `/gateway?next=${encodeURIComponent(nextPath)}`
-                        : "/gateway"
-                );
-            } else {
-                router.push(normalizeInternalPath(callbackUrl) ?? "/");
-            }
+            router.push(normalizeInternalPath(callbackUrl) ?? "/");
         } catch {
             setError("Une erreur est survenue");
             setIsLoading(false);
