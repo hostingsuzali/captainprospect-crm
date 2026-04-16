@@ -147,6 +147,11 @@ export default function ManagerSettingsPage() {
   const [masterPasswordSaving, setMasterPasswordSaving] = useState(false);
   const [masterPasswordError, setMasterPasswordError] = useState<string | null>(null);
   const [masterPasswordSaved, setMasterPasswordSaved] = useState(false);
+  const [transactionalEmailFrom, setTransactionalEmailFrom] = useState("");
+  const [transactionalEmailSource, setTransactionalEmailSource] = useState<"settings" | "env" | "none" | null>(null);
+  const [transactionalEmailSaving, setTransactionalEmailSaving] = useState(false);
+  const [transactionalEmailError, setTransactionalEmailError] = useState<string | null>(null);
+  const [transactionalEmailSaved, setTransactionalEmailSaved] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -154,7 +159,8 @@ export default function ManagerSettingsPage() {
       fetch("/api/system-templates/rdv_notification").then((r) => r.json()),
       fetch("/api/system-config/master-password").then((r) => r.json()),
       fetch("/api/system-config/leexi").then((r) => r.json()),
-    ]).then(([tplRes, mpRes, leexiRes]) => {
+      fetch("/api/system-config/transactional-email").then((r) => r.json()),
+    ]).then(([tplRes, mpRes, leexiRes, transactionalEmailRes]) => {
       if (tplRes.success) {
         setTemplate(tplRes.data);
         setSubject(tplRes.data.subject);
@@ -167,6 +173,10 @@ export default function ManagerSettingsPage() {
       if (leexiRes.success) {
         setLeexiEnabled(leexiRes.data.enabled);
         setLeexiSource(leexiRes.data.source);
+      }
+      if (transactionalEmailRes.success) {
+        setTransactionalEmailFrom(transactionalEmailRes.data.from || "");
+        setTransactionalEmailSource(transactionalEmailRes.data.source);
       }
     }).finally(() => setLoading(false));
   }, []);
@@ -282,6 +292,59 @@ export default function ManagerSettingsPage() {
       setMasterPasswordError("Erreur de connexion");
     } finally {
       setMasterPasswordSaving(false);
+    }
+  }
+
+  async function handleSaveTransactionalEmailFrom() {
+    if (!transactionalEmailFrom.trim()) {
+      setTransactionalEmailError("Renseignez une adresse expéditeur");
+      return;
+    }
+    setTransactionalEmailSaving(true);
+    setTransactionalEmailError(null);
+    setTransactionalEmailSaved(false);
+    try {
+      const res = await fetch("/api/system-config/transactional-email", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from: transactionalEmailFrom }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setTransactionalEmailSource("settings");
+        setTransactionalEmailFrom(json.data.from || transactionalEmailFrom);
+        setTransactionalEmailSaved(true);
+        setTimeout(() => setTransactionalEmailSaved(false), 3000);
+      } else {
+        setTransactionalEmailError(json.error || "Erreur lors de la sauvegarde");
+      }
+    } catch {
+      setTransactionalEmailError("Erreur de connexion");
+    } finally {
+      setTransactionalEmailSaving(false);
+    }
+  }
+
+  async function handleResetTransactionalEmailFrom() {
+    if (!window.confirm("Réinitialiser l'expéditeur personnalisé et revenir à la variable d'environnement ?")) return;
+    setTransactionalEmailSaving(true);
+    setTransactionalEmailError(null);
+    setTransactionalEmailSaved(false);
+    try {
+      const res = await fetch("/api/system-config/transactional-email", { method: "DELETE" });
+      const json = await res.json();
+      if (json.success) {
+        setTransactionalEmailSource(json.data.source);
+        setTransactionalEmailFrom(json.data.from || "");
+        setTransactionalEmailSaved(true);
+        setTimeout(() => setTransactionalEmailSaved(false), 3000);
+      } else {
+        setTransactionalEmailError(json.error || "Erreur");
+      }
+    } catch {
+      setTransactionalEmailError("Erreur de connexion");
+    } finally {
+      setTransactionalEmailSaving(false);
     }
   }
 
@@ -594,6 +657,72 @@ export default function ManagerSettingsPage() {
             {(leexiError || leexiSaved) && (
               <p className={`text-sm ${leexiError ? "text-red-600" : "text-emerald-600"}`}>
                 {leexiError || "Paramètres Leexi enregistrés"}
+              </p>
+            )}
+          </div>
+        </Section>
+
+        {/* Transactional email sender */}
+        <Section
+          label="Expéditeur emails transactionnels (RDV confirmé)"
+          icon={Mail}
+          badge={
+            transactionalEmailSource === "settings" ? (
+              <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-emerald-50 text-emerald-600 border border-emerald-200/80 rounded-full">
+                Personnalisé
+              </span>
+            ) : transactionalEmailSource === "env" ? (
+              <span className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200/80 rounded-full">
+                Via ENV
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full">
+                Non configuré
+              </span>
+            )
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              Adresse utilisée dans le champ <span className="font-mono">From</span> des emails transactionnels, dont l&apos;email de RDV confirmé.
+              Si vide, la plateforme utilise <span className="font-mono">SYSTEM_SMTP_FROM</span>.
+            </p>
+
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[260px] max-w-xl">
+                <label className="block text-xs font-medium text-slate-500 mb-1.5">Adresse expéditeur</label>
+                <input
+                  type="text"
+                  value={transactionalEmailFrom}
+                  onChange={(e) => {
+                    setTransactionalEmailFrom(e.target.value);
+                    setTransactionalEmailError(null);
+                  }}
+                  placeholder='Ex: "Captain Prospect" <notifications@captainprospect.fr>'
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveTransactionalEmailFrom}
+                disabled={transactionalEmailSaving || !transactionalEmailFrom.trim()}
+                className="px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 transition-colors"
+              >
+                {transactionalEmailSaving ? "Enregistrement…" : "Enregistrer"}
+              </button>
+
+              <button
+                onClick={handleResetTransactionalEmailFrom}
+                disabled={transactionalEmailSaving || transactionalEmailSource !== "settings"}
+                className="px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-red-600 border border-slate-200 rounded-xl hover:border-red-200 disabled:opacity-50 transition-colors"
+              >
+                Réinitialiser
+              </button>
+            </div>
+
+            {(transactionalEmailError || transactionalEmailSaved) && (
+              <p className={`text-sm ${transactionalEmailError ? "text-red-600" : "text-emerald-600"}`}>
+                {transactionalEmailError || "Expéditeur enregistré"}
               </p>
             )}
           </div>

@@ -379,6 +379,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     // Manage Access Dialog
     const [showManageAccessDialog, setShowManageAccessDialog] = useState(false);
     const [manageAccessSelectedId, setManageAccessSelectedId] = useState<string | null>(null);
+    const [manageAccessSelectedType, setManageAccessSelectedType] = useState<"CLIENT_USER" | "COMMERCIAL" | null>(null);
     const [manageAccessMode, setManageAccessMode] = useState<"view" | "new">("view");
     const [manageAccessForm, setManageAccessForm] = useState({ name: "", email: "", password: "" });
     const [isSavingAccessUser, setIsSavingAccessUser] = useState(false);
@@ -388,6 +389,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const [resetPasswordResult, setResetPasswordResult] = useState<{ email: string; password: string } | null>(null);
     const [accessUserDetails, setAccessUserDetails] = useState<PortalUser | null>(null);
     const [isLoadingAccessDetails, setIsLoadingAccessDetails] = useState(false);
+    const [isSendingRdvTestEmail, setIsSendingRdvTestEmail] = useState(false);
 
     // Interlocuteurs
     const [interlocuteurs, setInterlocuteurs] = useState<ClientInterlocuteur[]>([]);
@@ -1125,10 +1127,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         if (firstClientUser) {
             setManageAccessMode("view");
             setManageAccessSelectedId(firstClientUser.id);
+            setManageAccessSelectedType(firstClientUser.role === "COMMERCIAL" ? "COMMERCIAL" : "CLIENT_USER");
             void loadAccessUserDetails(firstClientUser.id);
         } else {
             setManageAccessMode("new");
             setManageAccessSelectedId(null);
+            setManageAccessSelectedType(null);
             setManageAccessForm({ name: "", email: "", password: "" });
         }
     };
@@ -1137,6 +1141,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         if (isSavingAccessUser || isResettingAccessPassword || isTogglingAccessActive) return;
         setShowManageAccessDialog(false);
         setManageAccessSelectedId(null);
+        setManageAccessSelectedType(null);
         setAccessUserDetails(null);
         setResetPasswordResult(null);
         setAccessNewPassword("");
@@ -1164,9 +1169,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         }
     };
 
-    const handleSelectAccessUser = (userId: string) => {
+    const handleSelectAccessUser = (userId: string, type: "CLIENT_USER" | "COMMERCIAL" = "CLIENT_USER") => {
         setManageAccessMode("view");
         setManageAccessSelectedId(userId);
+        setManageAccessSelectedType(type);
         setResetPasswordResult(null);
         setAccessNewPassword("");
         void loadAccessUserDetails(userId);
@@ -1175,10 +1181,50 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const handleStartNewAccess = () => {
         setManageAccessMode("new");
         setManageAccessSelectedId(null);
+        setManageAccessSelectedType(null);
         setAccessUserDetails(null);
         setResetPasswordResult(null);
         setAccessNewPassword("");
         setManageAccessForm({ name: "", email: "", password: "" });
+    };
+
+    const handleSendRdvTestEmail = async () => {
+        if (!client || !manageAccessSelectedId || !manageAccessSelectedType) return;
+        setIsSendingRdvTestEmail(true);
+        try {
+            let payload: Record<string, string> | null = null;
+            if (manageAccessSelectedType === "CLIENT_USER") {
+                payload = { recipientType: "CLIENT_USER", userId: manageAccessSelectedId };
+            } else {
+                const targetInterlocuteur = interlocuteurs.find(
+                    (i) => i.portalUser?.id === manageAccessSelectedId
+                );
+                if (!targetInterlocuteur) {
+                    showError("Erreur", "Commercial introuvable pour cet accès");
+                    return;
+                }
+                payload = { recipientType: "COMMERCIAL", interlocuteurId: targetInterlocuteur.id };
+            }
+
+            const res = await fetch(`/api/clients/${client.id}/rdv-email-test`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const json = await res.json();
+            if (json.success) {
+                success(
+                    "Email test envoyé",
+                    `Test RDV confirmé envoyé à ${json.data?.to || "le destinataire"}`
+                );
+            } else {
+                showError("Erreur", json.error || "Impossible d'envoyer le test");
+            }
+        } catch {
+            showError("Erreur", "Impossible d'envoyer le test");
+        } finally {
+            setIsSendingRdvTestEmail(false);
+        }
     };
 
     const handleSaveAccessProfile = async () => {
@@ -1418,6 +1464,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
     const openTasksCount = sessions.reduce((acc, s) =>
         acc + s.tasks.filter((t) => !t.doneAt).length, 0);
+
+    const clientPortalUsers = (client.users || []).filter((u) => u.role === "CLIENT");
+    const commercialPortalUsers = interlocuteurs.filter((i) => i.portalUser);
 
     // ============================================================
     // LOADING
@@ -1938,7 +1987,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 )}
                             </Card>
 
-                            {/* Accès portail — simplified */}
+                            {/* Accès portail clients */}
                             <Card className="overflow-hidden border-slate-200 hover:shadow-md transition-shadow duration-200">
                                 <button
                                     onClick={() => setShowPortalAccess(!showPortalAccess)}
@@ -1946,24 +1995,25 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 >
                                     <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                         <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
-                                        Accès portail
-                                        {client.users && client.users.length > 0 && (
-                                            <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-0 ml-1">{client.users.length}</Badge>
+                                        Portail clients
+                                        {clientPortalUsers.length > 0 && (
+                                            <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-0 ml-1">{clientPortalUsers.length}</Badge>
                                         )}
                                     </h2>
                                     {showPortalAccess ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
                                 </button>
                                 {showPortalAccess && (
                                     <div className="p-3">
-                                        {client.users && client.users.length > 0 ? (
+                                        {clientPortalUsers.length > 0 ? (
                                             <div className="space-y-1.5 mb-3">
-                                                {client.users.map((u) => (
+                                                {clientPortalUsers.map((u) => (
                                                     <button
                                                         key={u.id}
                                                         onClick={() => {
                                                             setShowManageAccessDialog(true);
                                                             setManageAccessMode("view");
                                                             setManageAccessSelectedId(u.id);
+                                                            setManageAccessSelectedType("CLIENT_USER");
                                                             setResetPasswordResult(null);
                                                             setAccessNewPassword("");
                                                             void loadAccessUserDetails(u.id);
@@ -2017,7 +2067,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                         <div className="space-y-2">
                                             <Button variant="primary" size="sm" className="w-full gap-1.5 text-xs" onClick={openManageAccessDialog}>
                                                 <ShieldCheck className="w-3.5 h-3.5" />
-                                                Gérer les accès
+                                                Gérer les accès clients
                                             </Button>
                                             <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" onClick={() => setShowCreateUserModal(true)}>
                                                 <Plus className="w-3.5 h-3.5" />
@@ -2026,6 +2076,61 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                         </div>
                                     </div>
                                 )}
+                            </Card>
+
+                            {/* Portail commerciaux */}
+                            <Card className="overflow-hidden border-slate-200 hover:shadow-md transition-shadow duration-200">
+                                <div className="w-full px-4 py-3 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
+                                    <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                                        <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
+                                        Portail commerciaux
+                                        {commercialPortalUsers.length > 0 && (
+                                            <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-0 ml-1">
+                                                {commercialPortalUsers.length}
+                                            </Badge>
+                                        )}
+                                    </h2>
+                                    <button
+                                        type="button"
+                                        onClick={openManageAccessDialog}
+                                        className="text-xs text-indigo-600 font-semibold hover:text-indigo-700"
+                                    >
+                                        Gérer
+                                    </button>
+                                </div>
+                                <div className="p-3">
+                                    {commercialPortalUsers.length > 0 ? (
+                                        <div className="space-y-1.5">
+                                            {commercialPortalUsers.map((interl) => (
+                                                <button
+                                                    key={interl.id}
+                                                    onClick={() => {
+                                                        if (!interl.portalUser) return;
+                                                        setShowManageAccessDialog(true);
+                                                        handleSelectAccessUser(interl.portalUser.id, "COMMERCIAL");
+                                                    }}
+                                                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-slate-50 text-left transition-colors"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-medium text-slate-900 truncate">
+                                                            {interl.firstName} {interl.lastName}
+                                                        </p>
+                                                        <p className="text-[11px] text-slate-500 truncate">
+                                                            {interl.portalUser?.email}
+                                                        </p>
+                                                    </div>
+                                                    <Badge className="text-[9px] bg-violet-100 text-violet-700 border-0">
+                                                        COMMERCIAL
+                                                    </Badge>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-slate-500">
+                                            Aucun portail commercial actif. Activez un portail dans la section Commerciaux.
+                                        </p>
+                                    )}
+                                </div>
                             </Card>
                         </div>
 
@@ -3512,17 +3617,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             </div>
                             <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
                                 <p className="px-2 pt-1 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                    Accès existants ({client.users?.length || 0})
+                                    Portail clients ({clientPortalUsers.length})
                                 </p>
-                                {client.users && client.users.length > 0 ? (
-                                    <ul className="space-y-1">
-                                        {client.users.map((u) => {
-                                            const isSelected = manageAccessMode === "view" && manageAccessSelectedId === u.id;
+                                {clientPortalUsers.length > 0 ? (
+                                    <ul className="space-y-1 mb-3">
+                                        {clientPortalUsers.map((u) => {
+                                            const isSelected =
+                                                manageAccessMode === "view" &&
+                                                manageAccessSelectedId === u.id &&
+                                                manageAccessSelectedType === "CLIENT_USER";
                                             const isInactive = u.isActive === false;
                                             return (
                                                 <li key={u.id}>
                                                     <button
-                                                        onClick={() => handleSelectAccessUser(u.id)}
+                                                        onClick={() => handleSelectAccessUser(u.id, "CLIENT_USER")}
                                                         className={cn(
                                                             "w-full text-left px-3 py-2 rounded-lg transition-all flex items-start gap-2.5",
                                                             isSelected
@@ -3544,11 +3652,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                                 {u.name}
                                                             </p>
                                                             <p className="text-[10px] text-slate-500 truncate">{u.email}</p>
-                                                            {isInactive && (
-                                                                <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-100 text-red-700">
-                                                                    Révoqué
-                                                                </span>
-                                                            )}
                                                         </div>
                                                     </button>
                                                 </li>
@@ -3556,10 +3659,54 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                         })}
                                     </ul>
                                 ) : (
-                                    <div className="px-3 py-6 text-center">
-                                        <Users className="w-6 h-6 text-slate-300 mx-auto mb-2" />
-                                        <p className="text-[11px] text-slate-500">Aucun accès configuré</p>
-                                    </div>
+                                    <p className="px-2 py-1 text-[11px] text-slate-500 mb-3">Aucun accès client.</p>
+                                )}
+
+                                <p className="px-2 pt-1 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                    Portail commerciaux ({commercialPortalUsers.length})
+                                </p>
+                                {commercialPortalUsers.length > 0 ? (
+                                    <ul className="space-y-1">
+                                        {commercialPortalUsers.map((interl) => {
+                                            if (!interl.portalUser) return null;
+                                            const isSelected =
+                                                manageAccessMode === "view" &&
+                                                manageAccessSelectedId === interl.portalUser.id &&
+                                                manageAccessSelectedType === "COMMERCIAL";
+                                            const isInactive = interl.portalUser.isActive === false;
+                                            return (
+                                                <li key={interl.portalUser.id}>
+                                                    <button
+                                                        onClick={() => handleSelectAccessUser(interl.portalUser!.id, "COMMERCIAL")}
+                                                        className={cn(
+                                                            "w-full text-left px-3 py-2 rounded-lg transition-all flex items-start gap-2.5",
+                                                            isSelected
+                                                                ? "bg-white border border-violet-300 shadow-sm"
+                                                                : "hover:bg-white hover:border-slate-200 border border-transparent"
+                                                        )}
+                                                    >
+                                                        <div className={cn(
+                                                            "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
+                                                            isInactive ? "bg-slate-200 text-slate-500" : "bg-violet-100 text-violet-700"
+                                                        )}>
+                                                            {interl.firstName[0]}{interl.lastName[0]}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className={cn(
+                                                                "text-xs font-semibold truncate",
+                                                                isSelected ? "text-violet-700" : "text-slate-900"
+                                                            )}>
+                                                                {interl.firstName} {interl.lastName}
+                                                            </p>
+                                                            <p className="text-[10px] text-slate-500 truncate">{interl.portalUser.email}</p>
+                                                        </div>
+                                                    </button>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                ) : (
+                                    <p className="px-2 py-1 text-[11px] text-slate-500">Aucun accès commercial.</p>
                                 )}
                             </div>
                         </aside>
@@ -3671,32 +3818,52 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                                     ) : (
                                                         <Badge className="text-[10px] bg-emerald-100 text-emerald-700 border-0">Actif</Badge>
                                                     )}
+                                                    <Badge className={cn(
+                                                        "text-[10px] border-0",
+                                                        manageAccessSelectedType === "COMMERCIAL"
+                                                            ? "bg-violet-100 text-violet-700"
+                                                            : "bg-indigo-100 text-indigo-700"
+                                                    )}>
+                                                        {manageAccessSelectedType === "COMMERCIAL" ? "COMMERCIAL" : "CLIENT"}
+                                                    </Badge>
                                                 </h3>
                                                 <p className="text-xs text-slate-500">{accessUserDetails.email}</p>
                                             </div>
                                         </div>
-                                        <Button
-                                            variant={accessUserDetails.isActive === false ? "primary" : "outline"}
-                                            size="sm"
-                                            onClick={handleToggleAccessActive}
-                                            isLoading={isTogglingAccessActive}
-                                            className={cn(
-                                                "gap-1.5",
-                                                accessUserDetails.isActive !== false && "text-red-600 border-red-200 hover:bg-red-50"
-                                            )}
-                                        >
-                                            {accessUserDetails.isActive === false ? (
-                                                <>
-                                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                                    Réactiver
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <XCircle className="w-3.5 h-3.5" />
-                                                    Révoquer l'accès
-                                                </>
-                                            )}
-                                        </Button>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleSendRdvTestEmail}
+                                                isLoading={isSendingRdvTestEmail}
+                                                className="gap-1.5"
+                                            >
+                                                <Send className="w-3.5 h-3.5" />
+                                                Envoyer test RDV confirmé
+                                            </Button>
+                                            <Button
+                                                variant={accessUserDetails.isActive === false ? "primary" : "outline"}
+                                                size="sm"
+                                                onClick={handleToggleAccessActive}
+                                                isLoading={isTogglingAccessActive}
+                                                className={cn(
+                                                    "gap-1.5",
+                                                    accessUserDetails.isActive !== false && "text-red-600 border-red-200 hover:bg-red-50"
+                                                )}
+                                            >
+                                                {accessUserDetails.isActive === false ? (
+                                                    <>
+                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                        Réactiver
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <XCircle className="w-3.5 h-3.5" />
+                                                        Révoquer l'accès
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </div>
                                     </div>
 
                                     {/* Connection info */}

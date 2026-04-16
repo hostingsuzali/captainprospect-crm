@@ -1,4 +1,5 @@
 import * as nodemailer from "nodemailer";
+import { prisma } from "@/lib/prisma";
 
 export interface TransactionalEmailOptions {
   to: string | string[];
@@ -6,6 +7,8 @@ export interface TransactionalEmailOptions {
   html: string;
   text?: string;
 }
+
+const TRANSACTIONAL_EMAIL_FROM_CONFIG_KEY = "transactionalEmailFrom";
 
 function getTransporter() {
   const host = process.env.SYSTEM_SMTP_HOST;
@@ -25,6 +28,26 @@ function getTransporter() {
   });
 }
 
+async function getConfiguredFromAddress(): Promise<string> {
+  try {
+    const record = await prisma.systemConfig.findUnique({
+      where: { key: TRANSACTIONAL_EMAIL_FROM_CONFIG_KEY },
+      select: { value: true },
+    });
+    const fromFromSettings = record?.value?.trim();
+    if (fromFromSettings) {
+      return fromFromSettings;
+    }
+  } catch (error) {
+    console.error("[transactional-email] Failed to read sender from settings:", error);
+  }
+
+  return (
+    process.env.SYSTEM_SMTP_FROM ||
+    `Captain Prospect <${process.env.SYSTEM_SMTP_USER}>`
+  );
+}
+
 /**
  * Send a system transactional email using SYSTEM_SMTP_* env vars.
  * Returns true on success, false if SMTP is not configured or sending fails.
@@ -41,9 +64,7 @@ export async function sendTransactionalEmail(
     return false;
   }
 
-  const from =
-    process.env.SYSTEM_SMTP_FROM ||
-    `Captain Prospect <${process.env.SYSTEM_SMTP_USER}>`;
+  const from = await getConfiguredFromAddress();
 
   try {
     await transporter.sendMail({
