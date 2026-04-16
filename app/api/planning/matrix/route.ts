@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
   successResponse,
   errorResponse,
-  requireRole,
+  requirePlanningAccess,
   withErrorHandler,
   validateRequest,
 } from '@/lib/api-utils';
@@ -40,7 +40,7 @@ const matrixPostSchema = z.object({
  * If sdrIds/missionIds omitted, uses active SDRs and missions for that month.
  */
 export const GET = withErrorHandler(async (request: NextRequest) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const { searchParams } = new URL(request.url);
   const parsed = matrixQuerySchema.safeParse({
     month: searchParams.get('month'),
@@ -110,7 +110,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
  * Returns matrix with optional preview overlay from proposedChanges.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const data = await validateRequest(request, matrixPostSchema);
 
   let { sdrIds, missionIds } = data;

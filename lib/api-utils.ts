@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { getToken } from 'next-auth/jwt';
 import { authOptions, sessionFromToken } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
 // ============================================
@@ -60,6 +61,75 @@ export async function requireAuth(request?: NextRequest) {
 export async function requireRole(allowedRoles: string[], request?: NextRequest) {
     const session = await requireAuth(request);
     if (!allowedRoles.includes(session.user.role)) {
+        throw new AuthError('Accès non autorisé', 403);
+    }
+    return session;
+}
+
+async function hasEffectivePermission(
+    permissionCode: string,
+    userId: string,
+    userRole: string,
+): Promise<boolean> {
+    const permission = await prisma.permission.findUnique({
+        where: { code: permissionCode },
+        select: { id: true },
+    });
+    if (!permission) return false;
+
+    // role default (RolePermission.granted)
+    const roleGranted = await prisma.rolePermission.findFirst({
+        where: {
+            role: userRole as any,
+            permissionId: permission.id,
+            granted: true,
+        },
+        select: { id: true },
+    });
+
+    // user override (UserPermission.granted)
+    const userOverride = await prisma.userPermission.findFirst({
+        where: { userId, permissionId: permission.id },
+        select: { granted: true },
+    });
+
+    if (userOverride) return userOverride.granted;
+    return Boolean(roleGranted);
+}
+
+/**
+ * Enforces the effective permission for the logged-in user.
+ * Uses RolePermission + UserPermission overrides.
+ */
+export async function requirePermission(permissionCode: string, request?: NextRequest) {
+    const session = await requireAuth(request);
+    const ok = await hasEffectivePermission(permissionCode, session.user.id, session.user.role as any);
+    if (!ok) {
+        throw new AuthError('Accès non autorisé', 403);
+    }
+    return session;
+}
+
+/**
+ * Planning editing access:
+ * - MANAGER always allowed
+ * - SDR allowed only if `pages.planning` is granted in settings
+ */
+export async function requirePlanningAccess(request?: NextRequest) {
+    const session = await requireAuth(request);
+    if (session.user.role === 'MANAGER') return session;
+
+    // Keep other roles locked (even if permission exists).
+    if (session.user.role !== 'SDR') {
+        throw new AuthError('Accès non autorisé', 403);
+    }
+
+    const ok = await hasEffectivePermission(
+        'pages.planning',
+        session.user.id,
+        session.user.role as any,
+    );
+    if (!ok) {
         throw new AuthError('Accès non autorisé', 403);
     }
     return session;

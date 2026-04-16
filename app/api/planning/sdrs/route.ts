@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
     successResponse,
-    requireRole,
+    requirePlanningAccess,
     withErrorHandler,
 } from '@/lib/api-utils';
 
@@ -11,7 +11,7 @@ import {
 // ============================================
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER'], request);
+    await requirePlanningAccess(request);
 
     const { searchParams } = new URL(request.url);
     const roleFilter = searchParams.get('role'); // Optional filter: SDR, BUSINESS_DEVELOPER, or null for all

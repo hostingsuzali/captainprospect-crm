@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
   successResponse,
   errorResponse,
-  requireRole,
+  requirePlanningAccess,
   withErrorHandler,
   validateRequest,
 } from '@/lib/api-utils';
@@ -25,7 +25,7 @@ const proposeSchema = z.object({
  * Returns a rebalance proposal for blocks affected by the SDR's absence.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const data = await validateRequest(request, proposeSchema);
 
   const absenceDates = data.absenceDates.map((s) => new Date(s + 'T12:00:00'));

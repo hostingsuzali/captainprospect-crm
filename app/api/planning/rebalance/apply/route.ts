@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
   successResponse,
   errorResponse,
-  requireRole,
+  requirePlanningAccess,
   withErrorHandler,
   validateRequest,
 } from '@/lib/api-utils';
@@ -27,7 +27,7 @@ const applySchema = z.object({
  * Reassigns blocks to the specified SDRs. Updates allocation counters.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const data = await validateRequest(request, applySchema);
 
   if (!data.changes.length) {

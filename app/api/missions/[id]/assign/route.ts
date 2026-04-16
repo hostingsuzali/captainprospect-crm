@@ -4,6 +4,7 @@ import {
     successResponse,
     errorResponse,
     requireRole,
+    requirePermission,
     withErrorHandler,
     validateRequest,
 } from '@/lib/api-utils';
@@ -23,7 +24,10 @@ const assignSchema = z.object({
 });
 
 export const PATCH = withErrorHandler(async (request: NextRequest, { params }: RouteParams) => {
-    await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'SDR'], request);
+    const session = await requireRole(['MANAGER', 'BUSINESS_DEVELOPER', 'SDR'], request);
+    if (session.user.role === 'SDR') {
+        await requirePermission('pages.planning', request);
+    }
     const { id } = await params;
     const data = await validateRequest(request, assignSchema);
 

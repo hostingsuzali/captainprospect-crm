@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { successResponse, requireRole, withErrorHandler } from '@/lib/api-utils';
+import { successResponse, requirePlanningAccess, withErrorHandler } from '@/lib/api-utils';
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER'], request);
+    await requirePlanningAccess(request);
     const { searchParams } = new URL(request.url);
 
     const month = searchParams.get('month');
@@ -46,7 +46,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
 // PATCH to mark a conflict as resolved
 export const PATCH = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER'], request);
+    await requirePlanningAccess(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

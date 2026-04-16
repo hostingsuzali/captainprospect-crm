@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
     successResponse,
     errorResponse,
-    requireRole,
+    requirePlanningAccess,
     withErrorHandler,
     validateRequest,
 } from '@/lib/api-utils';
@@ -16,7 +16,7 @@ import { z } from 'zod';
 // ============================================
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER'], request);
+    await requirePlanningAccess(request);
     const { searchParams } = new URL(request.url);
 
     const startDate = searchParams.get('startDate');
@@ -128,7 +128,7 @@ const createBlockSchema = z.object({
 });
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
-    const session = await requireRole(['MANAGER'], request);
+    const session = await requirePlanningAccess(request);
     const data = await validateRequest(request, createBlockSchema);
 
     if (data.startTime >= data.endTime) {

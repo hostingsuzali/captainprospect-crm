@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { successResponse, errorResponse, requireRole, withErrorHandler } from '@/lib/api-utils';
+import { successResponse, errorResponse, requirePlanningAccess, withErrorHandler } from '@/lib/api-utils';
 
 /**
  * GET /api/planning/month?month=2026-02
@@ -12,7 +12,7 @@ import { successResponse, errorResponse, requireRole, withErrorHandler } from '@
  * - Health summary (mission/SDR counts by status)
  */
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER'], request);
+    await requirePlanningAccess(request);
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
 

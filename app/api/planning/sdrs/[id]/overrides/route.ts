@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
   successResponse,
   errorResponse,
-  requireRole,
+  requirePlanningAccess,
   withErrorHandler,
   validateRequest,
 } from '@/lib/api-utils';
@@ -27,7 +27,7 @@ const postSchema = z.object({
  * Optional month filter.
  */
 export const GET = withErrorHandler(async (request: NextRequest, { params }: RouteParams) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const { id: sdrId } = await params;
   const { searchParams } = new URL(request.url);
   const month = searchParams.get('month');
@@ -59,7 +59,7 @@ export const GET = withErrorHandler(async (request: NextRequest, { params }: Rou
  * Creates an SdrDayOverride. missionId null = applies to all missions.
  */
 export const POST = withErrorHandler(async (request: NextRequest, { params }: RouteParams) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const { id: sdrId } = await params;
   const data = await validateRequest(request, postSchema);
 

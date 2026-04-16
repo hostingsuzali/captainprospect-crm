@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
   successResponse,
   errorResponse,
-  requireRole,
+  requirePlanningAccess,
   withErrorHandler,
 } from '@/lib/api-utils';
 import { z } from 'zod';
@@ -18,7 +18,7 @@ const querySchema = z.object({
  * Returns ScheduleBlocks that fall outside their mission's startDate/endDate window.
  */
 export const GET = withErrorHandler(async (request: NextRequest) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const { searchParams } = new URL(request.url);
   const parsed = querySchema.safeParse({ month: searchParams.get('month') });
 
@@ -59,7 +59,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
  * Deletes the specified phantom blocks. ids=comma-separated block IDs.
  */
 export const DELETE = withErrorHandler(async (request: NextRequest) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const { searchParams } = new URL(request.url);
   const idsParam = searchParams.get('ids');
   const ids = idsParam ? idsParam.split(',').filter(Boolean) : [];

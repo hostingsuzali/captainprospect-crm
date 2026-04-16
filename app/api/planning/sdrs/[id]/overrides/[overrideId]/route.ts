@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
   successResponse,
   errorResponse,
-  requireRole,
+  requirePlanningAccess,
   withErrorHandler,
 } from '@/lib/api-utils';
 
@@ -17,7 +17,7 @@ interface RouteParams {
  * Deletes an SdrDayOverride. The id in the path must match the override's sdrId.
  */
 export const DELETE = withErrorHandler(async (request: NextRequest, { params }: RouteParams) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const { id: sdrId, overrideId } = await params;
 
   const override = await prisma.sdrDayOverride.findUnique({

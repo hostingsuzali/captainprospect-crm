@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
   successResponse,
   errorResponse,
-  requireRole,
+  requirePlanningAccess,
   withErrorHandler,
   validateRequest,
 } from '@/lib/api-utils';
@@ -29,7 +29,7 @@ const postSchema = z.object({
  * Optional filters: month, scope, clientId.
  */
 export const GET = withErrorHandler(async (request: NextRequest) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const { searchParams } = new URL(request.url);
   const parsed = querySchema.safeParse({
     month: searchParams.get('month') ?? undefined,
@@ -70,7 +70,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
  * Creates a PlanningHoliday.
  */
 export const POST = withErrorHandler(async (request: NextRequest) => {
-  await requireRole(['MANAGER'], request);
+  await requirePlanningAccess(request);
   const data = await validateRequest(request, postSchema);
 
   if (data.scope === 'CLIENT' && !data.clientId) {

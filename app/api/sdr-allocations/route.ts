@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { successResponse, errorResponse, requireRole, withErrorHandler, validateRequest } from '@/lib/api-utils';
+import { successResponse, errorResponse, requirePlanningAccess, withErrorHandler, validateRequest } from '@/lib/api-utils';
 import { recomputeConflicts } from '@/lib/planning/conflictEngine';
 import { z } from 'zod';
 
@@ -13,7 +13,7 @@ const createSchema = z.object({
 });
 
 export const GET = withErrorHandler(async (request: NextRequest) => {
-    await requireRole(['MANAGER'], request);
+    await requirePlanningAccess(request);
     const { searchParams } = new URL(request.url);
     const sdrId = searchParams.get('sdrId');
     const missionMonthPlanId = searchParams.get('missionMonthPlanId');
@@ -39,7 +39,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 });
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
-    const session = await requireRole(['MANAGER'], request);
+    const session = await requirePlanningAccess(request);
     const data = await validateRequest(request, createSchema);
 
     const plan = await prisma.missionMonthPlan.findUnique({

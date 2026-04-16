@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import {
     successResponse,
     errorResponse,
-    requireRole,
+    requirePlanningAccess,
     withErrorHandler,
     validateRequest,
 } from '@/lib/api-utils';
@@ -20,7 +20,7 @@ const copyWeekSchema = z.object({
 });
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
-    const session = await requireRole(['MANAGER'], request);
+    const session = await requirePlanningAccess(request);
     const data = await validateRequest(request, copyWeekSchema);
 
     const sourceStart = new Date(data.sourceStartDate);

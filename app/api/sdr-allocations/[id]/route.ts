@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { successResponse, errorResponse, requireRole, withErrorHandler, validateRequest } from '@/lib/api-utils';
+import { successResponse, errorResponse, requirePlanningAccess, withErrorHandler, validateRequest } from '@/lib/api-utils';
 import { recomputeConflicts } from '@/lib/planning/conflictEngine';
 import { z } from 'zod';
 
@@ -14,7 +14,7 @@ const updateSchema = z.object({
 });
 
 export const GET = withErrorHandler(async (request: NextRequest, { params }: RouteParams) => {
-    await requireRole(['MANAGER'], request);
+    await requirePlanningAccess(request);
     const { id } = await params;
     const alloc = await prisma.sdrDayAllocation.findUnique({
         where: { id },
@@ -30,7 +30,7 @@ export const GET = withErrorHandler(async (request: NextRequest, { params }: Rou
 });
 
 export const PUT = withErrorHandler(async (request: NextRequest, { params }: RouteParams) => {
-    await requireRole(['MANAGER'], request);
+    await requirePlanningAccess(request);
     const { id } = await params;
     const data = await validateRequest(request, updateSchema);
 
@@ -59,7 +59,7 @@ export const PUT = withErrorHandler(async (request: NextRequest, { params }: Rou
 });
 
 export const DELETE = withErrorHandler(async (request: NextRequest, { params }: RouteParams) => {
-    await requireRole(['MANAGER'], request);
+    await requirePlanningAccess(request);
     const { id } = await params;
 
     const alloc = await prisma.sdrDayAllocation.findUnique({

@@ -282,6 +282,12 @@ export const SDR_NAV: NavSection[] = [
         label: "Projets",
         permission: "pages.projects",
       },
+      {
+        href: "/sdr/planning",
+        icon: Calendar,
+        label: "Planning",
+        permission: "pages.planning",
+      },
     ],
   },
 ];
