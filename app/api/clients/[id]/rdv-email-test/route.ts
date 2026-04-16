@@ -135,7 +135,7 @@ export const POST = withErrorHandler(
       portalPath,
     };
 
-    const { subject, html } = customTemplate
+    const { html } = customTemplate
       ? buildRdvEmailFromCustomTemplate(
           customTemplate.subject,
           customTemplate.bodyHtml,
@@ -145,7 +145,7 @@ export const POST = withErrorHandler(
 
     const sent = await sendTransactionalEmail({
       to,
-      subject: `[TEST] ${subject}`,
+      subject: "Test RDV",
       html,
       text: `Email de test RDV confirmé envoyé à ${recipientLabel}.`,
     });

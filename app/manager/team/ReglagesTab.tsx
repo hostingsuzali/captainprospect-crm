@@ -12,6 +12,11 @@ import {
     Key,
     UserCheck,
     UserX,
+    ShieldCheck,
+    LayoutGrid,
+    BriefcaseBusiness,
+    FolderKanban,
+    CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -94,6 +99,7 @@ export function ReglagesTab() {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+    const [showSdrAccessModal, setShowSdrAccessModal] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [showStatusConfirm, setShowStatusConfirm] = useState(false);
 
@@ -116,6 +122,13 @@ export function ReglagesTab() {
     const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
     const [userPermissions, setUserPermissions] = useState<Set<string>>(new Set());
     const [permissionsLoading, setPermissionsLoading] = useState(false);
+    const SDR_PAGE_PERMISSION_CODES = [
+        "pages.planning",
+        "pages.missions",
+        "pages.clients",
+        "pages.projects",
+        "pages.action",
+    ];
 
     const fetchUsers = useCallback(async () => {
         try {
@@ -420,6 +433,41 @@ export function ReglagesTab() {
         ]);
     };
 
+    const openSdrAccessModal = async (user: User) => {
+        setSelectedUser(user);
+        setShowSdrAccessModal(true);
+        await Promise.all([
+            fetchAllPermissions(),
+            fetchUserPermissions(user.id),
+        ]);
+    };
+
+    const handleBulkPermissionUpdate = async (permissionCodes: string[], granted: boolean) => {
+        if (!selectedUser || permissionCodes.length === 0) return;
+
+        const previousPermissions = new Set(userPermissions);
+        const nextPermissions = new Set(userPermissions);
+
+        permissionCodes.forEach((code) => {
+            if (granted) nextPermissions.add(code);
+            else nextPermissions.delete(code);
+        });
+        setUserPermissions(nextPermissions);
+
+        try {
+            await fetch(`/api/users/${selectedUser.id}/permissions`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    permissions: permissionCodes.map((code) => ({ code, granted })),
+                }),
+            });
+        } catch (err) {
+            console.error("Error updating permissions in bulk:", err);
+            setUserPermissions(previousPermissions);
+        }
+    };
+
     const groupedPermissions = allPermissions.reduce((acc, perm) => {
         if (!acc[perm.category]) acc[perm.category] = [];
         acc[perm.category].push(perm);
@@ -432,6 +480,19 @@ export function ReglagesTab() {
         actions: "Actions",
     };
 
+    const totalUsers = users.length;
+    const activeUsers = users.filter((user) => user.isActive).length;
+    const sdrUsers = users.filter((user) => user.role === "SDR").length;
+    const inactiveUsers = totalUsers - activeUsers;
+    const sdrPagePermissions = allPermissions.filter((perm) => SDR_PAGE_PERMISSION_CODES.includes(perm.code));
+    const sdrAccessItems = [
+        { code: "pages.planning", label: "Planning", icon: CalendarDays },
+        { code: "pages.missions", label: "Missions", icon: BriefcaseBusiness },
+        { code: "pages.clients", label: "Clients", icon: Users },
+        { code: "pages.projects", label: "Projects", icon: FolderKanban },
+        { code: "pages.action", label: "Tasks", icon: LayoutGrid },
+    ];
+
     return (
         <div className="space-y-6">
             <PageHeader
@@ -440,7 +501,7 @@ export function ReglagesTab() {
                 actions={
                     <button
                         onClick={() => setShowCreateModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium shadow-sm shadow-indigo-600/20 transition-colors"
                     >
                         <Plus className="w-4 h-4" />
                         Nouvel utilisateur
@@ -448,21 +509,41 @@ export function ReglagesTab() {
                 }
             />
 
-            <div className="flex flex-wrap gap-3">
-                <div className="relative flex-1 min-w-[200px]">
+            <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total utilisateurs</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{totalUsers}</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+                    <p className="text-xs font-medium text-emerald-700 uppercase tracking-wide">Utilisateurs actifs</p>
+                    <p className="mt-2 text-2xl font-semibold text-emerald-700">{activeUsers}</p>
+                </div>
+                <div className="rounded-2xl border border-blue-200 bg-blue-50/60 px-4 py-3">
+                    <p className="text-xs font-medium text-blue-700 uppercase tracking-wide">SDR</p>
+                    <p className="mt-2 text-2xl font-semibold text-blue-700">{sdrUsers}</p>
+                </div>
+                <div className="rounded-2xl border border-rose-200 bg-rose-50/60 px-4 py-3">
+                    <p className="text-xs font-medium text-rose-700 uppercase tracking-wide">Inactifs</p>
+                    <p className="mt-2 text-2xl font-semibold text-rose-700">{inactiveUsers}</p>
+                </div>
+            </section>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap gap-3">
+                    <div className="relative flex-1 min-w-[220px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                         type="text"
                         placeholder="Rechercher par nom ou email..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     />
                 </div>
                 <select
                     value={roleFilter}
                     onChange={(e) => setRoleFilter(e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500"
                 >
                     <option value="">Tous les rôles</option>
                     <option value="MANAGER">Manager</option>
@@ -474,19 +555,20 @@ export function ReglagesTab() {
                 <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500"
                 >
                     <option value="all">Tous les statuts</option>
                     <option value="active">Actifs</option>
                     <option value="inactive">Inactifs</option>
                 </select>
+                </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200">
+                            <tr className="bg-slate-50/80 border-b border-slate-200">
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Utilisateur</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Rôle</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Statut</th>
@@ -518,10 +600,10 @@ export function ReglagesTab() {
                                 </tr>
                             ) : (
                                 users.map((user) => (
-                                    <tr key={user.id} className="hover:bg-slate-50">
+                                    <tr key={user.id} className="hover:bg-indigo-50/40 transition-colors">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-white font-semibold">
+                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-white font-semibold shadow-sm shadow-indigo-500/30">
                                                     {user.name.charAt(0).toUpperCase()}
                                                 </div>
                                                 <div>
@@ -606,7 +688,17 @@ export function ReglagesTab() {
                                             )}
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="flex items-center justify-end gap-2">
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                {user.role === "SDR" && (
+                                                    <button
+                                                        onClick={() => openSdrAccessModal(user)}
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                                                        title="Gérer accès pages SDR"
+                                                    >
+                                                        <ShieldCheck className="w-3.5 h-3.5" />
+                                                        Accès pages
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={() => openPermissionsModal(user)}
                                                     className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
@@ -764,6 +856,105 @@ export function ReglagesTab() {
                         className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {formLoading ? "Création..." : "Créer"}
+                    </button>
+                </ModalFooter>
+            </Modal>
+
+            <Modal
+                isOpen={showSdrAccessModal}
+                onClose={() => {
+                    setShowSdrAccessModal(false);
+                    setSelectedUser(null);
+                }}
+                title={`Accès SDR - ${selectedUser?.name}`}
+                size="lg"
+            >
+                {permissionsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                        <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : (
+                    <div className="space-y-5">
+                        <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
+                            <p className="text-sm text-blue-900 font-medium">
+                                Activez les pages accessibles pour cet utilisateur SDR.
+                            </p>
+                            <p className="text-xs text-blue-700 mt-1">
+                                Les modifications sont enregistrées automatiquement.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                onClick={() => handleBulkPermissionUpdate(sdrPagePermissions.map((perm) => perm.code), true)}
+                                className="px-3 py-2 text-sm font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                            >
+                                Tout autoriser
+                            </button>
+                            <button
+                                onClick={() => handleBulkPermissionUpdate(sdrPagePermissions.map((perm) => perm.code), false)}
+                                className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                                Tout retirer
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {sdrAccessItems.map((item) => {
+                                const permission = sdrPagePermissions.find((perm) => perm.code === item.code);
+                                const isEnabled = userPermissions.has(item.code);
+                                const Icon = item.icon;
+                                return (
+                                    <div
+                                        key={item.code}
+                                        className={cn(
+                                            "rounded-xl border p-3 transition-colors",
+                                            isEnabled ? "border-indigo-300 bg-indigo-50/70" : "border-slate-200 bg-white"
+                                        )}
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex items-start gap-2.5">
+                                                <span
+                                                    className={cn(
+                                                        "mt-0.5 p-2 rounded-lg",
+                                                        isEnabled ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"
+                                                    )}
+                                                >
+                                                    <Icon className="w-4 h-4" />
+                                                </span>
+                                                <div>
+                                                    <p className="font-medium text-slate-900">{item.label}</p>
+                                                    <p className="text-xs text-slate-500">{permission?.description || "Accès à cette page"}</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => handlePermissionToggle(item.code)}
+                                                className={cn(
+                                                    "relative w-11 h-6 rounded-full transition-colors",
+                                                    isEnabled ? "bg-indigo-600" : "bg-slate-300"
+                                                )}
+                                            >
+                                                <span
+                                                    className={cn(
+                                                        "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
+                                                        isEnabled && "translate-x-5"
+                                                    )}
+                                                />
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+                <ModalFooter>
+                    <button
+                        onClick={() => {
+                            setShowSdrAccessModal(false);
+                            setSelectedUser(null);
+                        }}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                    >
+                        Fermer
                     </button>
                 </ModalFooter>
             </Modal>
