@@ -1465,7 +1465,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const openTasksCount = sessions.reduce((acc, s) =>
         acc + s.tasks.filter((t) => !t.doneAt).length, 0);
 
-    const clientPortalUsers = (client.users || []).filter((u) => u.role === "CLIENT");
+    const clientPortalUsers = (client?.users || []).filter((u) => u.role === "CLIENT");
     const commercialPortalUsers = interlocuteurs.filter((i) => i.portalUser);
 
     // ============================================================
