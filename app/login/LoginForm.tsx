@@ -5,6 +5,19 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Shield, Loader2, Zap } from "lucide-react";
 
+/** Same-origin path for post-login gateway (blocks open redirects). */
+function normalizeInternalPath(href: string | null): string | null {
+    if (!href || href === "/") return null;
+    try {
+        if (href.startsWith("/") && !href.startsWith("//")) return href;
+        const u = new URL(href, window.location.origin);
+        if (u.origin !== window.location.origin) return null;
+        return u.pathname + u.search;
+    } catch {
+        return null;
+    }
+}
+
 export default function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -39,16 +52,14 @@ export default function LoginForm() {
             const session = await response.json();
 
             if (session?.user?.role) {
-                const redirectPaths: Record<string, string> = {
-                    SDR: "/sdr/action",
-                    MANAGER: "/manager/dashboard",
-                    CLIENT: "/client/portal",
-                    DEVELOPER: "/developer/dashboard",
-                    BUSINESS_DEVELOPER: "/bd/dashboard",
-                };
-                router.push(redirectPaths[session.user.role] || "/");
+                const nextPath = normalizeInternalPath(callbackUrl);
+                router.push(
+                    nextPath
+                        ? `/gateway?next=${encodeURIComponent(nextPath)}`
+                        : "/gateway"
+                );
             } else {
-                router.push(callbackUrl);
+                router.push(normalizeInternalPath(callbackUrl) ?? "/");
             }
         } catch {
             setError("Une erreur est survenue");
