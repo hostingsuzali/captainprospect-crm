@@ -59,8 +59,19 @@ export function Modal({
         overlayPointerDownRef.current = e.target === e.currentTarget;
     };
 
+    // Track pointer down inside the modal — if drag started inside, never close on release
+    const handleModalPointerDown = () => {
+        overlayPointerDownRef.current = false;
+    };
+
     // Handle overlay click
     const handleOverlayClick = (e: React.MouseEvent) => {
+        if (!closeOnOverlay) {
+            overlayPointerDownRef.current = false;
+            e.stopPropagation();
+            return;
+        }
+
         if (
             e.target === e.currentTarget &&
             overlayPointerDownRef.current &&
@@ -108,6 +119,7 @@ export function Modal({
             <div
                 ref={modalRef}
                 tabIndex={-1}
+                onPointerDown={handleModalPointerDown}
                 className={cn(
                     "relative w-full bg-white border border-slate-200 shadow-xl rounded-2xl overflow-hidden flex flex-col text-slate-900",
                     "transform transition-all duration-300 ease-out animate-scale-in max-h-[85vh]",
