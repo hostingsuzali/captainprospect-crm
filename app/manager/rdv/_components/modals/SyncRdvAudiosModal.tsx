@@ -30,9 +30,9 @@ interface PreviewItem {
     hasSummary: boolean;
     hasTranscription: boolean;
     hasRecording: boolean;
-    summaryPreview: string | null;
-    transcriptionPreview: string | null;
   } | null;
+  searchWays: string[];
+  windowAttempts: { label: string; found: boolean }[];
 }
 
 export function SyncRdvAudiosModal({
@@ -133,7 +133,7 @@ export function SyncRdvAudiosModal({
       isOpen={isOpen}
       onClose={onClose}
       title="Sync audios RDV"
-      description="Recherche Allo multi-cas, prévisualisation, puis confirmation de sync."
+      description="Affiche seulement trouvé / non trouvé + les stratégies de recherche essayées."
       size="xl"
     >
       <div style={{ display: "grid", gap: 14 }}>
@@ -173,7 +173,7 @@ export function SyncRdvAudiosModal({
                 <th style={{ textAlign: "left", padding: 10, fontSize: 11 }}>Sync</th>
                 <th style={{ textAlign: "left", padding: 10, fontSize: 11 }}>RDV</th>
                 <th style={{ textAlign: "left", padding: 10, fontSize: 11 }}>Téléphones testés</th>
-                <th style={{ textAlign: "left", padding: 10, fontSize: 11 }}>Preview Allo</th>
+                <th style={{ textAlign: "left", padding: 10, fontSize: 11 }}>Résultat recherche</th>
               </tr>
             </thead>
             <tbody>
@@ -198,16 +198,23 @@ export function SyncRdvAudiosModal({
                     {row.match ? (
                       <div style={{ display: "grid", gap: 4 }}>
                         <div style={{ color: "var(--ink2)" }}>
-                          <strong>{row.match.windowLabel}</strong> · audio: {row.match.hasRecording ? "oui" : "non"} · transcription:{" "}
-                          {row.match.hasTranscription ? "oui" : "non"}
+                          <strong>TROUVÉ</strong> via <strong>{row.match.windowLabel}</strong> · audio: {row.match.hasRecording ? "oui" : "non"} · transcription:{" "}
+                          {row.match.hasTranscription ? "oui" : "non"} · résumé: {row.match.hasSummary ? "oui" : "non"}
                         </div>
-                        {row.match.summaryPreview && <div style={{ color: "var(--ink3)" }}>{row.match.summaryPreview}</div>}
-                        {row.match.transcriptionPreview && (
-                          <div style={{ color: "var(--ink3)", whiteSpace: "pre-wrap" }}>{row.match.transcriptionPreview}</div>
-                        )}
+                        <div style={{ color: "var(--ink3)" }}>
+                          Fenêtres testées: {row.windowAttempts.map((w) => `${w.label}${w.found ? " (ok)" : ""}`).join(" · ")}
+                        </div>
                       </div>
                     ) : (
-                      <span style={{ color: "var(--red)" }}>Aucun match Allo trouvé</span>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <span style={{ color: "var(--red)", fontWeight: 600 }}>NON TROUVÉ</span>
+                        <div style={{ color: "var(--ink3)" }}>
+                          Sources testées: {row.searchWays.join(" · ")}
+                        </div>
+                        <div style={{ color: "var(--ink3)" }}>
+                          Fenêtres testées: {row.windowAttempts.map((w) => w.label).join(" · ") || "—"}
+                        </div>
+                      </div>
                     )}
                   </td>
                 </tr>

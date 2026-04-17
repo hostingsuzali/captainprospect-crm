@@ -389,7 +389,7 @@ export function MeetingList({
         <div style={{ width: 50, textAlign: "center" }}>Durée</div>
         <div style={{ width: 70, textAlign: "center" }}>Statut</div>
         <div style={{ width: 100, textAlign: "center" }}>Confirm.</div>
-        <div style={{ width: 36, textAlign: "center" }}>FB</div>
+        <div style={{ width: 36, textAlign: "center" }}>Audio</div>
         <div style={{ width: 64 }} />
       </div>
 

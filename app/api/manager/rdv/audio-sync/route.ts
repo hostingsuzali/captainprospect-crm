@@ -101,14 +101,20 @@ type MatchResult = {
   windowLabel: string;
 };
 
+type SearchAttempt = {
+  label: string;
+  found: boolean;
+};
+
 async function findBestMatchForAction(input: {
   sdrId: string;
   createdAt: Date;
   callbackDate: Date | null;
   phones: string[];
   alloNumbers: string[];
-}): Promise<MatchResult | null> {
+}): Promise<{ match: MatchResult | null; attempts: SearchAttempt[] }> {
   const windows: Array<{ label: string; start: Date; end: Date }> = [];
+  const attempts: SearchAttempt[] = [];
   if (input.callbackDate) {
     const day = calendarDayWindow(input.callbackDate);
     windows.push({ label: "Jour RDV", start: day.start, end: day.end });
@@ -129,15 +135,20 @@ async function findBestMatchForAction(input: {
       windowEnd: w.end,
     });
     if (record && (record.recordingUrl?.trim() || record.transcription?.trim() || record.summary?.trim())) {
+      attempts.push({ label: w.label, found: true });
       return {
-        summary: record.summary?.trim() || undefined,
-        transcription: record.transcription?.trim() || undefined,
-        recordingUrl: record.recordingUrl?.trim() || undefined,
-        windowLabel: w.label,
+        attempts,
+        match: {
+          summary: record.summary?.trim() || undefined,
+          transcription: record.transcription?.trim() || undefined,
+          recordingUrl: record.recordingUrl?.trim() || undefined,
+          windowLabel: w.label,
+        },
       };
     }
+    attempts.push({ label: w.label, found: false });
   }
-  return null;
+  return { match: null, attempts };
 }
 
 async function fetchRdvActions(actionIds: string[]) {
@@ -195,7 +206,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         ...extractAdditionalPhonesFromJson(a.company?.customData).flatMap((p) => normalizePhonesFromField(p)),
       ];
       const dedupedPhones = [...new Set(phones)];
-      const match =
+      const searchWays = [
+        "meetingPhone",
+        "contact.phone",
+        "company.phone",
+        "contact.additionalPhones",
+        "company.customData(additionalPhones/phones/phoneNumbers)",
+      ];
+      const lookup =
         dedupedPhones.length > 0
           ? await findBestMatchForAction({
               sdrId: a.sdrId,
@@ -204,7 +222,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
               phones: dedupedPhones,
               alloNumbers,
             })
-          : null;
+          : { match: null, attempts: [] as SearchAttempt[] };
       const contactName = [a.contact?.firstName, a.contact?.lastName].filter(Boolean).join(" ").trim() || "—";
       return {
         actionId: a.id,
@@ -216,14 +234,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
           hasTranscription: !!a.callTranscription?.trim(),
           hasRecording: !!a.callRecordingUrl?.trim(),
         },
-        match: match
+        searchWays,
+        windowAttempts: lookup.attempts,
+        match: lookup.match
           ? {
-              windowLabel: match.windowLabel,
-              hasSummary: !!match.summary,
-              hasTranscription: !!match.transcription,
-              hasRecording: !!match.recordingUrl,
-              summaryPreview: match.summary?.slice(0, 200) ?? null,
-              transcriptionPreview: match.transcription?.slice(0, 220) ?? null,
+              windowLabel: lookup.match.windowLabel,
+              hasSummary: !!lookup.match.summary,
+              hasTranscription: !!lookup.match.transcription,
+              hasRecording: !!lookup.match.recordingUrl,
             }
           : null,
       };
@@ -264,23 +282,23 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
       noPhone += 1;
       continue;
     }
-    const match = await findBestMatchForAction({
+    const lookup = await findBestMatchForAction({
       sdrId: a.sdrId,
       createdAt: a.createdAt,
       callbackDate: a.callbackDate,
       phones: dedupedPhones,
       alloNumbers,
     });
-    if (!match) {
+    if (!lookup.match) {
       noMatch += 1;
       continue;
     }
     await prisma.action.update({
       where: { id: a.id },
       data: {
-        callSummary: match.summary ?? null,
-        callTranscription: match.transcription ?? null,
-        callRecordingUrl: match.recordingUrl ?? null,
+        callSummary: lookup.match.summary ?? null,
+        callTranscription: lookup.match.transcription ?? null,
+        callRecordingUrl: lookup.match.recordingUrl ?? null,
         callEnrichmentAt: new Date(),
         callEnrichmentError: null,
       },
