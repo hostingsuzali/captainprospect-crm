@@ -214,6 +214,7 @@ function InnerLayout({
     const isEmailHub =
         pathname.startsWith("/manager/emails") ||
         pathname.startsWith("/sdr/emails");
+    const isRdvPage = pathname.startsWith("/manager/rdv");
 
     const pathParts = pathname.split("/").filter(Boolean);
     const rawPage = pathParts[pathParts.length - 1]?.replace(/-/g, " ") || "Dashboard";
@@ -352,9 +353,13 @@ function InnerLayout({
                     </div>
                 ) : (
                     <div className="cp-content">
-                        <div className="max-w-[1440px] mx-auto w-full">
-                            {children}
-                        </div>
+                        {isRdvPage ? (
+                            <div className="w-full">{children}</div>
+                        ) : (
+                            <div className="max-w-[1440px] mx-auto w-full">
+                                {children}
+                            </div>
+                        )}
                     </div>
                 )}
 

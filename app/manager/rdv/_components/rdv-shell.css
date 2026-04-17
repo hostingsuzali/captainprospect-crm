@@ -69,13 +69,8 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  width: 100%;
-  max-width: none;
   min-width: 0;
-  align-self: stretch;
   box-sizing: border-box;
-  padding-left: clamp(10px, 1.6vw, 28px);
-  padding-right: clamp(10px, 1.6vw, 28px);
 }
 
 .rdv-serif {
