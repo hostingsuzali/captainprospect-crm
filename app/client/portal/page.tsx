@@ -8,6 +8,7 @@ import { RefreshCw, ArrowRight, Calendar, Sparkles, PhoneCall, TrendingUp, Calen
 import { cn } from "@/lib/utils";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { DashboardSkeleton } from "@/components/client/skeletons";
+import { BreakdownCharts } from "@/components/client/BreakdownCharts";
 
 interface DashboardStats {
     totalActions: number;
@@ -321,6 +322,9 @@ export default function ClientPortal() {
                     )}
                 </div>
             )}
+
+            {/* ── Breakdown Analytics Charts ── */}
+            <BreakdownCharts />
 
             {/* ── Upcoming Meetings ── */}
             <div className="premium-card overflow-hidden" style={{ animation: "dashFadeUp 0.4s ease both", animationDelay: "140ms" }}>

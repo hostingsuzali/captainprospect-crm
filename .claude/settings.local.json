@@ -11,7 +11,10 @@
       "Bash(xargs -I {} basename {})",
       "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
       "Bash(wc:*)",
-      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")"
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts',{}\\), indent=2\\)\\)\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

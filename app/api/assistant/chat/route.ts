@@ -25,6 +25,7 @@ import {
     upsertConversation,
 } from "@/lib/assistant/memory";
 import { buildManagerLiveDataContext } from "@/lib/assistant/managerLiveData";
+import { buildDocsContext } from "@/lib/assistant/docs/loader";
 
 const messageSchema = z.object({
     role: z.enum(["user", "assistant"]),
@@ -172,9 +173,19 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         session.user.role === "MANAGER" && latestUserQuestion
             ? await buildManagerLiveDataContext(latestUserQuestion)
             : "";
+
+    // Inject how-to docs relevant to the user's current page + question
+    const docsContext = latestUserQuestion
+        ? buildDocsContext(
+              payload.context?.pathname || "",
+              latestUserQuestion,
+              session.user.role || ""
+          )
+        : "";
+
     const systemPrompt = buildSystemPrompt(
         payload.context,
-        [memoryContext, managerLiveContext].filter(Boolean).join("\n\n")
+        [memoryContext, docsContext, managerLiveContext].filter(Boolean).join("\n\n")
     );
 
     if (!openaiKey && !geminiKey && !process.env.MISTRAL_API_KEY) {
