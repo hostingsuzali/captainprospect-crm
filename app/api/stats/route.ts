@@ -405,11 +405,16 @@ async function fetchAlloCallMetricsByLine(
                 break;
             }
 
+            let oldestCallDateOnPage: Date | null = null;
             for (const call of parsed.rawCalls) {
                 const rawStart = call.start_date ?? call.start_time ?? call.created_at ?? call.date;
                 if (!rawStart) continue;
                 const callDate = new Date(String(rawStart));
                 if (Number.isNaN(callDate.getTime())) continue;
+
+                if (!oldestCallDateOnPage || callDate < oldestCallDateOnPage) {
+                    oldestCallDateOnPage = callDate;
+                }
 
                 const callDay = normalizeIsoDate(callDate);
                 if (callDay < fromIso || callDay > toIso) {
@@ -421,6 +426,10 @@ async function fetchAlloCallMetricsByLine(
                 if (ALLO_CONNECTED_RESULTS.has(result)) {
                     totals.connectedCalls += 1;
                 }
+            }
+
+            if (oldestCallDateOnPage && oldestCallDateOnPage < dateFrom) {
+                break;
             }
 
             page += 1;

@@ -12,11 +12,10 @@ import {
     Activity, Target, Send, PhoneMissed, ThumbsUp, PhoneOff,
     CalendarX, RotateCw, SlidersHorizontal, Download, Columns3,
     X, Minus, Radio, Zap, Users, Filter, ArrowUpDown,
-    Eye, EyeOff, MoreHorizontal, Maximize2, Play, Mic,
+    Eye, EyeOff, MoreHorizontal, Maximize2, Mic,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Card, Button, useToast } from "@/components/ui";
-import { CallRecordingModal } from "@/components/prospection/CallRecordingModal";
 import { ManagerCallEnrichmentSyncModal } from "@/components/prospection/ManagerCallEnrichmentSyncModal";
 import { ACTION_RESULT_LABELS } from "@/lib/types";
 
@@ -486,7 +485,6 @@ export default function ManagerProspectionPage() {
     const [pickerClientId, setPickerClientId] = useState("");
     const [pickerSdrId, setPickerSdrId] = useState("");
     const [drawerAction, setDrawerAction] = useState<ActionRecord | null>(null);
-    const [audioModalAction, setAudioModalAction] = useState<ActionRecord | null>(null);
     const [callSyncModalOpen, setCallSyncModalOpen] = useState(false);
     const [bulkCallSyncOpen, setBulkCallSyncOpen] = useState(false);
     const [drawerClientBookingUrl, setDrawerClientBookingUrl] = useState<string>("");
@@ -1523,9 +1521,6 @@ export default function ManagerProspectionPage() {
                                     const cfg = getCfg(row.result);
                                     const isSelected = selectedIds.has(row.id);
                                     const displaySummary = getActionDisplaySummary(row);
-                                    const hasRecording =
-                                        row.channel === "CALL" &&
-                                        !!row.callRecordingUrl?.trim();
                                     const contactName = getContactName(row);
                                     const companyName = getCompanyName(row);
                                     const name = contactName || companyName || "—";
@@ -1638,40 +1633,20 @@ export default function ManagerProspectionPage() {
                                                 </td>
                                             )}
 
-                                            {/* Résumé (callSummary) + note + lecture audio */}
+                                            {/* Résumé (callSummary) + note */}
                                             {visibleCols.has("note") && (
                                                 <td className={cn("px-4 max-w-[320px]", rowPy)}>
-                                                    <div className="flex items-start gap-2 min-w-0">
-                                                        {hasRecording && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setAudioModalAction(row);
-                                                                }}
-                                                                aria-label="Écouter l'enregistrement et la transcription"
-                                                                className={cn(
-                                                                    "shrink-0 mt-0.5 w-8 h-8 rounded-xl border border-indigo-200",
-                                                                    "bg-indigo-50 text-indigo-600 flex items-center justify-center",
-                                                                    "hover:bg-indigo-100 hover:border-indigo-300 transition-colors",
-                                                                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-                                                                )}
+                                                    <div className="min-w-0 flex-1">
+                                                        {displaySummary ? (
+                                                            <p
+                                                                className="text-xs text-slate-600 line-clamp-2"
+                                                                title={displaySummary}
                                                             >
-                                                                <Play className="w-3.5 h-3.5 ml-0.5" fill="currentColor" aria-hidden />
-                                                            </button>
+                                                                {displaySummary}
+                                                            </p>
+                                                        ) : (
+                                                            <span className="text-[11px] text-slate-300 italic">—</span>
                                                         )}
-                                                        <div className="min-w-0 flex-1">
-                                                            {displaySummary ? (
-                                                                <p
-                                                                    className="text-xs text-slate-600 line-clamp-2"
-                                                                    title={displaySummary}
-                                                                >
-                                                                    {displaySummary}
-                                                                </p>
-                                                            ) : (
-                                                                <span className="text-[11px] text-slate-300 italic">—</span>
-                                                            )}
-                                                        </div>
                                                     </div>
                                                 </td>
                                             )}
@@ -1812,20 +1787,6 @@ export default function ManagerProspectionPage() {
                         if (kind === "success") showSuccess(title, message);
                         else showError(title, message);
                     }}
-                />
-            )}
-
-            {audioModalAction?.callRecordingUrl && (
-                <CallRecordingModal
-                    isOpen={!!audioModalAction}
-                    onClose={() => setAudioModalAction(null)}
-                    actionId={audioModalAction.id}
-                    transcription={audioModalAction.callTranscription}
-                    subtitle={
-                        [getContactName(audioModalAction), getCompanyName(audioModalAction)]
-                            .filter(Boolean)
-                            .join(" · ") || undefined
-                    }
                 />
             )}
 

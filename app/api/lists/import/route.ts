@@ -253,6 +253,7 @@ export async function POST(req: NextRequest) {
         const statusMappingsStr = formData.get("statusMappings") as string | null;
         const channelMappingsStr = formData.get("channelMappings") as string | null;
         const whenAlreadyWorkedOn = (formData.get("whenAlreadyWorkedOn") as string) || "add_anyway";
+        const assignedSdrIdParam = (formData.get("assignedSdrId") as string | null)?.trim() || null;
 
         if (!file || !mappingsStr) {
             return NextResponse.json(
@@ -331,6 +332,25 @@ export async function POST(req: NextRequest) {
             } catch {
                 actionColumnGroups = [];
             }
+        }
+
+        let assignedSdrId = session.user.id;
+        if (assignedSdrIdParam) {
+            const assignee = await prisma.user.findFirst({
+                where: {
+                    id: assignedSdrIdParam,
+                    isActive: true,
+                    role: { in: ["SDR", "BUSINESS_DEVELOPER"] },
+                },
+                select: { id: true },
+            });
+            if (!assignee) {
+                return NextResponse.json(
+                    { success: false, error: "SDR d'assignation invalide" },
+                    { status: 400 }
+                );
+            }
+            assignedSdrId = assignee.id;
         }
 
         let list: { id: string; missionId: string };
@@ -433,7 +453,7 @@ export async function POST(req: NextRequest) {
                                         statusMappings,
                                         channelMappings,
                                         missionId,
-                                        sdrId: session.user.id,
+                                        sdrId: assignedSdrId,
                                         whenAlreadyWorkedOn: addToExistingList ? (whenAlreadyWorkedOn === "skip" ? "skip" : "add_anyway") : "add_anyway",
                                     }
                                 );
@@ -467,7 +487,7 @@ export async function POST(req: NextRequest) {
                                     statusMappings,
                                     channelMappings,
                                     missionId,
-                                    sdrId: session.user.id,
+                                    sdrId: assignedSdrId,
                                     whenAlreadyWorkedOn: addToExistingList ? (whenAlreadyWorkedOn === "skip" ? "skip" : "add_anyway") : "add_anyway",
                                 }
                             );

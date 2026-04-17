@@ -17,24 +17,22 @@ import {
 } from "../../_lib/formatters";
 import type { ConfirmationFilter } from "../../_types";
 import { Avatar } from "../shared/Avatar";
-import { X, Check, Mail, Phone, Linkedin, FileText, ThumbsUp, MessageSquare, History, CalendarPlus } from "lucide-react";
+import { X, Check, Mail, Phone, Linkedin, FileText, ThumbsUp, Mic, History, CalendarPlus } from "lucide-react";
 import { downloadICS, proximityLabel } from "../../_lib/formatters";
 import { DetailTab } from "./DetailTab";
 import { FicheTab } from "./FicheTab";
 import { FeedbackTab } from "./FeedbackTab";
-import { NoteTab } from "./NoteTab";
+import { AudioTab } from "./AudioTab";
 import { HistoryTab } from "./HistoryTab";
 import type { UseDetailPanelReturn } from "../../_hooks/useDetailPanel";
 import type { UseFicheRdvReturn } from "../../_hooks/useFicheRdv";
 import type { UseFeedbackReturn } from "../../_hooks/useFeedback";
-import type { UseNoteAutosaveReturn } from "../../_hooks/useNoteAutosave";
 import { contactName } from "../../_lib/formatters";
 
 interface DetailPanelProps {
   panelState: UseDetailPanelReturn;
   ficheState: UseFicheRdvReturn;
   feedbackState: UseFeedbackReturn;
-  noteState: UseNoteAutosaveReturn;
   updateMeeting: (id: string, data: Record<string, unknown>) => Promise<void>;
   onOpenEditContact: () => void;
   onOpenEditCompany: () => void;
@@ -46,7 +44,7 @@ const TABS: { key: PanelTab; label: string; Icon: typeof FileText }[] = [
   { key: "detail", label: "Détail", Icon: FileText },
   { key: "fiche", label: "Fiche RDV", Icon: FileText },
   { key: "feedback", label: "Feedback", Icon: ThumbsUp },
-  { key: "note", label: "Note interne", Icon: MessageSquare },
+  { key: "audio", label: "Audio + transcription", Icon: Mic },
   { key: "history", label: "Historique", Icon: History },
 ];
 
@@ -54,7 +52,6 @@ export function DetailPanel({
   panelState,
   ficheState,
   feedbackState,
-  noteState,
   updateMeeting,
   onOpenEditContact,
   onOpenEditCompany,
@@ -245,11 +242,9 @@ export function DetailPanel({
             updateMeeting={updateMeeting}
           />
         )}
-        {panelTab === "note" && (
-          <NoteTab
+        {panelTab === "audio" && (
+          <AudioTab
             meeting={selectedMeeting}
-            noteState={noteState}
-            updateMeeting={updateMeeting}
           />
         )}
         {panelTab === "history" && (

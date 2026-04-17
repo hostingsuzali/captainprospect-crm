@@ -45,11 +45,18 @@ type AiAnalysis = {
     next7DaysPlan: string[];
 };
 
+function toLocalISODate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
 export default function AnalyticsPage() {
     // Filters State
-    const [dateRange, setDateRange] = useState({
-        from: new Date().toISOString().split('T')[0],
-        to: new Date().toISOString().split('T')[0]
+    const [dateRange, setDateRange] = useState(() => {
+        const today = toLocalISODate(new Date());
+        return { from: today, to: today };
     });
     const [selectedSdrs, setSelectedSdrs] = useState<string[]>([]);
     const [selectedMissions, setSelectedMissions] = useState<string[]>([]);
@@ -106,13 +113,13 @@ export default function AnalyticsPage() {
     // Report modal
     const [showReportModal, setShowReportModal] = useState(false);
     const [reportType, setReportType] = useState<'daily' | 'weekly' | 'custom'>('weekly');
-    const [reportDate, setReportDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [reportDate, setReportDate] = useState(() => toLocalISODate(new Date()));
     const [reportDateFrom, setReportDateFrom] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 6);
-        return d.toISOString().split('T')[0];
+        return toLocalISODate(d);
     });
-    const [reportDateTo, setReportDateTo] = useState(() => new Date().toISOString().split('T')[0]);
+    const [reportDateTo, setReportDateTo] = useState(() => toLocalISODate(new Date()));
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
     // Fetch Reference Data

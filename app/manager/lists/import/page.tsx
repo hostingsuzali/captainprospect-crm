@@ -46,6 +46,12 @@ interface Mission {
     name: string;
 }
 
+interface SdrOption {
+    id: string;
+    name: string;
+    role: string;
+}
+
 interface ListOption {
     id: string;
     name: string;
@@ -223,6 +229,7 @@ export default function ImportListPage() {
 
     const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
     const [missions, setMissions] = useState<Mission[]>([]);
+    const [sdrOptions, setSdrOptions] = useState<SdrOption[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
 
@@ -250,6 +257,7 @@ export default function ImportListPage() {
     
     // Action history import
     const [importActions, setImportActions] = useState(false);
+    const [assignedSdrId, setAssignedSdrId] = useState("");
     const [actionColumnMapping, setActionColumnMapping] = useState<ActionColumnMapping>({
         statusColumn: "",
         dateColumn: "",
@@ -493,21 +501,35 @@ export default function ImportListPage() {
     // ============================================
 
     useEffect(() => {
-        const fetchMissions = async () => {
+        const fetchMissionsAndSdrs = async () => {
             setIsLoading(true);
             try {
-                const res = await fetch("/api/missions?isActive=true");
-                const json = await res.json();
-                if (json.success) {
-                    setMissions(json.data);
+                const [missionsRes, sdrsRes] = await Promise.all([
+                    fetch("/api/missions?isActive=true"),
+                    fetch("/api/users?role=SDR,BUSINESS_DEVELOPER&status=active&limit=200"),
+                ]);
+                const [missionsJson, sdrsJson] = await Promise.all([
+                    missionsRes.json(),
+                    sdrsRes.json(),
+                ]);
+                if (missionsJson.success) {
+                    setMissions(missionsJson.data);
+                }
+                if (sdrsJson.success) {
+                    const users = Array.isArray(sdrsJson.data?.users) ? sdrsJson.data.users : [];
+                    setSdrOptions(users.map((u: { id: string; name: string; role: string }) => ({
+                        id: u.id,
+                        name: u.name,
+                        role: u.role,
+                    })));
                 }
             } catch (err) {
-                console.error("Failed to fetch missions:", err);
+                console.error("Failed to fetch import references:", err);
             } finally {
                 setIsLoading(false);
             }
         };
-        fetchMissions();
+        fetchMissionsAndSdrs();
     }, []);
 
     // Fetch lists when mission changes (for "add to existing list")
@@ -848,6 +870,9 @@ export default function ImportListPage() {
 
         // Validation for action history import: require full mapping of detected statuses
         if (importActions) {
+            if (!assignedSdrId) {
+                errors.push("Sélectionnez un SDR pour assigner l'historique des prospects déjà travaillés");
+            }
             const hasStatusMapping =
                 actionColumnMode === "multi-column"
                     ? actionColumnGroups.some((g) => !!g.statusColumn)
@@ -946,6 +971,9 @@ export default function ImportListPage() {
                 formData.append("mappings", JSON.stringify(mappings));
                 formData.append("importType", importType);
                 formData.append("importActions", String(importActions));
+                if (assignedSdrId) {
+                    formData.append("assignedSdrId", assignedSdrId);
+                }
                 formData.append("actionColumnMapping", JSON.stringify(actionColumnMapping));
                 if (actionColumnMode === "multi-column") {
                     formData.append("actionColumnMode", actionColumnMode);
@@ -1519,6 +1547,17 @@ export default function ImportListPage() {
                                         Configurez les colonnes pour reconstruire l&apos;historique des statuts et des notes de vos prospects.
                                     </p>
                                 </div>
+                                <Select
+                                    label="Assigner l'historique à (SDR) *"
+                                    placeholder="Sélectionner un SDR..."
+                                    options={sdrOptions.map((s) => ({
+                                        value: s.id,
+                                        label: `${s.name} (${s.role === "BUSINESS_DEVELOPER" ? "BD" : "SDR"})`,
+                                    }))}
+                                    value={assignedSdrId}
+                                    onChange={setAssignedSdrId}
+                                    searchable
+                                />
                                 <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
                                     <p className="text-xs font-medium text-indigo-800 mb-1">Format multi-appels accepte</p>
                                     <p className="text-xs text-indigo-700">
@@ -2018,6 +2057,7 @@ export default function ImportListPage() {
                                     setCsvHeaders([]);
                                     setMappings([]);
                                     setPreviewData([]);
+                                    setAssignedSdrId("");
                                     setValidationResult(null);
                                     setImportResult(null);
                                 }}

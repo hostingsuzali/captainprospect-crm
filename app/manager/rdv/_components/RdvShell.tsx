@@ -8,7 +8,6 @@ import { useMeetingActions } from "../_hooks/useMeetingActions";
 import { useDetailPanel } from "../_hooks/useDetailPanel";
 import { useFicheRdv } from "../_hooks/useFicheRdv";
 import { useFeedback } from "../_hooks/useFeedback";
-import { useNoteAutosave } from "../_hooks/useNoteAutosave";
 import { CommandBar } from "./CommandBar";
 import { IntelligenceStrip } from "./IntelligenceStrip";
 import { FilterSidebar } from "./FilterSidebar";
@@ -46,7 +45,6 @@ export function RdvShell() {
   const panelState = useDetailPanel();
   const ficheState = useFicheRdv(updateMeeting);
   const feedbackState = useFeedback();
-  const noteState = useNoteAutosave();
 
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
@@ -90,8 +88,7 @@ export function RdvShell() {
     const resolved = panelState.selectedMeeting;
     ficheState.initFiche(resolved);
     feedbackState.initFeedback(resolved);
-    noteState.initNote((resolved as any).managerNote ?? resolved.note ?? "");
-  }, [panelState.selectedMeeting?.id, ficheState.initFiche, feedbackState.initFeedback, noteState.initNote]);
+  }, [panelState.selectedMeeting?.id, ficheState.initFiche, feedbackState.initFeedback]);
 
   const handleContactSaved = useCallback(
     (patch: { firstName: string | null; lastName: string | null; title: string | null; email: string | null; phone: string | null; linkedin: string | null }) => {
@@ -232,7 +229,6 @@ export function RdvShell() {
             panelState={panelState}
             ficheState={ficheState}
             feedbackState={feedbackState}
-            noteState={noteState}
             updateMeeting={updateMeeting}
             onOpenEditContact={() => setActiveModal("editContact")}
             onOpenEditCompany={() => setActiveModal("editCompany")}

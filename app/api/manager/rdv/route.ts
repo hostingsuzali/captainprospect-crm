@@ -281,6 +281,9 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     cancellationReason: m.cancellationReason,
     createdAt: m.createdAt,
     duration: m.duration,
+    callSummary: m.callSummary,
+    callTranscription: m.callTranscription,
+    callRecordingUrl: m.callRecordingUrl,
     contact: m.contact
       ? {
           id: m.contact.id,

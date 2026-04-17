@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useState } from "react";
 import type { Meeting } from "../_types";
 import { Skeleton } from "./shared/Skeleton";
 import { EmptyState } from "./shared/EmptyState";
@@ -19,13 +19,12 @@ import {
   confirmationBg,
   confirmationColor,
   confirmationLabel,
-  outcomeIcon,
   hashColor,
   proximityLabel,
   formatDuration,
 } from "../_lib/formatters";
 import type { ConfirmationFilter } from "../_types";
-import { Copy, Linkedin, RefreshCw, Check, X, Clock } from "lucide-react";
+import { Copy, Linkedin, RefreshCw, Check, X, Mic } from "lucide-react";
 
 interface MeetingListProps {
   meetings: Meeting[];
@@ -61,6 +60,9 @@ const MeetingRow = memo(function MeetingRow({
   const rdvDate = formatDateShort(meeting.callbackDate);
   const proximity = proximityLabel(meeting.callbackDate);
   const isPending = meeting.confirmationStatus === "PENDING";
+  const [audioPopupOpen, setAudioPopupOpen] = useState(false);
+  const hasAudio = !!meeting.callRecordingUrl?.trim();
+  const transcription = meeting.callTranscription?.trim() ?? "";
 
   const handleInlineConfirm = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -218,7 +220,69 @@ const MeetingRow = memo(function MeetingRow({
         )}
       </div>
 
-      <div style={{ width: 36, textAlign: "center" }}>{outcomeIcon(meeting.feedback?.outcome || null)}</div>
+      <div style={{ width: 36, textAlign: "center", position: "relative" }}>
+        {hasAudio ? (
+          <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setAudioPopupOpen((prev) => !prev);
+              }}
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: audioPopupOpen ? "rgba(108,99,255,0.12)" : "var(--surface2)",
+                color: audioPopupOpen ? "var(--accent)" : "var(--ink3)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+              title="Audio et transcription"
+            >
+              <Mic size={13} />
+            </button>
+            {audioPopupOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 8px)",
+                  right: 0,
+                  width: 320,
+                  zIndex: 20,
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  background: "var(--surface)",
+                  boxShadow: "0 12px 28px rgba(15,23,42,0.14)",
+                  padding: 10,
+                  textAlign: "left",
+                }}
+              >
+                <audio controls src={`/api/actions/${meeting.id}/recording`} style={{ width: "100%" }} />
+                <div
+                  className="rdv-scrollbar"
+                  style={{
+                    marginTop: 8,
+                    maxHeight: 140,
+                    overflowY: "auto",
+                    fontSize: 12,
+                    color: "var(--ink2)",
+                    lineHeight: 1.45,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {transcription || "Aucune transcription disponible."}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <span style={{ fontSize: 11, color: "var(--ink3)", opacity: 0.4 }}>—</span>
+        )}
+      </div>
 
       <div style={{ width: 64, position: "relative" }}>
         <div className="rdv-row-actions" style={{ opacity: 0, transition: "opacity 0.15s", display: "flex", gap: 3 }}>

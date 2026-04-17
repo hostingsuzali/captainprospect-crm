@@ -26,6 +26,9 @@ export interface Meeting {
   cancellationReason: string | null;
   createdAt: string;
   duration: number | null;
+  callSummary?: string | null;
+  callTranscription?: string | null;
+  callRecordingUrl?: string | null;
   contact: {
     id: string;
     firstName: string | null;
@@ -94,7 +97,7 @@ export type MeetingTypeFilter = "VISIO" | "PHYSIQUE" | "TELEPHONIQUE";
 export type MeetingCategoryFilter = "EXPLORATOIRE" | "BESOIN";
 export type OutcomeFilter = "POSITIVE" | "NEUTRAL" | "NEGATIVE" | "NO_SHOW" | "NONE";
 export type ConfirmationFilter = "all" | "PENDING" | "CONFIRMED" | "CANCELLED";
-export type PanelTab = "detail" | "fiche" | "feedback" | "note" | "history";
+export type PanelTab = "detail" | "fiche" | "feedback" | "audio" | "history";
 
 export interface MeetingFilters {
   search: string;
