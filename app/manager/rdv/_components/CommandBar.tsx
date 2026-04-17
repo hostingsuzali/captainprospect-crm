@@ -6,7 +6,7 @@ import type { MeetingFiltersState } from "../_hooks/useMeetingFilters";
 import type { ViewMode, DatePreset } from "../_types";
 import { SearchInput } from "./shared/SearchInput";
 import { downloadCSV } from "../_lib/csv-export";
-import { List, CalendarDays, Download, Plus, Upload } from "lucide-react";
+import { List, CalendarDays, Download, Plus, Upload, Mic } from "lucide-react";
 import { AddRdvModal } from "./modals/AddRdvModal";
 import { ImportRdvModal } from "./modals/ImportRdvModal";
 
@@ -16,9 +16,10 @@ interface CommandBarProps {
   filters: MeetingFiltersState;
   meetings: Meeting[];
   onRefresh?: () => void;
+  onOpenSyncAudios?: () => void;
 }
 
-export const CommandBar = memo(function CommandBar({ view, setView, filters, meetings, onRefresh }: CommandBarProps) {
+export const CommandBar = memo(function CommandBar({ view, setView, filters, meetings, onRefresh, onOpenSyncAudios }: CommandBarProps) {
   const { search, setSearch, datePreset, setDatePreset, filterSummary } = filters;
   const [addRdvOpen, setAddRdvOpen] = useState(false);
   const [importRdvOpen, setImportRdvOpen] = useState(false);
@@ -82,6 +83,9 @@ export const CommandBar = memo(function CommandBar({ view, setView, filters, mee
         </button>
         <button className="rdv-btn rdv-btn-ghost" onClick={() => setImportRdvOpen(true)}>
           <Upload size={14} /> Importer des RDV
+        </button>
+        <button className="rdv-btn rdv-btn-ghost" onClick={() => onOpenSyncAudios?.()}>
+          <Mic size={14} /> Sync audios
         </button>
         <button className="rdv-btn rdv-btn-ghost" onClick={() => downloadCSV(meetings, filterSummary)}>
           <Download size={14} /> Exporter

@@ -17,6 +17,7 @@ import { DetailPanel } from "./DetailPanel";
 import { EditContactModal } from "./modals/EditContactModal";
 import { EditCompanyModal } from "./modals/EditCompanyModal";
 import { LinkContactModal } from "./modals/LinkContactModal";
+import { SyncRdvAudiosModal } from "./modals/SyncRdvAudiosModal";
 import { downloadCSV } from "../_lib/csv-export";
 import { Download, Trash2, X, Check, XCircle, AlertTriangle } from "lucide-react";
 import type { LinkContactResult } from "../_types";
@@ -50,6 +51,7 @@ export function RdvShell() {
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
   const [bulkConfirming, setBulkConfirming] = useState(false);
   const [bulkCancelling, setBulkCancelling] = useState(false);
+  const [syncAudiosOpen, setSyncAudiosOpen] = useState(false);
 
   // Fetch on filter change
   useEffect(() => { fetchMeetings(); }, [fetchMeetings]);
@@ -180,7 +182,14 @@ export function RdvShell() {
 
   return (
       <div className="rdv-page">
-        <CommandBar view={view} setView={setView} filters={filters} meetings={meetings} onRefresh={() => fetchMeetings()} />
+        <CommandBar
+          view={view}
+          setView={setView}
+          filters={filters}
+          meetings={meetings}
+          onRefresh={() => fetchMeetings()}
+          onOpenSyncAudios={() => setSyncAudiosOpen(true)}
+        />
 
         <IntelligenceStrip
           aggregates={aggregates}
@@ -406,6 +415,15 @@ export function RdvShell() {
             onLinked={handleContactLinked}
           />
         )}
+        <SyncRdvAudiosModal
+          isOpen={syncAudiosOpen}
+          onClose={() => setSyncAudiosOpen(false)}
+          meetings={meetings}
+          selectedIds={panelState.selectedIds}
+          onSynced={async () => {
+            await fetchMeetings();
+          }}
+        />
       </div>
   );
 }
