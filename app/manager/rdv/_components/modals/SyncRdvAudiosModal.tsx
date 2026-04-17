@@ -30,6 +30,11 @@ interface PreviewItem {
     hasSummary: boolean;
     hasTranscription: boolean;
     hasRecording: boolean;
+    syncPayload: {
+      summary: string | null;
+      transcription: string | null;
+      recordingUrl: string | null;
+    };
   } | null;
   searchWays: string[];
   windowAttempts: { label: string; found: boolean }[];
@@ -101,7 +106,16 @@ export function SyncRdvAudiosModal({
       const res = await fetch("/api/manager/rdv/audio-sync", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actionIds: [...selectedToSync] }),
+        body: JSON.stringify({
+          items: preview
+            .filter((p) => selectedToSync.has(p.actionId))
+            .map((p) => ({
+              actionId: p.actionId,
+              summary: p.match?.syncPayload.summary ?? null,
+              transcription: p.match?.syncPayload.transcription ?? null,
+              recordingUrl: p.match?.syncPayload.recordingUrl ?? null,
+            })),
+        }),
       });
       const json = await res.json();
       if (!json.success) {

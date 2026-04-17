@@ -12,6 +12,19 @@ const MAX_ACTIONS = 150;
 const schema = z.object({
   actionIds: z.array(z.string().min(1)).min(1).max(MAX_ACTIONS),
 });
+const syncSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        actionId: z.string().min(1),
+        summary: z.string().nullable().optional(),
+        transcription: z.string().nullable().optional(),
+        recordingUrl: z.string().nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(MAX_ACTIONS),
+});
 
 function getAlloNumbers(): string[] {
   return (process.env.ALLO_NUMBERS ?? "")
@@ -242,6 +255,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
               hasSummary: !!lookup.match.summary,
               hasTranscription: !!lookup.match.transcription,
               hasRecording: !!lookup.match.recordingUrl,
+              syncPayload: {
+                summary: lookup.match.summary ?? null,
+                transcription: lookup.match.transcription ?? null,
+                recordingUrl: lookup.match.recordingUrl ?? null,
+              },
             }
           : null,
       };
@@ -256,49 +274,43 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
 export const PATCH = withErrorHandler(async (request: NextRequest) => {
   await requireRole(["MANAGER"], request);
-  const parsed = schema.safeParse(await request.json());
-  if (!parsed.success) return errorResponse("actionIds invalides", 400);
+  const parsed = syncSchema.safeParse(await request.json());
+  if (!parsed.success) return errorResponse("items invalides", 400);
 
-  const actionIds = [...new Set(parsed.data.actionIds)];
-  const actions = await fetchRdvActions(actionIds);
-  if (actions.length === 0) return successResponse({ synced: 0, noMatch: 0, noPhone: 0 });
-  const alloNumbers = getAlloNumbers();
-  if (alloNumbers.length === 0) return errorResponse("ALLO_NUMBERS manquant", 400);
+  const unique = new Map<string, { summary?: string | null; transcription?: string | null; recordingUrl?: string | null }>();
+  for (const item of parsed.data.items) {
+    unique.set(item.actionId, {
+      summary: item.summary ?? null,
+      transcription: item.transcription ?? null,
+      recordingUrl: item.recordingUrl ?? null,
+    });
+  }
+  const actionIds = [...unique.keys()];
+  const actions = await prisma.action.findMany({
+    where: {
+      id: { in: actionIds },
+      result: { in: ["MEETING_BOOKED", "MEETING_CANCELLED"] },
+    },
+    select: { id: true },
+  });
+  if (actions.length === 0) return successResponse({ synced: 0, noMatch: 0, noPhone: 0, total: 0 });
 
   let synced = 0;
   let noMatch = 0;
-  let noPhone = 0;
-
   for (const a of actions) {
-    const phones = [
-      ...normalizePhonesFromField(a.meetingPhone),
-      ...normalizePhonesFromField(a.contact?.phone),
-      ...normalizePhonesFromField(a.company?.phone),
-      ...extractAdditionalPhonesFromJson(a.contact?.additionalPhones).flatMap((p) => normalizePhonesFromField(p)),
-      ...extractAdditionalPhonesFromJson(a.company?.customData).flatMap((p) => normalizePhonesFromField(p)),
-    ];
-    const dedupedPhones = [...new Set(phones)];
-    if (dedupedPhones.length === 0) {
-      noPhone += 1;
-      continue;
-    }
-    const lookup = await findBestMatchForAction({
-      sdrId: a.sdrId,
-      createdAt: a.createdAt,
-      callbackDate: a.callbackDate,
-      phones: dedupedPhones,
-      alloNumbers,
-    });
-    if (!lookup.match) {
+    const payload = unique.get(a.id);
+    if (!payload) continue;
+    const hasAny = !!(payload.summary?.trim() || payload.transcription?.trim() || payload.recordingUrl?.trim());
+    if (!hasAny) {
       noMatch += 1;
       continue;
     }
     await prisma.action.update({
       where: { id: a.id },
       data: {
-        callSummary: lookup.match.summary ?? null,
-        callTranscription: lookup.match.transcription ?? null,
-        callRecordingUrl: lookup.match.recordingUrl ?? null,
+        callSummary: payload.summary ?? null,
+        callTranscription: payload.transcription ?? null,
+        callRecordingUrl: payload.recordingUrl ?? null,
         callEnrichmentAt: new Date(),
         callEnrichmentError: null,
       },
@@ -306,6 +318,6 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
     synced += 1;
   }
 
-  return successResponse({ synced, noMatch, noPhone, total: actions.length });
+  return successResponse({ synced, noMatch, noPhone: 0, total: actions.length });
 });
 
