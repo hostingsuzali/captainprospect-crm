@@ -765,6 +765,36 @@ export default function SDRActionPage() {
         return callbackResultCodes.has(code);
     }, [callbackResultCodes]);
 
+    const handlePhoneCallAttempt = useCallback((
+        e: React.MouseEvent,
+        phone: string,
+        context?: {
+            lastAction?: { result: string; note?: string; createdAt?: string } | null;
+            lastActionBy?: { id: string; name: string | null } | null;
+        }
+    ) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const contactedByOther =
+            !!context?.lastAction &&
+            !!context?.lastActionBy?.id &&
+            context.lastActionBy.id !== session?.user?.id;
+
+        if (contactedByOther) {
+            const lastStatus = statusLabels[context?.lastAction?.result || ""] ?? context?.lastAction?.result ?? "Inconnu";
+            const lastNote = context?.lastAction?.note?.trim() || "Aucune note";
+            const byName = context?.lastActionBy?.name || "un autre SDR";
+            const confirmMessage =
+                `Ce prospect est en cours de contact par un autre SDR (${byName}).\n\n` +
+                `Dernier statut: ${lastStatus}\n` +
+                `Dernière note: ${lastNote}\n\n` +
+                `Voulez-vous quand même appeler ?`;
+            const accepted = window.confirm(confirmMessage);
+            if (!accepted) return;
+        }
+        window.location.href = `tel:${phone}`;
+    }, [session?.user?.id, statusLabels]);
+
     const getRequiresNote = useCallback((code: string) =>
         statusConfig?.statuses?.find((s) => s.code === code)?.requiresNote ??
         ["INTERESTED", "CALLBACK_REQUESTED", "ENVOIE_MAIL"].includes(code)
@@ -1757,7 +1787,10 @@ export default function SDRActionPage() {
                     return (
                         <a
                             href={`tel:${phone}`}
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => handlePhoneCallAttempt(e, phone, {
+                                lastAction: row.lastAction,
+                                lastActionBy: row.lastActionBy ?? null,
+                            })}
                             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 rounded-lg transition-all duration-150 hover:shadow-sm group"
                             title="Cliquer pour appeler"
                         >
@@ -2817,6 +2850,10 @@ export default function SDRActionPage() {
                                         return isValidPhone ? (
                                             <a
                                                 href={`tel:${phone}`}
+                                                onClick={(e) => handlePhoneCallAttempt(e, phone, {
+                                                    lastAction: currentAction.lastAction,
+                                                    lastActionBy: currentAction.lastActionBy ?? null,
+                                                })}
                                                 className="flex items-center justify-center gap-2 h-12 w-full text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
                                             >
                                                 <Phone className="w-4 h-4" />
@@ -2946,6 +2983,10 @@ export default function SDRActionPage() {
                                     {currentAction.company.phone ? (
                                         <a
                                             href={`tel:${currentAction.company.phone}`}
+                                            onClick={(e) => handlePhoneCallAttempt(e, currentAction.company.phone!, {
+                                                lastAction: currentAction.lastAction,
+                                                lastActionBy: currentAction.lastActionBy ?? null,
+                                            })}
                                             className="flex items-center justify-center gap-2 h-12 w-full text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
                                         >
                                             <Phone className="w-4 h-4" />

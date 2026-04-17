@@ -151,16 +151,12 @@ const MeetingRow = memo(function MeetingRow({
         </div>
       </div>
 
-      <div style={{ flex: 1, minWidth: 80 }}>
+      <div style={{ flex: 1, minWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {meeting.client && (
           <span className="rdv-pill" style={{ background: `${hashColor(meeting.client.name)}12`, color: hashColor(meeting.client.name), fontWeight: 600 }}>
             {meeting.client.name}
           </span>
         )}
-      </div>
-
-      <div style={{ flex: 1, minWidth: 80, fontSize: 13, color: "var(--ink3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {meeting.mission.name}
       </div>
 
       <div style={{ width: 100, display: "flex", alignItems: "center", gap: 6 }}>
@@ -182,7 +178,7 @@ const MeetingRow = memo(function MeetingRow({
             </span>
           </>
         ) : (
-          <span style={{ fontSize: 11, color: "var(--ink3)", opacity: 0.65 }}>Non assigné</span>
+          <span style={{ fontSize: 11, color: "var(--ink3)", opacity: 0.65, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Non assigné</span>
         )}
       </div>
 
@@ -377,14 +373,13 @@ export function MeetingList({
             onChange={onToggleSelectAll}
           />
         </div>
-        <div style={{ width: 90 }} title="Date de l'action (prise de RDV)">Créé le</div>
-        <div style={{ width: 80 }} title="Date prévue du rendez-vous">Date RDV</div>
-        <div style={{ flex: 2, minWidth: 140 }}>Contact</div>
-        <div style={{ flex: 2, minWidth: 120 }}>Entreprise</div>
-        <div style={{ flex: 1, minWidth: 80 }}>Client</div>
-        <div style={{ flex: 1, minWidth: 80 }}>Mission</div>
-        <div style={{ width: 100 }}>SDR</div>
-        <div style={{ width: 120 }}>Commercial</div>
+        <div style={{ width: 90, whiteSpace: "nowrap" }} title="Date de l'action (prise de RDV)">Créé le</div>
+        <div style={{ width: 80, whiteSpace: "nowrap" }} title="Date prévue du rendez-vous">Date RDV</div>
+        <div style={{ flex: 2, minWidth: 140, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Contact</div>
+        <div style={{ flex: 2, minWidth: 120, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Entreprise</div>
+        <div style={{ flex: 1, minWidth: 80, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Client</div>
+        <div style={{ width: 100, whiteSpace: "nowrap" }}>SDR</div>
+        <div style={{ width: 120, whiteSpace: "nowrap" }}>Commercial</div>
         <div style={{ width: 36, textAlign: "center" }}>Type</div>
         <div style={{ width: 50, textAlign: "center" }}>Durée</div>
         <div style={{ width: 70, textAlign: "center" }}>Statut</div>
@@ -406,7 +401,6 @@ export function MeetingList({
               </div>
               <div style={{ flex: 2 }}><Skeleton w="65%" h={14} /></div>
               <div style={{ flex: 1 }}><Skeleton w="60%" h={24} r={12} /></div>
-              <div style={{ flex: 1 }}><Skeleton w="55%" h={14} /></div>
               <Skeleton w={80} h={14} />
               <Skeleton w={24} h={24} r={12} />
               <Skeleton w={40} h={20} r={4} />
