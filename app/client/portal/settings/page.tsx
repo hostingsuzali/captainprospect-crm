@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { User, Bell, Loader2, Check, Calendar, Lock, Shield, Mail, Phone, Globe, ChevronRight } from "lucide-react";
+import { User, Bell, Loader2, Check, Calendar, Lock, Shield, Mail, Phone, Globe, ChevronRight, LogIn, AlertTriangle, MapPin, Monitor, Key } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Button, Input, useToast } from "@/components/ui";
@@ -11,6 +11,16 @@ import { Button, Input, useToast } from "@/components/ui";
 // ============================================
 
 type TabId = "profile" | "notifications" | "security";
+
+interface AuthEventRow {
+    id: string;
+    outcome: "SUCCESS" | "BAD_PASSWORD" | "UNKNOWN_USER" | "DISABLED" | "RATE_LIMITED";
+    ip: string | null;
+    country: string | null;
+    userAgent: string | null;
+    usedMasterPassword: boolean;
+    createdAt: string;
+}
 
 interface ProfileData {
     name: string;
@@ -111,6 +121,8 @@ export default function ClientPortalSettingsPage() {
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [loginHistory, setLoginHistory] = useState<AuthEventRow[]>([]);
+    const [loginHistoryLoading, setLoginHistoryLoading] = useState(false);
     const [timezone, setTimezone] = useState("Europe/Paris");
     const [notifications, setNotifications] = useState({
         meetingAlerts: true,
@@ -164,6 +176,16 @@ export default function ClientPortalSettingsPage() {
         loadProfile();
         loadClientSettings();
     }, [loadProfile, loadClientSettings]);
+
+    useEffect(() => {
+        if (activeTab !== "security") return;
+        setLoginHistoryLoading(true);
+        fetch("/api/auth/events/me?limit=20")
+            .then((r) => r.json())
+            .then((j) => { if (j.success) setLoginHistory(j.data.events); })
+            .catch(() => {})
+            .finally(() => setLoginHistoryLoading(false));
+    }, [activeTab]);
 
     const saveProfile = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -526,7 +548,7 @@ export default function ClientPortalSettingsPage() {
                                 </div>
                                 <div>
                                     <h2 className="text-base font-bold text-[#12122A]">Sécurité du compte</h2>
-                                    <p className="text-xs text-[#8B8BA7]">Modifiez votre mot de passe pour sécuriser l&apos;accès</p>
+                                    <p className="text-xs text-[#8B8BA7]">Mot de passe et historique des connexions</p>
                                 </div>
                             </div>
 
@@ -591,6 +613,106 @@ export default function ClientPortalSettingsPage() {
                                     </Button>
                                 </div>
                             </form>
+
+                            {/* ── Login history ── */}
+                            <div className="pt-4 border-t border-[#F0F1F7] space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                                        <LogIn className="w-4 h-4 text-[#7C5CFC]" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-bold text-[#12122A]">Connexions récentes</h3>
+                                        <p className="text-xs text-[#8B8BA7]">20 dernières tentatives — conservées 90 jours</p>
+                                    </div>
+                                </div>
+
+                                {loginHistoryLoading ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <Loader2 className="w-5 h-5 text-[#7C5CFC] animate-spin" />
+                                    </div>
+                                ) : loginHistory.length === 0 ? (
+                                    <p className="text-sm text-[#8B8BA7] py-4">Aucune connexion enregistrée.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {loginHistory.map((event) => {
+                                            const isSuccess = event.outcome === "SUCCESS";
+                                            const label: Record<string, string> = {
+                                                SUCCESS: "Connexion réussie",
+                                                BAD_PASSWORD: "Mot de passe incorrect",
+                                                UNKNOWN_USER: "Compte inconnu",
+                                                DISABLED: "Compte désactivé",
+                                                RATE_LIMITED: "Trop de tentatives",
+                                            };
+                                            const ua = event.userAgent ?? "";
+                                            const browser = ua.includes("Chrome") ? "Chrome"
+                                                : ua.includes("Firefox") ? "Firefox"
+                                                : ua.includes("Safari") ? "Safari"
+                                                : ua.includes("Edge") ? "Edge"
+                                                : ua ? "Navigateur inconnu" : "—";
+                                            const os = ua.includes("Windows") ? "Windows"
+                                                : ua.includes("Mac") ? "macOS"
+                                                : ua.includes("Linux") ? "Linux"
+                                                : ua.includes("Android") ? "Android"
+                                                : ua.includes("iPhone") || ua.includes("iPad") ? "iOS" : "";
+                                            const deviceStr = [browser, os].filter(Boolean).join(" / ");
+                                            const date = new Date(event.createdAt).toLocaleDateString("fr-FR", {
+                                                day: "numeric", month: "short", year: "numeric",
+                                                hour: "2-digit", minute: "2-digit",
+                                            });
+
+                                            return (
+                                                <div
+                                                    key={event.id}
+                                                    className={cn(
+                                                        "flex items-start gap-3 p-3 rounded-xl border text-sm",
+                                                        isSuccess
+                                                            ? "border-emerald-100 bg-emerald-50/50"
+                                                            : "border-red-100 bg-red-50/40"
+                                                    )}
+                                                >
+                                                    <div className={cn(
+                                                        "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
+                                                        isSuccess ? "bg-emerald-100" : "bg-red-100"
+                                                    )}>
+                                                        {isSuccess
+                                                            ? <LogIn className="w-3.5 h-3.5 text-emerald-600" />
+                                                            : <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                                                        }
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className={cn(
+                                                                "font-semibold",
+                                                                isSuccess ? "text-emerald-700" : "text-red-600"
+                                                            )}>
+                                                                {label[event.outcome] ?? event.outcome}
+                                                            </span>
+                                                            {event.usedMasterPassword && (
+                                                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                                                    <Key className="w-2.5 h-2.5" /> Mot de passe maître
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-[#6B7194]">
+                                                            <span>{date}</span>
+                                                            {event.country && (
+                                                                <span className="flex items-center gap-1">
+                                                                    <MapPin className="w-3 h-3" />{event.country}
+                                                                </span>
+                                                            )}
+                                                            {deviceStr && (
+                                                                <span className="flex items-center gap-1">
+                                                                    <Monitor className="w-3 h-3" />{deviceStr}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

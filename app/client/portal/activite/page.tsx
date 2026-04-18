@@ -247,10 +247,37 @@ function DayBlock({ dateKey: dk, calls, statusOrder, resultMeta, defaultOpen = f
     defaultOpen?: boolean;
 }) {
     const [open, setOpen] = useState(defaultOpen);
+    const [resultFilter, setResultFilter] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!open) setResultFilter(null);
+    }, [open]);
+
     const counts: Record<string, number> = {};
     statusOrder.forEach((c) => { counts[c] = 0; });
     calls.forEach((c) => { counts[c.result] = (counts[c.result] ?? 0) + 1; });
     const meetings = counts["MEETING_BOOKED"] ?? 0;
+
+    const chipCodes = useMemo(() => {
+        const cts: Record<string, number> = {};
+        statusOrder.forEach((c) => { cts[c] = 0; });
+        calls.forEach((c) => { cts[c.result] = (cts[c.result] ?? 0) + 1; });
+        const ordered = statusOrder.filter((k) => (cts[k] ?? 0) > 0);
+        const rest = Object.keys(cts)
+            .filter((k) => !statusOrder.includes(k) && (cts[k] ?? 0) > 0)
+            .sort();
+        return [...ordered, ...rest];
+    }, [calls, statusOrder]);
+
+    const sortedCalls = useMemo(
+        () => [...calls].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+        [calls]
+    );
+
+    const displayedCalls = useMemo(() => {
+        if (!resultFilter) return sortedCalls;
+        return sortedCalls.filter((c) => c.result === resultFilter);
+    }, [sortedCalls, resultFilter]);
 
     const d = new Date(dk + "T12:00:00");
     const weekday = d.toLocaleDateString("fr-FR", { weekday: "short" });
@@ -259,58 +286,126 @@ function DayBlock({ dateKey: dk, calls, statusOrder, resultMeta, defaultOpen = f
 
     return (
         <div className="rounded-xl border border-[#E8EBF0] overflow-hidden bg-white">
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="w-full flex items-center gap-4 px-4 py-3 hover:bg-[#F8F7FF] transition-colors text-left"
-            >
-                {/* Date chip – matching BreakdownCharts gradient style */}
-                <div className="flex-shrink-0 w-[52px] rounded-xl overflow-hidden text-center shadow-sm"
-                    style={{ background: "linear-gradient(135deg, #7C5CFC 0%, #4338CA 100%)" }}>
-                    <p className="text-[8px] font-bold uppercase tracking-widest text-white/60 pt-1.5 leading-none">{weekday}</p>
-                    <p className="text-[22px] font-black text-white leading-tight">{dayNum}</p>
-                    <p className="text-[8px] font-bold uppercase tracking-widest text-white/60 pb-1.5 leading-none">{month}</p>
-                </div>
-
-                <div className="flex-1 min-w-0 space-y-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-bold text-[#12122A]">
-                            {calls.length} appel{calls.length > 1 ? "s" : ""}
-                        </span>
-                        {meetings > 0 && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[11px] font-bold text-emerald-700">
-                                <Sparkles className="w-2.5 h-2.5" />
-                                {meetings} RDV
-                            </span>
-                        )}
-                        {/* Result chips */}
-                        <div className="flex flex-wrap gap-1 ml-1">
-                            {statusOrder.map((k) => {
-                                const v = counts[k] ?? 0;
-                                if (!v || k === "MEETING_BOOKED") return null;
-                                return (
-                                    <span key={k}
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
-                                        style={{ background: `${resultMeta[k]?.color ?? "#64748b"}15`, color: resultMeta[k]?.color ?? "#64748b" }}
-                                    >
-                                        {v} {resultMeta[k]?.label ?? ACTION_RESULT_LABELS[k] ?? k}
-                                    </span>
-                                );
-                            })}
-                        </div>
+            <div className="flex items-center gap-2 px-4 py-3 hover:bg-[#F8F7FF] transition-colors">
+                <button
+                    type="button"
+                    onClick={() => setOpen((o) => !o)}
+                    className="flex flex-1 min-w-0 items-center gap-4 text-left"
+                >
+                    {/* Date chip – matching BreakdownCharts gradient style */}
+                    <div className="flex-shrink-0 w-[52px] rounded-xl overflow-hidden text-center shadow-sm"
+                        style={{ background: "linear-gradient(135deg, #7C5CFC 0%, #4338CA 100%)" }}>
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-white/60 pt-1.5 leading-none">{weekday}</p>
+                        <p className="text-[22px] font-black text-white leading-tight">{dayNum}</p>
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-white/60 pb-1.5 leading-none">{month}</p>
                     </div>
-                    <MiniBar counts={counts} total={calls.length} statusOrder={statusOrder} resultMeta={resultMeta} />
-                </div>
 
-                <ChevronDown className={cn("w-4 h-4 text-[#B0B3C8] flex-shrink-0 transition-transform duration-200", open && "rotate-180")} />
-            </button>
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-[#12122A]">
+                                {calls.length} appel{calls.length > 1 ? "s" : ""}
+                            </span>
+                            {meetings > 0 && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[11px] font-bold text-emerald-700">
+                                    <Sparkles className="w-2.5 h-2.5" />
+                                    {meetings} RDV
+                                </span>
+                            )}
+                            {/* Summary chips (non-interactive) */}
+                            <div className="flex flex-wrap gap-1 ml-1">
+                                {statusOrder.map((k) => {
+                                    const v = counts[k] ?? 0;
+                                    if (!v || k === "MEETING_BOOKED") return null;
+                                    return (
+                                        <span key={k}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
+                                            style={{ background: `${resultMeta[k]?.color ?? "#64748b"}15`, color: resultMeta[k]?.color ?? "#64748b" }}
+                                        >
+                                            {v} {resultMeta[k]?.label ?? ACTION_RESULT_LABELS[k] ?? k}
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <MiniBar counts={counts} total={calls.length} statusOrder={statusOrder} resultMeta={resultMeta} />
+                    </div>
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setOpen((o) => !o)}
+                    className="flex-shrink-0 p-1 rounded-lg text-[#B0B3C8] hover:bg-white/80 hover:text-[#7C5CFC] transition-colors"
+                    aria-expanded={open}
+                    aria-label={open ? "Replier le jour" : "Déplier le jour"}
+                >
+                    <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", open && "rotate-180")} />
+                </button>
+            </div>
 
             {open && (
-                <div className="border-t border-[#EEF0F8] bg-[#F8F7FF]/60 px-4 py-3 space-y-2">
-                    {[...calls]
-                        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-                        .map((c, i) => <CallCard key={c.id} call={c} resultMeta={resultMeta} index={i} />)}
-                </div>
+                <>
+                    {chipCodes.length > 0 && (
+                        <div className="border-t border-[#EEF0F8] bg-white px-4 py-2.5">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-[#A0A3BD] mb-2">
+                                Filtrer par résultat
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setResultFilter(null)}
+                                    className={cn(
+                                        "inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all",
+                                        resultFilter === null
+                                            ? "bg-[#7C5CFC] text-white border-[#7C5CFC] shadow-sm shadow-violet-500/20"
+                                            : "bg-[#F4F5FA] text-[#8B8DAF] border-[#E8EBF0] hover:border-[#7C5CFC]/35"
+                                    )}
+                                >
+                                    Tous ({calls.length})
+                                </button>
+                                {chipCodes.map((k) => {
+                                    const v = counts[k] ?? 0;
+                                    const col = resultMeta[k]?.color ?? "#64748b";
+                                    const active = resultFilter === k;
+                                    return (
+                                        <button
+                                            key={k}
+                                            type="button"
+                                            onClick={() => setResultFilter(active ? null : k)}
+                                            className={cn(
+                                                "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all",
+                                                active
+                                                    ? "text-white shadow-sm"
+                                                    : "hover:brightness-95"
+                                            )}
+                                            style={
+                                                active
+                                                    ? { background: col, borderColor: col }
+                                                    : {
+                                                        background: `${col}12`,
+                                                        borderColor: `${col}40`,
+                                                        color: col,
+                                                    }
+                                            }
+                                        >
+                                            {v} {resultMeta[k]?.label ?? ACTION_RESULT_LABELS[k] ?? k}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                    <div className="border-t border-[#EEF0F8] bg-[#F8F7FF]/60 px-4 py-3 space-y-2">
+                        {displayedCalls.length === 0 ? (
+                            <p className="text-center text-xs font-medium text-[#8B8DAF] py-6">
+                                Aucun appel pour ce résultat sur ce jour.
+                            </p>
+                        ) : (
+                            displayedCalls.map((c, i) => (
+                                <CallCard key={c.id} call={c} resultMeta={resultMeta} index={i} />
+                            ))
+                        )}
+                    </div>
+                </>
             )}
         </div>
     );

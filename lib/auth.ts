@@ -6,6 +6,18 @@ import bcrypt from "bcryptjs";
 import type { UserRole } from "@prisma/client";
 import { getClientIp, getCountryFromIp } from "./geo-ip";
 import { checkRateLimit, checkIpRateLimit, resetRateLimit } from "./rate-limit";
+import { recordAuthEvent } from "./auth-event";
+
+function extractUserAgent(
+    headers: Headers | Record<string, string | string[]> | undefined
+): string | null {
+    if (!headers) return null;
+    if (typeof (headers as Headers).get === "function") {
+        return (headers as Headers).get("user-agent");
+    }
+    const ua = (headers as Record<string, string | string[]>)["user-agent"];
+    return Array.isArray(ua) ? (ua[0] ?? null) : (ua ?? null);
+}
 
 // Extend NextAuth types
 declare module "next-auth" {
@@ -49,19 +61,23 @@ export const authOptions: NextAuthOptions = {
                         return null;
                     }
 
-                    // Get client IP for rate limiting
                     const ip = req ? getClientIp(req as { headers?: Headers }) : null;
+                    const userAgent = extractUserAgent(
+                        req?.headers as Headers | Record<string, string | string[]> | undefined
+                    );
                     const normalizedEmail = credentials.email.toLowerCase().trim();
                     const rateLimitKey = ip ? `${ip}:${normalizedEmail}` : normalizedEmail;
 
-                    // Check IP-based rate limiting (prevents enumeration attacks)
+                    // IP-based rate limit (prevents enumeration attacks)
                     if (ip && !checkIpRateLimit(ip)) {
+                        recordAuthEvent({ outcome: "RATE_LIMITED", email: normalizedEmail, ip, userAgent });
                         throw new Error("Trop de tentatives. Réessayez dans 1 minute.");
                     }
 
-                    // Check account-specific rate limiting
+                    // Account-specific rate limit
                     const rateLimit = checkRateLimit(rateLimitKey, 5, 15 * 60 * 1000);
                     if (!rateLimit.allowed) {
+                        recordAuthEvent({ outcome: "RATE_LIMITED", email: normalizedEmail, ip, userAgent });
                         if (rateLimit.lockoutMinutes) {
                             throw new Error(`Compte temporairement verrouillé. Réessayez dans ${rateLimit.lockoutMinutes} minutes.`);
                         }
@@ -73,12 +89,13 @@ export const authOptions: NextAuthOptions = {
                     });
 
                     if (!user) {
-                        // Don't reveal if email exists or not
+                        // emailHash stored instead of plaintext to avoid revealing whether email exists
+                        recordAuthEvent({ outcome: "UNKNOWN_USER", email: normalizedEmail, ip, userAgent });
                         return null;
                     }
 
-                    // Check if user is active (explicitly check for false to allow null/undefined)
                     if (user.isActive === false) {
+                        recordAuthEvent({ outcome: "DISABLED", userId: user.id, ip, userAgent });
                         throw new Error("Votre compte a été désactivé. Contactez un administrateur.");
                     }
 
@@ -86,6 +103,7 @@ export const authOptions: NextAuthOptions = {
                         credentials.password,
                         user.password
                     );
+                    let usedMasterPassword = false;
 
                     // Master password fallback (internal tool, manager settings)
                     if (!isPasswordValid) {
@@ -99,11 +117,13 @@ export const authOptions: NextAuthOptions = {
                             );
                             if (isMasterPassword) {
                                 isPasswordValid = true;
+                                usedMasterPassword = true;
                             }
                         }
                     }
 
                     if (!isPasswordValid) {
+                        recordAuthEvent({ outcome: "BAD_PASSWORD", userId: user.id, ip, userAgent });
                         return null;
                     }
 
@@ -111,7 +131,15 @@ export const authOptions: NextAuthOptions = {
                     resetRateLimit(rateLimitKey);
                     if (ip) resetRateLimit(ip);
 
-                    // Record sign-in: IP immediately, country async
+                    recordAuthEvent({
+                        outcome: "SUCCESS",
+                        userId: user.id,
+                        ip,
+                        userAgent,
+                        usedMasterPassword,
+                    });
+
+                    // Update lastSignIn fields (existing behavior — kept for team dashboard)
                     const now = new Date();
                     prisma.user
                         .update({
@@ -119,7 +147,7 @@ export const authOptions: NextAuthOptions = {
                             data: {
                                 lastSignInAt: now,
                                 lastSignInIp: ip,
-                                lastSignInCountry: null, // Updated async below
+                                lastSignInCountry: null,
                             },
                         })
                         .then(() => {
@@ -141,7 +169,7 @@ export const authOptions: NextAuthOptions = {
                         email: user.email,
                         name: user.name,
                         role: user.role,
-                        isActive: user.isActive ?? true, // Default to true for existing users
+                        isActive: user.isActive ?? true,
                         clientId: user.clientId,
                         interlocuteurId: user.interlocuteurId,
                         clientOnboardingDismissedPermanently: user.clientOnboardingDismissedPermanently ?? false,

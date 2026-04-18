@@ -14,7 +14,15 @@
       "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts',{}\\), indent=2\\)\\)\")",
       "mcp__Claude_Preview__preview_start",
-      "Bash(node_modules/.bin/tsc --noEmit)"
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(node_modules/.bin/prisma migrate *)",
+      "Read(//usr/local/**)",
+      "Read(//usr/**)",
+      "Read(//c/Users/dell/.nvm/versions/**)",
+      "Read(//c/Program Files/nodejs//**)",
+      "Read(//c/Users/dell/AppData/Roaming/**)",
+      "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")",
+      "Bash(node_modules/.bin/prisma db *)"
     ]
   }
 }

@@ -310,6 +310,14 @@ enum EnrollmentStatus {
   MANUAL_EXIT
 }
 
+enum AuthOutcome {
+  SUCCESS
+  BAD_PASSWORD
+  UNKNOWN_USER
+  DISABLED
+  RATE_LIMITED
+}
+
 // ============================================
 // MODELS
 // ============================================
@@ -437,11 +445,55 @@ model User {
   
   // API Keys created by this user
   createdApiKeys ApiKey[] @relation("ApiKeyCreator")
-  
+
+  // Auth Event History
+  authEvents       AuthEvent[]
+  authEventViews   AuthEventView[] @relation("AuthEventViewer")
+  viewedAuthEvents AuthEventView[] @relation("AuthEventTarget")
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   
   @@index([isActive])
+}
+
+// ============================================
+// AUTH EVENT HISTORY
+// ============================================
+
+// Append-only log of every login attempt. userId is null for UNKNOWN_USER events
+// (email is stored as a SHA-256 hash only). Retention: see SystemConfig authEventRetentionDays (default 90).
+model AuthEvent {
+  id                 String      @id @default(cuid())
+  userId             String?
+  user               User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  emailHash          String?     // SHA-256(normalized email) — UNKNOWN_USER events only
+  outcome            AuthOutcome
+  ip                 String?
+  country            String?
+  userAgent          String?     // truncated to 512 chars
+  usedMasterPassword Boolean     @default(false)
+  createdAt          DateTime    @default(now())
+
+  @@index([userId, createdAt])
+  @@index([ip])
+  @@index([createdAt])
+  @@index([emailHash])
+}
+
+// Audit trail for admin access to another user's auth history.
+model AuthEventView {
+  id           String   @id @default(cuid())
+  viewerId     String
+  viewer       User     @relation("AuthEventViewer", fields: [viewerId], references: [id])
+  targetUserId String
+  targetUser   User     @relation("AuthEventTarget", fields: [targetUserId], references: [id])
+  action       String   // VIEW_HISTORY | EXPORT_HISTORY
+  createdAt    DateTime @default(now())
+
+  @@index([viewerId])
+  @@index([targetUserId])
+  @@index([createdAt])
 }
 
 // ============================================

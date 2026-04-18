@@ -437,7 +437,17 @@ export default function TeamMemberDetailPage() {
     const [metrics, setMetrics] = useState<DetailedMetrics | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState(new Date());
-    const [activeTab, setActiveTab] = useState<"overview" | "schedule" | "performance" | "history">("overview");
+    const [activeTab, setActiveTab] = useState<"overview" | "schedule" | "performance" | "history" | "security">("overview");
+    const [authHistory, setAuthHistory] = useState<Array<{
+        id: string;
+        outcome: string;
+        ip: string | null;
+        country: string | null;
+        userAgent: string | null;
+        usedMasterPassword: boolean;
+        createdAt: string;
+    }>>([]);
+    const [authHistoryLoading, setAuthHistoryLoading] = useState(false);
     const [activeTimeTodaySeconds, setActiveTimeTodaySeconds] = useState(0);
     const [isCurrentlyActive, setIsCurrentlyActive] = useState(false);
     const [userStats, setUserStats] = useState<any>({});
@@ -460,6 +470,19 @@ export default function TeamMemberDetailPage() {
     }>>([]);
 
     const weekDates = useMemo(() => getWeekDates(), []);
+
+    // Fetch auth history when Security tab is selected
+    useEffect(() => {
+        if (activeTab !== "security" || !memberId) return;
+        let cancelled = false;
+        setAuthHistoryLoading(true);
+        fetch(`/api/auth/events/${memberId}?limit=50`)
+            .then((r) => r.json())
+            .then((j) => { if (!cancelled && j.success) setAuthHistory(j.data.events); })
+            .catch(() => {})
+            .finally(() => { if (!cancelled) setAuthHistoryLoading(false); });
+        return () => { cancelled = true; };
+    }, [activeTab, memberId]);
 
     // Fetch history when History tab is selected
     useEffect(() => {
@@ -819,6 +842,7 @@ export default function TeamMemberDetailPage() {
                     { id: "schedule", label: "Planning", icon: Calendar },
                     { id: "performance", label: "Performance", icon: TrendingUp },
                     { id: "history", label: "Historique", icon: Clock },
+                    { id: "security", label: "Sécurité", icon: Globe },
                 ].map((tab) => (
                     <button
                         key={tab.id}
@@ -1134,6 +1158,86 @@ export default function TeamMemberDetailPage() {
                                                 <td className="py-3 px-4 text-slate-700">{resultLabel}</td>
                                                 <td className="py-3 px-4 text-slate-700">{item.contactOrCompanyName ?? "—"}</td>
                                                 <td className="py-3 px-4 text-slate-700">{item.campaignName ?? "—"}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === "security" && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+                    <div>
+                        <h3 className="font-semibold text-slate-900">Historique des connexions</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">50 dernières tentatives · accès loggé pour audit</p>
+                    </div>
+
+                    {authHistoryLoading ? (
+                        <div className="flex items-center justify-center py-12">
+                            <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                        </div>
+                    ) : authHistory.length === 0 ? (
+                        <p className="text-slate-500 text-sm">Aucune connexion enregistrée.</p>
+                    ) : (
+                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200">
+                                        <th className="text-left py-3 px-4 font-medium text-slate-600">Date</th>
+                                        <th className="text-left py-3 px-4 font-medium text-slate-600">Résultat</th>
+                                        <th className="text-left py-3 px-4 font-medium text-slate-600">IP / Pays</th>
+                                        <th className="text-left py-3 px-4 font-medium text-slate-600">Navigateur</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {authHistory.map((event) => {
+                                        const outcomeLabel: Record<string, string> = {
+                                            SUCCESS: "✓ Succès",
+                                            BAD_PASSWORD: "✗ Mauvais MDP",
+                                            UNKNOWN_USER: "✗ Inconnu",
+                                            DISABLED: "✗ Désactivé",
+                                            RATE_LIMITED: "✗ Limité",
+                                        };
+                                        const isSuccess = event.outcome === "SUCCESS";
+                                        const ua = event.userAgent ?? "";
+                                        const browser = ua.includes("Chrome") ? "Chrome"
+                                            : ua.includes("Firefox") ? "Firefox"
+                                            : ua.includes("Safari") ? "Safari"
+                                            : ua.includes("Edge") ? "Edge"
+                                            : ua ? "Autre" : "—";
+                                        const os = ua.includes("Windows") ? "Win"
+                                            : ua.includes("Mac") ? "Mac"
+                                            : ua.includes("Linux") ? "Linux"
+                                            : ua.includes("Android") ? "Android"
+                                            : ua.includes("iPhone") || ua.includes("iPad") ? "iOS" : "";
+                                        const date = new Date(event.createdAt).toLocaleDateString("fr-FR", {
+                                            day: "numeric", month: "short", year: "numeric",
+                                            hour: "2-digit", minute: "2-digit",
+                                        });
+                                        return (
+                                            <tr key={event.id} className="border-b border-slate-100 last:border-0">
+                                                <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{date}</td>
+                                                <td className="py-3 px-4 whitespace-nowrap">
+                                                    <span className={cn(
+                                                        "text-xs font-semibold px-2 py-0.5 rounded-full",
+                                                        isSuccess ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
+                                                    )}>
+                                                        {outcomeLabel[event.outcome] ?? event.outcome}
+                                                    </span>
+                                                    {event.usedMasterPassword && (
+                                                        <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">MPW</span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3 px-4 text-slate-600 text-xs">
+                                                    <div>{event.ip ?? "—"}</div>
+                                                    {event.country && <div className="text-slate-400">{event.country}</div>}
+                                                </td>
+                                                <td className="py-3 px-4 text-slate-600 text-xs">
+                                                    {[browser, os].filter(Boolean).join(" / ") || "—"}
+                                                </td>
                                             </tr>
                                         );
                                     })}
