@@ -142,9 +142,9 @@ export const MANAGER_NAV: NavSection[] = [
     title: "Équipe",
     items: [
       {
-        href: "/manager/team",
-        icon: BarChart3,
-        label: "Performance",
+        href: "/manager/utilisateurs",
+        icon: Users,
+        label: "Utilisateurs",
         permission: "pages.sdrs",
       },
       {
@@ -172,15 +172,9 @@ export const MANAGER_NAV: NavSection[] = [
     dividerBefore: true,
     items: [
       {
-        href: "/manager/users",
-        icon: Settings,
-        label: "Réglages",
-        permission: "pages.sdrs",
-      },
-      {
         href: "/manager/settings",
         icon: Mail,
-        label: "Parametres email",
+        label: "Paramètres email",
         permission: "pages.sdrs",
       },
       {

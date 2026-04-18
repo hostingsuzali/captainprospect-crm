@@ -3,14 +3,11 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-/**
- * Redirects /manager/users to the combined Equipe & Reglages page (Reglages tab).
- */
 export default function UsersRedirectPage() {
     const router = useRouter();
 
     useEffect(() => {
-        router.replace("/manager/team?tab=reglages");
+        router.replace("/manager/utilisateurs");
     }, [router]);
 
     return (
