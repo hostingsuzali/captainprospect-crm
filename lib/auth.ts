@@ -61,10 +61,6 @@ export const authOptions: NextAuthOptions = {
                         return null;
                     }
 
-                    if (process.env.LOGIN_DISABLED !== "false") {
-                        throw new Error("MIGRATION_REQUIRED");
-                    }
-
                     const ip = req ? getClientIp(req as { headers?: Headers }) : null;
                     const userAgent = extractUserAgent(
                         req?.headers as Headers | Record<string, string | string[]> | undefined
