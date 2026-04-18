@@ -33,6 +33,9 @@ const updateSchema = z.object({
   feedbackNote: z.string().optional(),
   rdvFiche: z.record(z.string(), z.any()).nullable().optional(),
   interlocuteurId: z.string().cuid().nullable().optional(),
+  callRecordingUrl: z.string().nullable().optional(),
+  callSummary: z.string().nullable().optional(),
+  callTranscription: z.string().nullable().optional(),
 });
 
 export const PUT = withErrorHandler(
@@ -78,6 +81,9 @@ export const PUT = withErrorHandler(
       actionUpdate.rdvFicheUpdatedAt = new Date();
     }
     if (body.interlocuteurId !== undefined) actionUpdate.interlocuteurId = body.interlocuteurId;
+    if (body.callRecordingUrl !== undefined) actionUpdate.callRecordingUrl = body.callRecordingUrl;
+    if (body.callSummary !== undefined) actionUpdate.callSummary = body.callSummary;
+    if (body.callTranscription !== undefined) actionUpdate.callTranscription = body.callTranscription;
     if (body.meetingCategory !== undefined) {
       actionUpdate.meetingCategory = body.meetingCategory;
     } else if (body.note !== undefined && !action.meetingCategory) {

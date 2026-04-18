@@ -245,6 +245,8 @@ export function DetailPanel({
         {panelTab === "audio" && (
           <AudioTab
             meeting={selectedMeeting}
+            updateMeeting={updateMeeting}
+            setSelectedMeeting={setSelectedMeeting}
           />
         )}
         {panelTab === "history" && (
