@@ -13,7 +13,7 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { AssistantLauncher } from "@/components/ui/AssistantLauncher";
 import { Modal } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, AlertTriangle } from "lucide-react";
 
 interface AppLayoutShellProps {
     children: React.ReactNode;
@@ -29,6 +29,7 @@ type SdrMissionOption = {
 
 const SDR_DAILY_REVIEW_TIME = "15:45";
 const SDR_REVIEW_LAST_SUBMITTED_KEY = "sdr_daily_review_last_submitted_date";
+const SDR_REVIEW_DISMISSED_KEY = "sdr_daily_review_dismissed_date";
 
 function toLocalDateKey(date: Date): string {
     const yyyy = date.getFullYear();
@@ -45,6 +46,13 @@ function parsePromptTime(value: string | undefined): { hour: number; minute: num
         hour: Number(match[1]),
         minute: Number(match[2]),
     };
+}
+
+function isPastDailyReviewDeadline(now: Date, promptTimeStr: string): boolean {
+    const triggerTime = new Date(now);
+    const { hour, minute } = parsePromptTime(promptTimeStr);
+    triggerTime.setHours(hour, minute, 0, 0);
+    return now >= triggerTime;
 }
 
 function InnerLayout({
@@ -73,6 +81,13 @@ function InnerLayout({
     const [dailyReviewMissionsLoading, setDailyReviewMissionsLoading] = useState(false);
     const [dailyReviewPromptTime, setDailyReviewPromptTime] = useState(SDR_DAILY_REVIEW_TIME);
     const [dailyReviewRequiredDaily, setDailyReviewRequiredDaily] = useState(true);
+    /** Minute tick so the “deadline passed” badge updates without navigation */
+    const [sdrReviewClock, setSdrReviewClock] = useState(0);
+    const [dailyFeedbackSubmittedToday, setDailyFeedbackSubmittedToday] = useState(() => {
+        if (typeof window === "undefined") return false;
+        const todayKey = toLocalDateKey(new Date());
+        return localStorage.getItem(SDR_REVIEW_LAST_SUBMITTED_KEY) === todayKey;
+    });
 
     useEffect(() => {
         if (status === "loading") return;
@@ -88,6 +103,22 @@ function InnerLayout({
             }
         }
     }, [session, status, router, allowedRoles, userRole]);
+
+    useEffect(() => {
+        if (!isSdrArea || !dailyReviewRequiredDaily) return;
+        const tick = () => setSdrReviewClock((c) => c + 1);
+        tick();
+        const id = window.setInterval(tick, 60 * 1000);
+        return () => window.clearInterval(id);
+    }, [isSdrArea, dailyReviewRequiredDaily]);
+
+    useEffect(() => {
+        if (!isSdrArea) return;
+        const todayKey = toLocalDateKey(new Date());
+        setDailyFeedbackSubmittedToday(
+            localStorage.getItem(SDR_REVIEW_LAST_SUBMITTED_KEY) === todayKey,
+        );
+    }, [isSdrArea, sdrReviewClock]);
 
     useEffect(() => {
         if (!isSdrArea) return;
@@ -117,10 +148,10 @@ function InnerLayout({
             const lastSubmittedDate = localStorage.getItem(SDR_REVIEW_LAST_SUBMITTED_KEY);
             if (lastSubmittedDate === todayKey) return;
 
-            const triggerTime = new Date(now);
-            const { hour, minute } = parsePromptTime(dailyReviewPromptTime);
-            triggerTime.setHours(hour, minute, 0, 0);
-            if (now >= triggerTime) {
+            const dismissedDate = localStorage.getItem(SDR_REVIEW_DISMISSED_KEY);
+            if (dismissedDate === todayKey) return;
+
+            if (isPastDailyReviewDeadline(now, dailyReviewPromptTime)) {
                 setIsDailyReviewModalOpen(true);
             }
         };
@@ -164,18 +195,6 @@ function InnerLayout({
 
         void loadMissions();
     }, [isSdrArea, dailyReviewRequiredDaily, isDailyReviewModalOpen]);
-
-    useEffect(() => {
-        if (!isSdrArea || !isDailyReviewModalOpen) return;
-
-        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-            event.preventDefault();
-            event.returnValue = "";
-        };
-
-        window.addEventListener("beforeunload", handleBeforeUnload);
-        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-    }, [isSdrArea, isDailyReviewModalOpen]);
 
     if (status === "loading" || !session) {
         return (
@@ -231,6 +250,23 @@ function InnerLayout({
     };
     const currentPage = pageLabels[rawPage?.toLowerCase()] || rawPage;
 
+    const showDailyReviewWarning =
+        isSdrArea &&
+        dailyReviewRequiredDaily &&
+        !dailyFeedbackSubmittedToday &&
+        isPastDailyReviewDeadline(new Date(), dailyReviewPromptTime);
+
+    const handleCloseDailyReviewModal = () => {
+        const now = new Date();
+        const todayKey = toLocalDateKey(now);
+        const submitted = localStorage.getItem(SDR_REVIEW_LAST_SUBMITTED_KEY) === todayKey;
+        if (!submitted && isPastDailyReviewDeadline(now, dailyReviewPromptTime)) {
+            localStorage.setItem(SDR_REVIEW_DISMISSED_KEY, todayKey);
+        }
+        setDailyReviewError(null);
+        setIsDailyReviewModalOpen(false);
+    };
+
     const handleSubmitDailyReview = async () => {
         const trimmedReview = dailyReviewText.trim();
         const trimmedObjections = dailyReviewObjections.trim();
@@ -274,7 +310,10 @@ function InnerLayout({
             }
 
             setIsDailyReviewModalOpen(false);
-            localStorage.setItem(SDR_REVIEW_LAST_SUBMITTED_KEY, toLocalDateKey(new Date()));
+            const submittedKey = toLocalDateKey(new Date());
+            localStorage.setItem(SDR_REVIEW_LAST_SUBMITTED_KEY, submittedKey);
+            localStorage.removeItem(SDR_REVIEW_DISMISSED_KEY);
+            setDailyFeedbackSubmittedToday(true);
             setDailyReviewScore(4);
             setDailyReviewText("");
             setDailyReviewObjections("");
@@ -321,6 +360,20 @@ function InnerLayout({
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {isSdrArea && showDailyReviewWarning && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setDailyReviewError(null);
+                                    setIsDailyReviewModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1.5 h-8 pl-2 pr-2.5 rounded-lg border border-amber-300/80 bg-amber-50 text-[11px] font-bold text-amber-950 shadow-sm hover:bg-amber-100/90 transition-colors duration-150"
+                                title={`Après ${dailyReviewPromptTime}, merci de compléter votre avis de fin de journée.`}
+                            >
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-600" aria-hidden />
+                                Avis à compléter
+                            </button>
+                        )}
                         {isSdrArea && (
                             <button
                                 type="button"
@@ -365,15 +418,7 @@ function InnerLayout({
 
                 <Modal
                     isOpen={isDailyReviewModalOpen}
-                    onClose={() => {
-                        if (isSdrArea && dailyReviewRequiredDaily) {
-                            setDailyReviewError(
-                                "Le feedback quotidien est obligatoire. Merci de le compléter pour continuer.",
-                            );
-                            return;
-                        }
-                        setIsDailyReviewModalOpen(false);
-                    }}
+                    onClose={handleCloseDailyReviewModal}
                     title="Point SDR de fin de journée"
                     description={`Partagez rapidement votre feedback sur la journée (déclenchement: ${dailyReviewPromptTime}).`}
                     size="md"
