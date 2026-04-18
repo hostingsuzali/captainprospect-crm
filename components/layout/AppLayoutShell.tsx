@@ -167,14 +167,45 @@ function InnerLayout({
         const loadMissions = async () => {
             setDailyReviewMissionsLoading(true);
             try {
-                const res = await fetch("/api/sdr/missions");
+                const now = new Date();
+                const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+                const todayKey = toLocalDateKey(now);
+                const res = await fetch(`/api/planning/me?month=${month}`);
                 const json = await res.json();
                 if (!res.ok || !json.success) {
                     setDailyReviewMissionOptions([]);
                     return;
                 }
 
-                const options = (json.data as SdrMissionOption[]) ?? [];
+                const blocks = Array.isArray(json.data?.blocks)
+                    ? (json.data.blocks as Array<{
+                        date?: string;
+                        missionId?: string;
+                        mission?: { id?: string; name?: string; client?: { name?: string } };
+                    }>)
+                    : [];
+
+                const todayPlanned = blocks.filter((b) => {
+                    if (!b.date) return false;
+                    const d = new Date(b.date);
+                    if (Number.isNaN(d.getTime())) return false;
+                    return toLocalDateKey(d) === todayKey;
+                });
+
+                const uniqueByMission = new Map<string, SdrMissionOption>();
+                for (const b of todayPlanned) {
+                    const missionId = b.mission?.id ?? b.missionId;
+                    const missionName = b.mission?.name;
+                    if (!missionId || !missionName) continue;
+                    if (!uniqueByMission.has(missionId)) {
+                        uniqueByMission.set(missionId, {
+                            id: missionId,
+                            name: missionName,
+                            client: b.mission?.client?.name ? { name: b.mission.client.name } : undefined,
+                        });
+                    }
+                }
+                const options = [...uniqueByMission.values()];
                 setDailyReviewMissionOptions(options);
 
                 const storedMissionId = localStorage.getItem("sdr_selected_mission");

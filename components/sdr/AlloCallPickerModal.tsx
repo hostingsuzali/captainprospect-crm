@@ -227,17 +227,17 @@ export function AlloCallPickerModal({
             onClose={onClose}
             title="Lier un appel Allo"
             description="Seuls les appels où le numéro du contact apparaît (émetteur ou destinataire) sont listés, sur vos lignes Allo configurées."
-            size="lg"
+            size="md"
         >
-            <div className="space-y-4 -mt-1">
+            <div className="space-y-3 -mt-1">
                 {!loading && normalizedCalls.length > 0 && (
-                    <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white p-4 shadow-sm">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="space-y-1 min-w-0">
+                    <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white p-3 shadow-sm">
+                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="space-y-0.5 min-w-0">
                                 <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">
                                     Numéro du contact utilisé pour le filtre
                                 </p>
-                                <p className="font-mono text-lg font-bold text-slate-900 tracking-tight break-all">
+                                <p className="font-mono text-sm font-bold text-slate-900 tracking-tight break-all">
                                     {filterPhone || "—"}
                                 </p>
                                 <p className="text-xs text-slate-600 leading-snug max-w-prose">
@@ -260,7 +260,7 @@ export function AlloCallPickerModal({
                                 <Button
                                     type="button"
                                     variant="secondary"
-                                    className="shrink-0 gap-1.5 text-xs h-9"
+                                    className="shrink-0 gap-1.5 text-xs h-8"
                                     onClick={async () => {
                                         try {
                                             await navigator.clipboard.writeText(filterPhone);
@@ -279,7 +279,7 @@ export function AlloCallPickerModal({
                 )}
 
                 {!loading && normalizedCalls.length > 0 && (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                         <label htmlFor="allo-call-search" className="sr-only">
                             Filtrer la liste des appels
                         </label>
@@ -297,7 +297,7 @@ export function AlloCallPickerModal({
                                 className="w-full pl-10 pr-3 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400"
                             />
                         </div>
-                        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrer par jour">
+                        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrer par jour">
                             {(
                                 [
                                     { id: "all" as const, label: "Tous" },
@@ -310,7 +310,7 @@ export function AlloCallPickerModal({
                                     type="button"
                                     onClick={() => setDayQuickFilter(chip.id)}
                                     className={cn(
-                                        "text-xs font-semibold rounded-full px-3 py-1.5 border transition-all",
+                                        "text-[11px] font-semibold rounded-full px-2.5 py-1 border transition-all",
                                         dayQuickFilter === chip.id
                                             ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
                                             : "bg-white text-slate-600 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50"
@@ -320,7 +320,7 @@ export function AlloCallPickerModal({
                                 </button>
                             ))}
                         </div>
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-[10px] text-slate-500">
                             {filteredCalls.length} affiché{filteredCalls.length > 1 ? "s" : ""}
                             {normalizedCalls.length !== filteredCalls.length
                                 ? ` sur ${normalizedCalls.length}`
@@ -330,7 +330,7 @@ export function AlloCallPickerModal({
                     </div>
                 )}
 
-                <div className="space-y-4 max-h-[min(52vh,28rem)] overflow-y-auto pr-1 custom-scrollbar">
+                <div className="space-y-3 max-h-[min(50vh,24rem)] overflow-y-auto pr-1 custom-scrollbar">
                     {loading ? (
                         <div className="flex items-center justify-center py-14">
                             <Loader2 className="w-6 h-6 animate-spin text-indigo-500" aria-hidden="true" />
@@ -356,7 +356,7 @@ export function AlloCallPickerModal({
                             const dayCalls = groupedByDay.map.get(dayKey) ?? [];
                             if (dayCalls.length === 0) return null;
                             return (
-                                <section key={dayKey} className="space-y-2">
+                                <section key={dayKey} className="space-y-1.5">
                                     <div className="flex items-center gap-2 sticky top-0 z-[1] bg-white/95 backdrop-blur-sm py-1 -mx-1 px-1">
                                         <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                                             {dayKey === "unknown" ? "Date inconnue" : labelForParisDayKey(dayKey)}
@@ -365,7 +365,7 @@ export function AlloCallPickerModal({
                                             ({dayCalls.length})
                                         </span>
                                     </div>
-                                    <div className="space-y-2">
+                                    <div className="space-y-1.5">
                                         {dayCalls.map((call) => {
                                             const durationMin = Math.floor(call.duration / 60);
                                             const durationSec = call.duration % 60;
@@ -378,24 +378,24 @@ export function AlloCallPickerModal({
                                                     type="button"
                                                     onClick={() => onSelectId(call.id)}
                                                     className={cn(
-                                                        "w-full text-left rounded-2xl border transition-all shadow-sm",
+                                                        "w-full text-left rounded-xl border transition-all shadow-sm",
                                                         isSelected
                                                             ? "border-indigo-500 bg-indigo-50/80 ring-2 ring-indigo-400/35 shadow-md"
                                                             : "border-slate-200 bg-white hover:border-indigo-200 hover:shadow"
                                                     )}
                                                 >
-                                                    <div className="p-4 flex gap-3">
+                                                    <div className="p-3 flex gap-2.5">
                                                         <div
                                                             className={cn(
-                                                                "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0",
+                                                                "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
                                                                 call.direction === "OUTBOUND"
                                                                     ? "bg-indigo-100 text-indigo-600"
                                                                     : "bg-emerald-100 text-emerald-600"
                                                             )}
                                                         >
-                                                            <Phone className="w-5 h-5" aria-hidden="true" />
+                                                            <Phone className="w-4 h-4" aria-hidden="true" />
                                                         </div>
-                                                        <div className="flex-1 min-w-0 space-y-2">
+                                                        <div className="flex-1 min-w-0 space-y-1.5">
                                                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                                 <span className="text-xs font-bold text-slate-800">
                                                                     {call.direction === "OUTBOUND" ? "Sortant" : "Entrant"}
@@ -406,18 +406,18 @@ export function AlloCallPickerModal({
                                                                     </span>
                                                                 )}
                                                                 {call.duration > 0 && (
-                                                                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200/80">
+                                                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200/80">
                                                                         {durationMin > 0 ? `${durationMin} min ` : ""}
                                                                         {durationSec}s
                                                                     </span>
                                                                 )}
                                                                 {call.outcome && (
-                                                                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/80">
+                                                                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200/80">
                                                                         {call.outcome}
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <div className="flex flex-col gap-1.5 text-xs sm:flex-row sm:items-center sm:flex-wrap sm:gap-x-3">
+                                                            <div className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:flex-wrap sm:gap-x-2">
                                                                 <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                                                                     <span className="text-slate-400 shrink-0">De</span>
                                                                     <span
@@ -435,7 +435,7 @@ export function AlloCallPickerModal({
                                                                     )}
                                                                 </div>
                                                                 <span
-                                                                    className="text-slate-300 hidden sm:inline"
+                                                                    className="text-slate-300"
                                                                     aria-hidden="true"
                                                                 >
                                                                     →
@@ -457,26 +457,26 @@ export function AlloCallPickerModal({
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                            <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
+                                                            <div className="rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-2">
                                                                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
                                                                     Résumé Allo
                                                                 </p>
                                                                 {call.summaryText ? (
-                                                                    <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
+                                                                    <p className="text-xs text-slate-800 leading-snug line-clamp-2">
                                                                         {call.summaryText}
                                                                     </p>
                                                                 ) : (
-                                                                    <p className="text-sm text-slate-400 italic">
-                                                                        Aucun résumé fourni par Allo pour cet appel.
+                                                                    <p className="text-xs text-slate-400 italic">
+                                                                        Aucun résumé.
                                                                     </p>
                                                                 )}
                                                             </div>
                                                             {call.transcriptPreview && (
-                                                                <div className="rounded-xl border border-slate-100 bg-white px-3 py-2">
+                                                                <div className="rounded-lg border border-slate-100 bg-white px-2.5 py-2">
                                                                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
                                                                         Extrait transcription
                                                                     </p>
-                                                                    <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
+                                                                    <p className="text-[11px] text-slate-600 line-clamp-2 leading-snug">
                                                                         {call.transcriptPreview}
                                                                     </p>
                                                                 </div>
@@ -484,7 +484,7 @@ export function AlloCallPickerModal({
                                                         </div>
                                                         {isSelected && (
                                                             <CheckCircle2
-                                                                className="w-6 h-6 text-indigo-600 flex-shrink-0 mt-0.5"
+                                                                className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5"
                                                                 aria-hidden="true"
                                                             />
                                                         )}

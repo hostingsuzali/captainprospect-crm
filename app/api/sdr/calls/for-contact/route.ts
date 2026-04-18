@@ -24,6 +24,10 @@ const FOR_CONTACT_GAP_MS = Math.max(0, parseInt(process.env.CALL_ENRICHMENT_ALLO
 const FOR_CONTACT_429_RETRIES = Math.max(0, parseInt(process.env.CALL_ENRICHMENT_ALLO_429_RETRIES ?? '6', 10));
 const FOR_CONTACT_429_BASE_MS = Math.max(100, parseInt(process.env.CALL_ENRICHMENT_ALLO_429_BASE_MS ?? '750', 10));
 
+function parisDayKey(value: Date): string {
+  return value.toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' });
+}
+
 async function fetchAlloPage(apiKey: string, alloNumber: string, contactNumber: string) {
   const url = new URL(`${BASE_URL}/v1/api/calls`);
   url.searchParams.set('allo_number', alloNumber);
@@ -59,6 +63,7 @@ export async function GET(req: NextRequest) {
   }
 
   const phone = req.nextUrl.searchParams.get('phone');
+  const meetingDate = req.nextUrl.searchParams.get('meetingDate');
   if (!phone) {
     return NextResponse.json({ success: false, error: 'phone requis' }, { status: 400 });
   }
@@ -91,8 +96,28 @@ export async function GET(req: NextRequest) {
     if (li < alloNumbers.length - 1 && FOR_CONTACT_GAP_MS > 0) await sleep(FOR_CONTACT_GAP_MS);
   }
 
+  const targetMeetingDay = (() => {
+    if (!meetingDate) return null;
+    const d = new Date(meetingDate);
+    if (Number.isNaN(d.getTime())) return null;
+    return parisDayKey(d);
+  })();
+
+  let calls = Object.values(allCalls);
+  if (targetMeetingDay) {
+    calls = calls.filter((call: any) => {
+      const ts = call.start_time ?? call.start_date ?? call.created_at;
+      if (ts == null || ts === '') return false;
+      const d = typeof ts === 'number'
+        ? new Date(ts > 1e12 ? ts : ts * 1000)
+        : new Date(String(ts));
+      if (Number.isNaN(d.getTime())) return false;
+      return parisDayKey(d) === targetMeetingDay;
+    });
+  }
+
   // Sort newest first
-  const calls = Object.values(allCalls).sort((a: any, b: any) => {
+  calls = calls.sort((a: any, b: any) => {
     const ta = new Date(a.start_time ?? a.created_at ?? 0).getTime();
     const tb = new Date(b.start_time ?? b.created_at ?? 0).getTime();
     return tb - ta;
@@ -106,6 +131,8 @@ export async function GET(req: NextRequest) {
         filterPhone: phone,
         /** Lignes Allo interrogées (pour l’UI) */
         alloLineCount: alloNumbers.length,
+        filteredOnMeetingDay: !!targetMeetingDay,
+        meetingDay: targetMeetingDay,
       },
     },
   });

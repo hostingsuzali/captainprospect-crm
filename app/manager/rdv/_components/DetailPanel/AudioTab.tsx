@@ -39,7 +39,9 @@ export function AudioTab({ meeting, updateMeeting, setSelectedMeeting }: AudioTa
     setAlloCalls([]);
     setAlloSelectedId(null);
     try {
-      const res = await fetch(`/api/sdr/calls/for-contact?phone=${encodeURIComponent(phone)}`);
+      const res = await fetch(
+        `/api/sdr/calls/for-contact?phone=${encodeURIComponent(phone)}&meetingDate=${encodeURIComponent(meeting.createdAt)}`
+      );
       const json = await res.json();
       if (json.success) {
         setAlloCalls(json.data.calls ?? []);
@@ -56,7 +58,7 @@ export function AudioTab({ meeting, updateMeeting, setSelectedMeeting }: AudioTa
     } finally {
       setAlloLoading(false);
     }
-  }, [meeting.contact?.phone, meeting.meetingPhone, showError]);
+  }, [meeting.contact?.phone, meeting.meetingPhone, meeting.createdAt, showError]);
 
   const confirmAlloCall = useCallback(async () => {
     const call = alloCalls.find((c: any) => String((c as any).id) === alloSelectedId) as any;

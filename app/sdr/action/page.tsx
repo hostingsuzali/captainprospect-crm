@@ -240,6 +240,31 @@ const RESULT_ICON_MAP: Record<string, React.ReactNode> = {
     MESSAGE_SENT: <Send className="w-4 h-4" />,
     REPLIED: <MessageSquare className="w-4 h-4" />,
 };
+
+const RESULT_SEMANTIC: Record<string, {
+    iconCls: string; selectedCls: string; hoverCls: string; activeBorder: string;
+}> = {
+    NO_RESPONSE:        { iconCls: "bg-slate-100 text-slate-500",   selectedCls: "bg-slate-50 border-slate-400",      hoverCls: "hover:border-slate-300 hover:bg-slate-50",     activeBorder: "border-l-slate-400" },
+    BAD_CONTACT:        { iconCls: "bg-red-100 text-red-500",       selectedCls: "bg-red-50 border-red-400",          hoverCls: "hover:border-red-200 hover:bg-red-50/60",      activeBorder: "border-l-red-400" },
+    INTERESTED:         { iconCls: "bg-emerald-100 text-emerald-600", selectedCls: "bg-emerald-50 border-emerald-400", hoverCls: "hover:border-emerald-200 hover:bg-emerald-50/60", activeBorder: "border-l-emerald-500" },
+    CALLBACK_REQUESTED: { iconCls: "bg-amber-100 text-amber-600",   selectedCls: "bg-amber-50 border-amber-400",      hoverCls: "hover:border-amber-200 hover:bg-amber-50/60",  activeBorder: "border-l-amber-400" },
+    RELANCE:            { iconCls: "bg-amber-100 text-amber-600",   selectedCls: "bg-amber-50 border-amber-400",      hoverCls: "hover:border-amber-200 hover:bg-amber-50/60",  activeBorder: "border-l-amber-400" },
+    RAPPEL:             { iconCls: "bg-amber-100 text-amber-600",   selectedCls: "bg-amber-50 border-amber-400",      hoverCls: "hover:border-amber-200 hover:bg-amber-50/60",  activeBorder: "border-l-amber-400" },
+    MEETING_BOOKED:     { iconCls: "bg-violet-100 text-violet-600", selectedCls: "bg-violet-50 border-violet-400",    hoverCls: "hover:border-violet-200 hover:bg-violet-50/60", activeBorder: "border-l-violet-500" },
+    MEETING_CANCELLED:  { iconCls: "bg-slate-100 text-slate-500",   selectedCls: "bg-slate-50 border-slate-400",      hoverCls: "hover:border-slate-300 hover:bg-slate-50",     activeBorder: "border-l-slate-400" },
+    DISQUALIFIED:       { iconCls: "bg-slate-100 text-slate-500",   selectedCls: "bg-slate-100 border-slate-400",     hoverCls: "hover:border-slate-300 hover:bg-slate-100/60", activeBorder: "border-l-slate-400" },
+    ENVOIE_MAIL:        { iconCls: "bg-blue-100 text-blue-600",     selectedCls: "bg-blue-50 border-blue-400",        hoverCls: "hover:border-blue-200 hover:bg-blue-50/60",    activeBorder: "border-l-blue-400" },
+    MAIL_ENVOYE:        { iconCls: "bg-emerald-100 text-emerald-600", selectedCls: "bg-emerald-50 border-emerald-400", hoverCls: "hover:border-emerald-200 hover:bg-emerald-50/60", activeBorder: "border-l-emerald-500" },
+};
+const DEFAULT_SEMANTIC = { iconCls: "bg-violet-100 text-violet-600", selectedCls: "bg-violet-50 border-violet-400", hoverCls: "hover:border-violet-200 hover:bg-violet-50/60", activeBorder: "border-l-violet-400" };
+
+const getInitials = (firstName?: string | null, lastName?: string | null, fallback?: string | null): string => {
+    const f = firstName?.trim() || "";
+    const l = lastName?.trim() || "";
+    if (f || l) return `${f[0] || ""}${l[0] || ""}`.toUpperCase();
+    return (fallback?.trim()[0] || "?").toUpperCase();
+};
+
 const TABLE_QUEUE_LIMIT = 120;
 const STATS_QUEUE_LIMIT = 250;
 
@@ -304,25 +329,25 @@ function ActionStatsModalBody({
         );
     }
     return (
-        <div className="space-y-6">
+        <div className="space-y-5">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total</p>
-                    <p className="text-xl font-bold text-slate-900">{items.length}</p>
+                <div className="rounded-xl bg-[#f5f5f5] border border-[#e5e5e5] p-3">
+                    <p className="text-[11px] font-[500] text-slate-400 uppercase tracking-wide">Total</p>
+                    <p className="text-[24px] font-[500] text-[#1a1a1a] tabular-nums">{items.length}</p>
                 </div>
                 {Object.entries(priorityLabels).map(([key, { label, color }]) => (
                     <div key={key} className={cn("rounded-xl border p-3", color)}>
-                        <p className="text-xs font-medium uppercase tracking-wider opacity-90">{label}</p>
-                        <p className="text-xl font-bold">{byPriority[key] ?? 0}</p>
+                        <p className="text-[11px] font-[500] uppercase tracking-wide opacity-80">{label}</p>
+                        <p className="text-[24px] font-[500] tabular-nums">{byPriority[key] ?? 0}</p>
                     </div>
                 ))}
             </div>
             <div>
-                <h4 className="text-sm font-semibold text-slate-700 mb-2">Par statut</h4>
-                <div className="flex flex-wrap gap-2">
-                    <Badge className="bg-slate-100 text-slate-700 border-slate-200">Jamais contacté: {byStatus["NONE"] ?? 0}</Badge>
+                <h4 className="text-[11px] font-[500] uppercase tracking-wide text-slate-400 mb-2">Par statut</h4>
+                <div className="flex flex-wrap gap-1.5">
+                    <Badge className="bg-[#f5f5f5] text-slate-600 border-[#e5e5e5] text-[12px]">Jamais contacté: {byStatus["NONE"] ?? 0}</Badge>
                     {Object.entries(statusLabels).map(([key, label]) => (
-                        <Badge key={key} className="bg-slate-100 text-slate-700 border-slate-200">{label}: {byStatus[key] ?? 0}</Badge>
+                        <Badge key={key} className="bg-[#f5f5f5] text-slate-600 border-[#e5e5e5] text-[12px]">{label}: {byStatus[key] ?? 0}</Badge>
                     ))}
                 </div>
             </div>
@@ -1985,231 +2010,145 @@ export default function SDRActionPage() {
         ];
 
         return (
-            <div className="space-y-6">
-                {/* Modern Header with View Toggle & Stats */}
-                <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 rounded-2xl p-6 shadow-xl">
-                    {/* Background decoration */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 via-transparent to-violet-500/10" />
-                    <div className="absolute -top-20 -right-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl" />
+            <div className="space-y-4">
+                {/* Header — Table View */}
+                <div className="relative overflow-hidden bg-gradient-to-br from-[#0f0f12] via-slate-950 to-violet-950 rounded-2xl p-5 shadow-xl">
+                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-violet-600/20 via-transparent to-transparent" />
+                    <div className="absolute -top-16 -right-16 w-48 h-48 bg-violet-500/10 rounded-full blur-2xl" />
 
-                    <div className="relative">
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                            {/* Left: Title & View Toggle */}
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/10">
-                                    <Phone className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <h1 className="text-xl font-bold text-white">Actions</h1>
-                                    <p className="text-sm text-white/60">Gérez vos actions commerciales</p>
-                                </div>
+                    <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center border border-violet-400/20">
+                                <Phone className="w-5 h-5 text-violet-300" />
+                            </div>
+                            <div>
+                                <h1 className="text-[22px] font-[500] text-white leading-tight">Actions</h1>
+                                <p className="text-[13px] text-white/50">File d'actions — vue tableau</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex rounded-xl border border-white/10 p-0.5 bg-white/5">
+                                <button type="button" onClick={() => setViewMode("card")} className={cn("px-3 py-1.5 text-[13px] font-[500] rounded-lg transition-all flex items-center gap-1.5", viewMode === "card" ? "bg-white text-slate-900 shadow-md" : "text-white/60 hover:text-white hover:bg-white/10")}>
+                                    <User className="w-3.5 h-3.5" /> Carte
+                                </button>
+                                <button type="button" onClick={() => setViewMode("table")} className={cn("px-3 py-1.5 text-[13px] font-[500] rounded-lg transition-all flex items-center gap-1.5", viewMode === "table" ? "bg-white text-slate-900 shadow-md" : "text-white/60 hover:text-white hover:bg-white/10")}>
+                                    <Building2 className="w-3.5 h-3.5" /> Tableau
+                                </button>
                             </div>
 
-                            {/* Right: View Toggle Pills */}
-                            <div className="flex items-center gap-3">
-                                <div className="flex rounded-xl border border-white/10 p-1 bg-white/5 backdrop-blur-sm">
-                                    <button
-                                        type="button"
-                                        onClick={() => setViewMode("card")}
-                                        className={cn(
-                                            "px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2",
-                                            (viewMode as "card" | "table") === "card"
-                                                ? "bg-white text-slate-900 shadow-lg"
-                                                : "text-white/70 hover:text-white hover:bg-white/10"
-                                        )}
-                                    >
-                                        <User className="w-4 h-4" />
-                                        Carte
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setViewMode("table")}
-                                        className={cn(
-                                            "px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2",
-                                            (viewMode as "card" | "table") === "table"
-                                                ? "bg-white text-slate-900 shadow-lg"
-                                                : "text-white/70 hover:text-white hover:bg-white/10"
-                                        )}
-                                    >
-                                        <Building2 className="w-4 h-4" />
-                                        Tableau
-                                    </button>
-                                </div>
+                            <Button type="button" onClick={() => setShowStatsModal(true)} className="rounded-xl border border-white/15 bg-white/8 hover:bg-white/15 text-white backdrop-blur-sm gap-1.5 px-3 py-1.5 h-auto text-[13px] font-[500]">
+                                <BarChart2 className="w-3.5 h-3.5" /> Stats
+                            </Button>
 
-                                <Button
-                                    type="button"
-                                    onClick={() => setShowStatsModal(true)}
-                                    className="rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm gap-2 px-4 py-2 h-auto font-medium"
-                                >
-                                    <BarChart2 className="w-4 h-4" />
-                                    Stats
-                                </Button>
+                            {syncCallsButton}
 
-                                {syncCallsButton}
-
-                                {/* Stats badge - Actions count only (no timer for SDR/BD) */}
-                                <div className="px-4 py-2 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                                            <span className="text-sm font-semibold text-white">{actionsCompleted}</span>
-                                            <span className="text-xs text-white/60">actions</span>
-                                        </div>
-
-                                    </div>
-                                </div>
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/8 border border-white/10">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <span className="text-[22px] font-[500] text-white tabular-nums leading-none">{actionsCompleted}</span>
+                                <span className="text-[11px] text-white/50 uppercase tracking-wide font-[500]">actions</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Modern Filter Card */}
-                <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-white">
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                                    <Filter className="w-4 h-4 text-white" />
+                {/* Filter Card */}
+                <div className="bg-white rounded-2xl border border-[#e5e5e5] shadow-sm overflow-hidden">
+                    <div className="px-5 py-3.5 border-b border-[#e5e5e5] bg-[#f5f5f5]/50">
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-violet-700 flex items-center justify-center shadow-sm shadow-violet-500/20">
+                                    <Filter className="w-3.5 h-3.5 text-white" />
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-semibold text-slate-900">Filtres</h3>
-                                    <p className="text-xs text-slate-500">Affinez votre file d'actions</p>
+                                    <h3 className="text-[14px] font-[500] text-[#1a1a1a]">Filtres</h3>
+                                    {hasTableFiltersActive && (
+                                        <p className="text-[12px] text-violet-600 font-[500]">
+                                            {[tableFilterResult, tableFilterPriority, tableFilterChannel, tableFilterType].filter(Boolean).length} actif{[tableFilterResult, tableFilterPriority, tableFilterChannel, tableFilterType].filter(Boolean).length > 1 ? "s" : ""}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                {hasTableFiltersActive && (
-                                    <Badge className="bg-indigo-100 text-indigo-600 border-indigo-200">
-                                        {[tableFilterResult, tableFilterPriority, tableFilterChannel, tableFilterType].filter(Boolean).length} filtres actifs
-                                    </Badge>
-                                )}
-                                {hasTableFiltersActive && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={clearTableFilters}
-                                        className="text-slate-500 hover:text-red-600 hover:bg-red-50 gap-1.5"
-                                    >
-                                        <RotateCcw className="w-3.5 h-3.5" />
-                                        Réinitialiser
-                                    </Button>
-                                )}
-                            </div>
+                            {hasTableFiltersActive && (
+                                <Button variant="ghost" size="sm" onClick={clearTableFilters} className="text-slate-400 hover:text-red-500 hover:bg-red-50 gap-1.5 text-[12px] h-7">
+                                    <RotateCcw className="w-3 h-3" />
+                                    Réinitialiser
+                                </Button>
+                            )}
                         </div>
                     </div>
 
-                    {/* Filter Grid */}
-                    <div className="p-5">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                    <div className="p-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3">
                             {/* Mission */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mission</label>
-                                <select
-                                    value={selectedMissionId || ""}
-                                    onChange={handleMissionChange}
-                                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-shadow cursor-pointer"
-                                >
+                            <div className="space-y-1 xl:col-span-2">
+                                <label className="text-[11px] font-[500] text-slate-400 uppercase tracking-wide block">Mission</label>
+                                <select value={selectedMissionId || ""} onChange={handleMissionChange} className="w-full h-9 px-3 text-[13px] border border-[#e5e5e5] rounded-lg bg-white text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-shadow cursor-pointer">
                                     {selectableMissions.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                                 </select>
                             </div>
                             {/* Liste */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Liste</label>
-                                <select
-                                    value={selectedListId || "all"}
-                                    onChange={handleListChange}
-                                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-shadow cursor-pointer"
-                                >
-                                    <option value="all">Toutes les listes</option>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-[500] text-slate-400 uppercase tracking-wide block">Liste</label>
+                                <select value={selectedListId || "all"} onChange={handleListChange} className="w-full h-9 px-3 text-[13px] border border-[#e5e5e5] rounded-lg bg-white text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-shadow cursor-pointer">
+                                    <option value="all">Toutes</option>
                                     {filteredLists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                                 </select>
                             </div>
-                            {/* Recherche dans la mission (serveur) — pour retrouver un contact déjà contacté / email envoyé */}
-                            <div className="space-y-1.5 sm:col-span-2">
-                                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Rechercher dans la mission</label>
-                                <input
-                                    type="text"
-                                    value={tableSearchInput}
-                                    onChange={(e) => setTableSearchInput(e.target.value)}
-                                    placeholder="Nom contact ou société… (retrouver même après envoi email)"
-                                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-shadow"
-                                />
+                            {/* Search */}
+                            <div className="space-y-1 sm:col-span-2 xl:col-span-2">
+                                <label className="text-[11px] font-[500] text-slate-400 uppercase tracking-wide block">Rechercher</label>
+                                <input type="text" value={tableSearchInput} onChange={(e) => setTableSearchInput(e.target.value)} placeholder="Contact ou société…" className="w-full h-9 px-3 text-[13px] border border-[#e5e5e5] rounded-lg bg-white text-[#1a1a1a] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-shadow" />
                             </div>
                             {/* Statut */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Statut</label>
-                                <select
-                                    value={tableFilterResult}
-                                    onChange={(e) => setTableFilterResult(e.target.value)}
-                                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-shadow cursor-pointer"
-                                >
-                                    <option value="">Tous les statuts</option>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-[500] text-slate-400 uppercase tracking-wide block">Statut</label>
+                                <select value={tableFilterResult} onChange={(e) => setTableFilterResult(e.target.value)} className="w-full h-9 px-3 text-[13px] border border-[#e5e5e5] rounded-lg bg-white text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-shadow cursor-pointer">
+                                    <option value="">Tous</option>
                                     <option value="NONE">Jamais contacté</option>
-                                    {Object.entries(statusLabels).map(([value, label]) => (
-                                        <option key={value} value={value}>{label}</option>
-                                    ))}
+                                    {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                                 </select>
                             </div>
                             {/* Priorité */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Priorité</label>
-                                <select
-                                    value={tableFilterPriority}
-                                    onChange={(e) => setTableFilterPriority(e.target.value)}
-                                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-shadow cursor-pointer"
-                                >
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-[500] text-slate-400 uppercase tracking-wide block">Priorité</label>
+                                <select value={tableFilterPriority} onChange={(e) => setTableFilterPriority(e.target.value)} className="w-full h-9 px-3 text-[13px] border border-[#e5e5e5] rounded-lg bg-white text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-shadow cursor-pointer">
                                     <option value="">Toutes</option>
-                                    {Object.entries(PRIORITY_LABELS).map(([value, { label }]) => (
-                                        <option key={value} value={value}>{label}</option>
-                                    ))}
+                                    {Object.entries(PRIORITY_LABELS).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}
                                 </select>
                             </div>
                             {/* Canal */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Canal</label>
-                                <select
-                                    value={tableFilterChannel}
-                                    onChange={(e) => setTableFilterChannel(e.target.value)}
-                                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-shadow cursor-pointer"
-                                >
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-[500] text-slate-400 uppercase tracking-wide block">Canal</label>
+                                <select value={tableFilterChannel} onChange={(e) => setTableFilterChannel(e.target.value)} className="w-full h-9 px-3 text-[13px] border border-[#e5e5e5] rounded-lg bg-white text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-shadow cursor-pointer">
                                     <option value="">Tous</option>
-                                    {(Object.entries(CHANNEL_LABELS) as [Channel, string][]).map(([value, label]) => (
-                                        <option key={value} value={value}>{label}</option>
-                                    ))}
+                                    {(Object.entries(CHANNEL_LABELS) as [Channel, string][]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                                 </select>
                             </div>
                             {/* Type */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Type</label>
-                                <select
-                                    value={tableFilterType}
-                                    onChange={(e) => setTableFilterType(e.target.value)}
-                                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 transition-shadow cursor-pointer"
-                                >
-                                    <option value="">Contact + Société</option>
-                                    <option value="contact">Contact uniquement</option>
-                                    <option value="company">Société uniquement</option>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-[500] text-slate-400 uppercase tracking-wide block">Type</label>
+                                <select value={tableFilterType} onChange={(e) => setTableFilterType(e.target.value)} className="w-full h-9 px-3 text-[13px] border border-[#e5e5e5] rounded-lg bg-white text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-shadow cursor-pointer">
+                                    <option value="">Tous</option>
+                                    <option value="contact">Contact</option>
+                                    <option value="company">Société</option>
                                 </select>
                             </div>
                         </div>
 
                         {/* Results summary */}
-                        <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-xs text-slate-500">
+                        <div className="mt-3 pt-3 border-t border-[#e5e5e5] flex items-center justify-between">
+                            <span className="text-[12px] text-slate-500">
                                 {tableSearchApi ? (
-                                    <span><span className="font-medium text-indigo-600">{queueItems.length}</span> résultat{queueItems.length !== 1 ? "s" : ""} pour « {tableSearchApi} »</span>
+                                    <><span className="font-[500] text-violet-600">{queueItems.length}</span> résultat{queueItems.length !== 1 ? "s" : ""} pour «&nbsp;{tableSearchApi}&nbsp;»</>
                                 ) : hasTableFiltersActive ? (
-                                    <span><span className="font-medium text-indigo-600">{filteredQueueItems.length}</span> résultat{filteredQueueItems.length !== 1 ? "s" : ""} sur {queueItems.length}</span>
+                                    <><span className="font-[500] text-violet-600">{filteredQueueItems.length}</span> sur {queueItems.length}</>
                                 ) : (
-                                    <span><span className="font-medium text-slate-700">{queueItems.length}</span> dans la file</span>
+                                    <><span className="font-[500] text-[#1a1a1a]">{queueItems.length}</span> dans la file</>
                                 )}
                             </span>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => refreshQueue()}
-                                className="text-slate-500 hover:text-indigo-600 gap-1.5"
-                            >
-                                <RefreshCw className="w-3.5 h-3.5" />
+                            <Button variant="ghost" size="sm" onClick={() => refreshQueue()} className="text-slate-400 hover:text-violet-600 gap-1.5 text-[12px] h-7">
+                                <RefreshCw className="w-3 h-3" />
                                 Actualiser
                             </Button>
                         </div>
@@ -2499,86 +2438,39 @@ export default function SDRActionPage() {
     // Empty queue (card view)
     if (!currentAction?.hasNext) {
         return (
-            <div className="space-y-6">
-                {/* Modern Header */}
-                <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 rounded-2xl p-6 shadow-xl">
-                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 via-transparent to-violet-500/10" />
-                    <div className="absolute -top-20 -right-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl" />
-
-                    <div className="relative">
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/10">
-                                    <Phone className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <h1 className="text-xl font-bold text-white">Actions</h1>
-                                    <p className="text-sm text-white/60">Gérez vos actions commerciales</p>
-                                </div>
+            <div className="space-y-4">
+                {/* Header — Empty Queue */}
+                <div className="relative overflow-hidden bg-gradient-to-br from-[#0f0f12] via-slate-950 to-violet-950 rounded-2xl p-5 shadow-xl">
+                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-violet-600/20 via-transparent to-transparent" />
+                    <div className="absolute -top-16 -right-16 w-48 h-48 bg-violet-500/10 rounded-full blur-2xl" />
+                    <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center border border-violet-400/20">
+                                <Phone className="w-5 h-5 text-violet-300" />
                             </div>
-
-                            <div className="flex items-center gap-3 flex-wrap">
-                                <div className="flex rounded-xl border border-white/10 p-1 bg-white/5 backdrop-blur-sm">
-                                    <button
-                                        type="button"
-                                        onClick={() => setViewMode("card")}
-                                        className={cn(
-                                            "px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2",
-                                            (viewMode as "card" | "table") === "card"
-                                                ? "bg-white text-slate-900 shadow-lg"
-                                                : "text-white/70 hover:text-white hover:bg-white/10"
-                                        )}
-                                    >
-                                        <User className="w-4 h-4" />
-                                        Carte
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setViewMode("table")}
-                                        className={cn(
-                                            "px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2",
-                                            (viewMode as "card" | "table") === "table"
-                                                ? "bg-white text-slate-900 shadow-lg"
-                                                : "text-white/70 hover:text-white hover:bg-white/10"
-                                        )}
-                                    >
-                                        <Building2 className="w-4 h-4" />
-                                        Tableau
-                                    </button>
-                                </div>
-
-                                <Select
-                                    variant="header-dark"
-                                    value={selectedMissionId || ""}
-                                    onChange={(id) => {
-                                        setSelectedMissionId(id);
-                                        localStorage.setItem("sdr_selected_mission", id);
-                                        const firstList = lists.find((l) => l.mission.id === id);
-                                        setSelectedListId(firstList?.id ?? null);
-                                    }}
-                                    options={selectableMissions.map((m) => ({ value: m.id, label: m.name }))}
-                                    placeholder="Mission"
-                                    className="min-w-[180px]"
-                                />
-                                <Select
-                                    variant="header-dark"
-                                    value={selectedListId || "all"}
-                                    onChange={(id) => setSelectedListId(id === "all" ? null : id)}
-                                    options={[
-                                        { value: "all", label: "Toutes les listes" },
-                                        ...filteredLists.map((l) => ({ value: l.id, label: l.name })),
-                                    ]}
-                                    placeholder="Liste"
-                                    className="min-w-[160px]"
-                                />
-                                {syncCallsButton}
+                            <div>
+                                <h1 className="text-[22px] font-[500] text-white leading-tight">Actions</h1>
+                                <p className="text-[13px] text-white/50">Gérez vos actions commerciales</p>
                             </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex rounded-xl border border-white/10 p-0.5 bg-white/5">
+                                <button type="button" onClick={() => setViewMode("card")} className={cn("px-3 py-1.5 text-[13px] font-[500] rounded-lg transition-all flex items-center gap-1.5", viewMode === "card" ? "bg-white text-slate-900 shadow-md" : "text-white/60 hover:text-white hover:bg-white/10")}>
+                                    <User className="w-3.5 h-3.5" /> Carte
+                                </button>
+                                <button type="button" onClick={() => setViewMode("table")} className={cn("px-3 py-1.5 text-[13px] font-[500] rounded-lg transition-all flex items-center gap-1.5", viewMode === "table" ? "bg-white text-slate-900 shadow-md" : "text-white/60 hover:text-white hover:bg-white/10")}>
+                                    <Building2 className="w-3.5 h-3.5" /> Tableau
+                                </button>
+                            </div>
+                            <Select variant="header-dark" value={selectedMissionId || ""} onChange={(id) => { setSelectedMissionId(id); localStorage.setItem("sdr_selected_mission", id); const firstList = lists.find((l) => l.mission.id === id); setSelectedListId(firstList?.id ?? null); }} options={selectableMissions.map((m) => ({ value: m.id, label: m.name }))} placeholder="Mission" className="min-w-[160px]" />
+                            <Select variant="header-dark" value={selectedListId || "all"} onChange={(id) => setSelectedListId(id === "all" ? null : id)} options={[{ value: "all", label: "Toutes les listes" }, ...filteredLists.map((l) => ({ value: l.id, label: l.name }))]} placeholder="Liste" className="min-w-[140px]" />
+                            {syncCallsButton}
                         </div>
                     </div>
                 </div>
 
-                {/* Empty State Card — explain why the queue is empty */}
-                <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-12">
+                {/* Empty State */}
+                <div className="bg-white rounded-2xl border border-[#e5e5e5] shadow-sm p-12">
                     <EmptyState
                         icon={CheckCircle2}
                         title="File d'attente vide"
@@ -2604,125 +2496,70 @@ export default function SDRActionPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 pb-28">
             {/* Success Overlay */}
             {showSuccess && (
-                <div className="fixed inset-0 bg-white/90 backdrop-blur-sm z-50 flex items-center justify-center">
-                    <div className="text-center animate-fade-in">
-                        <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-                            <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                <div className="fixed inset-0 bg-white/80 backdrop-blur-md z-50 flex items-center justify-center">
+                    <div className="text-center animate-fade-in bg-white rounded-2xl border border-[#e5e5e5] shadow-xl px-10 py-8">
+                        <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+                            <CheckCircle2 className="w-7 h-7 text-emerald-600" />
                         </div>
-                        <p className="text-lg font-semibold text-slate-900">Action enregistrée</p>
-                        <p className="text-sm text-slate-500 mt-1">Chargement du contact suivant...</p>
+                        <p className="text-[18px] font-[500] text-[#1a1a1a]">Action enregistrée</p>
+                        <p className="text-[13px] text-slate-400 mt-1">Chargement du contact suivant…</p>
                     </div>
                 </div>
             )}
 
-            {/* Modern Header with View Toggle & Context */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 rounded-2xl p-6 shadow-xl">
-                {/* Background decoration */}
-                <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 via-transparent to-violet-500/10" />
-                <div className="absolute -top-20 -right-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl" />
+            {/* Header */}
+            <div className="relative overflow-hidden bg-gradient-to-br from-[#0f0f12] via-slate-950 to-violet-950 rounded-2xl p-5 shadow-xl">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-violet-600/20 via-transparent to-transparent" />
+                <div className="absolute -top-16 -right-16 w-48 h-48 bg-violet-500/10 rounded-full blur-2xl" />
+                <div className="absolute bottom-0 left-1/4 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl" />
 
                 <div className="relative">
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                        {/* Left: Title & Context */}
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/10">
-                                <Phone className="w-6 h-6 text-white" />
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        {/* Left: Title & mission context */}
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-violet-500/20 backdrop-blur-sm flex items-center justify-center border border-violet-400/20 ring-1 ring-white/5">
+                                <Phone className="w-5 h-5 text-violet-300" />
                             </div>
                             <div>
-                                <h1 className="text-xl font-bold text-white">Actions</h1>
-                                <p className="text-sm text-white/60">{currentAction.missionName || "Gérez vos actions commerciales"}</p>
+                                <h1 className="text-[22px] font-[500] text-white leading-tight tracking-tight">Actions</h1>
+                                <p className="text-[13px] text-white/50 mt-0.5 truncate max-w-[280px]">{currentAction.missionName || "Gérez vos actions commerciales"}</p>
                             </div>
+                            {currentAction.priority && (
+                                <Badge className={cn("text-[11px] font-[500] uppercase tracking-wide", PRIORITY_LABELS[currentAction.priority].color)}>
+                                    {PRIORITY_LABELS[currentAction.priority].label}
+                                </Badge>
+                            )}
                         </div>
 
                         {/* Right: Controls & Stats */}
-                        <div className="flex items-center gap-3 flex-wrap">
-                            {/* View Toggle Pills */}
-                            <div className="flex rounded-xl border border-white/10 p-1 bg-white/5 backdrop-blur-sm">
-                                <button
-                                    type="button"
-                                    onClick={() => setViewMode("card")}
-                                    className={cn(
-                                        "px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2",
-                                        (viewMode as "card" | "table") === "card"
-                                            ? "bg-white text-slate-900 shadow-lg"
-                                            : "text-white/70 hover:text-white hover:bg-white/10"
-                                    )}
-                                >
-                                    <User className="w-4 h-4" />
-                                    Carte
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* View Toggle */}
+                            <div className="flex rounded-xl border border-white/10 p-0.5 bg-white/5">
+                                <button type="button" onClick={() => setViewMode("card")} className={cn("px-3 py-1.5 text-[13px] font-[500] rounded-lg transition-all flex items-center gap-1.5", viewMode === "card" ? "bg-white text-slate-900 shadow-md" : "text-white/60 hover:text-white hover:bg-white/10")}>
+                                    <User className="w-3.5 h-3.5" /> Carte
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setViewMode("table")}
-                                    className={cn(
-                                        "px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2",
-                                        (viewMode as "card" | "table") === "table"
-                                            ? "bg-white text-slate-900 shadow-lg"
-                                            : "text-white/70 hover:text-white hover:bg-white/10"
-                                    )}
-                                >
-                                    <Building2 className="w-4 h-4" />
-                                    Tableau
+                                <button type="button" onClick={() => setViewMode("table")} className={cn("px-3 py-1.5 text-[13px] font-[500] rounded-lg transition-all flex items-center gap-1.5", viewMode === "table" ? "bg-white text-slate-900 shadow-md" : "text-white/60 hover:text-white hover:bg-white/10")}>
+                                    <Building2 className="w-3.5 h-3.5" /> Tableau
                                 </button>
                             </div>
 
-                            {/* Mission & List Selectors */}
-                            <Select
-                                variant="header-dark"
-                                value={selectedMissionId || ""}
-                                onChange={(id) => {
-                                    setSelectedMissionId(id);
-                                    localStorage.setItem("sdr_selected_mission", id);
-                                    const firstList = lists.find((l) => l.mission.id === id);
-                                    setSelectedListId(firstList?.id ?? null);
-                                }}
-                                options={selectableMissions.map((m) => ({ value: m.id, label: m.name }))}
-                                placeholder="Mission"
-                                className="min-w-[180px]"
-                            />
-                            <Select
-                                variant="header-dark"
-                                value={selectedListId || "all"}
-                                onChange={(id) => setSelectedListId(id === "all" ? null : id)}
-                                options={[
-                                    { value: "all", label: "Toutes les listes" },
-                                    ...filteredLists.map((l) => ({ value: l.id, label: l.name })),
-                                ]}
-                                placeholder="Liste"
-                                className="min-w-[160px]"
-                            />
+                            <Select variant="header-dark" value={selectedMissionId || ""} onChange={(id) => { setSelectedMissionId(id); localStorage.setItem("sdr_selected_mission", id); const firstList = lists.find((l) => l.mission.id === id); setSelectedListId(firstList?.id ?? null); }} options={selectableMissions.map((m) => ({ value: m.id, label: m.name }))} placeholder="Mission" className="min-w-[160px]" />
+                            <Select variant="header-dark" value={selectedListId || "all"} onChange={(id) => setSelectedListId(id === "all" ? null : id)} options={[{ value: "all", label: "Toutes les listes" }, ...filteredLists.map((l) => ({ value: l.id, label: l.name }))]} placeholder="Liste" className="min-w-[140px]" />
 
-                            <Button
-                                type="button"
-                                onClick={() => setShowStatsModal(true)}
-                                className="rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm gap-2 px-4 py-2 h-auto font-medium"
-                            >
-                                <BarChart2 className="w-4 h-4" />
-                                Stats
+                            <Button type="button" onClick={() => setShowStatsModal(true)} className="rounded-xl border border-white/15 bg-white/8 hover:bg-white/15 text-white backdrop-blur-sm gap-1.5 px-3 py-1.5 h-auto text-[13px] font-[500]">
+                                <BarChart2 className="w-3.5 h-3.5" /> Stats
                             </Button>
 
                             {syncCallsButton}
 
-                            {/* Stats Badges */}
-                            <div className="px-4 py-2 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                                        <span className="text-sm font-semibold text-white">{actionsCompleted}</span>
-                                        <span className="text-xs text-white/60">actions</span>
-                                    </div>
-                                    {currentAction.priority && (
-                                        <>
-                                            <div className="w-px h-4 bg-white/20" />
-                                            <Badge className={cn("text-xs", PRIORITY_LABELS[currentAction.priority].color)}>
-                                                {PRIORITY_LABELS[currentAction.priority].label}
-                                            </Badge>
-                                        </>
-                                    )}
-                                </div>
+                            {/* Session counter */}
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/8 border border-white/10">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <span className="text-[22px] font-[500] text-white tabular-nums leading-none">{actionsCompleted}</span>
+                                <span className="text-[11px] text-white/50 uppercase tracking-wide font-[500]">actions</span>
                             </div>
                         </div>
                     </div>
@@ -2731,78 +2568,59 @@ export default function SDRActionPage() {
 
             {/* Error Alert */}
             {error && (
-                <div className="relative overflow-hidden rounded-2xl border border-red-200 bg-gradient-to-r from-red-50 to-rose-50 p-4 shadow-sm">
-                    <div className="absolute inset-0 bg-gradient-to-r from-red-500/5 to-transparent" />
-                    <div className="relative flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
-                                <AlertCircle className="w-5 h-5 text-red-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm font-semibold text-red-900">Erreur</p>
-                                <p className="text-sm text-red-700">{error}</p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={() => setError(null)}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-100 transition-colors"
-                        >
-                            <XCircle className="w-5 h-5" />
-                        </button>
-                    </div>
+                <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                    <p className="text-[13px] text-red-700 flex-1">{error}</p>
+                    <button onClick={() => setError(null)} className="w-6 h-6 rounded-lg flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-100 transition-colors flex-shrink-0">
+                        <XCircle className="w-4 h-4" />
+                    </button>
                 </div>
             )}
 
             {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                 {/* Left - Contact Panel (2 cols) */}
-                <div className="lg:col-span-2 space-y-4">
+                <div className="lg:col-span-2 space-y-3">
                     {/* Company Card */}
-                    <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-                        <div className="p-5">
-                            <div className="flex items-start gap-4">
-                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-100 to-indigo-50 flex items-center justify-center flex-shrink-0 border border-indigo-100">
-                                    <Building2 className="w-7 h-7 text-indigo-600" />
+                    <div className="bg-white rounded-2xl border border-[#e5e5e5] shadow-sm overflow-hidden">
+                        <div className="p-4">
+                            <div className="flex items-start gap-3">
+                                {/* Company initials avatar */}
+                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-800 to-slate-700 flex items-center justify-center flex-shrink-0 shadow-md shadow-slate-800/20">
+                                    <span className="text-[15px] font-[500] text-white tracking-wide">
+                                        {getInitials(null, null, currentAction.company?.name)}
+                                    </span>
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <h2 className="text-lg font-bold text-slate-900 truncate">
-                                            {currentAction.company?.name}
-                                        </h2>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <h2 className="text-[18px] font-[500] text-[#1a1a1a] truncate leading-tight">
+                                                {currentAction.company?.name}
+                                            </h2>
+                                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                {currentAction.company?.industry && (
+                                                    <span className="text-[11px] font-[500] uppercase tracking-wide text-slate-500 bg-[#f5f5f5] border border-[#e5e5e5] px-2 py-0.5 rounded-md">
+                                                        {currentAction.company.industry}
+                                                    </span>
+                                                )}
+                                                {currentAction.company?.country && (
+                                                    <span className="text-[11px] font-[500] uppercase tracking-wide text-slate-500 bg-[#f5f5f5] border border-[#e5e5e5] px-2 py-0.5 rounded-md">
+                                                        {currentAction.company.country}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
                                         {currentAction.company?.id && (
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => setDrawerCompanyId(currentAction.company!.id)}
-                                                className="shrink-0 h-8 px-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
-                                                title="Modifier l'entreprise"
-                                            >
-                                                <PenLine className="w-4 h-4" />
+                                            <Button variant="ghost" size="sm" onClick={() => setDrawerCompanyId(currentAction.company!.id)} className="shrink-0 h-7 w-7 p-0 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg" title="Modifier l'entreprise">
+                                                <PenLine className="w-3.5 h-3.5" />
                                             </Button>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                        {currentAction.company?.industry && (
-                                            <Badge variant="default" className="bg-slate-100 text-slate-600 border-slate-200">
-                                                {currentAction.company.industry}
-                                            </Badge>
-                                        )}
-                                        {currentAction.company?.country && (
-                                            <Badge variant="default" className="bg-slate-100 text-slate-600 border-slate-200">
-                                                {currentAction.company.country}
-                                            </Badge>
-                                        )}
-                                    </div>
                                     {currentAction.company?.website && (
-                                        <a
-                                            href={`https://${currentAction.company.website}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                                        >
-                                            <Globe className="w-3.5 h-3.5" />
+                                        <a href={`https://${currentAction.company.website}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-2 text-[12px] text-violet-600 hover:text-violet-700 font-[400] transition-colors">
+                                            <Globe className="w-3 h-3" />
                                             {currentAction.company.website}
-                                            <ExternalLink className="w-3 h-3" />
+                                            <ExternalLink className="w-2.5 h-2.5 opacity-60" />
                                         </a>
                                     )}
                                 </div>
@@ -2811,32 +2629,38 @@ export default function SDRActionPage() {
                     </div>
 
                     {/* Contact/Company Card */}
-                    <Card>
+                    <Card className="border-[#e5e5e5] shadow-sm">
                         {currentAction.contact ? (
                             <>
-                                <div className="flex items-center gap-4 mb-4">
-                                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
-                                        <User className="w-6 h-6 text-indigo-600" />
+                                <div className="flex items-start gap-3 mb-4">
+                                    {/* Contact initials avatar */}
+                                    <div className="relative flex-shrink-0">
+                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-600 to-violet-700 flex items-center justify-center shadow-md shadow-violet-500/25">
+                                            <span className="text-[16px] font-[500] text-white tracking-wide">
+                                                {getInitials(currentAction.contact.firstName, currentAction.contact.lastName)}
+                                            </span>
+                                        </div>
+                                        {/* Channel indicator dot */}
+                                        <div className={cn("absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center border-2 border-white",
+                                            currentAction.channel === 'CALL' ? "bg-violet-500" :
+                                            currentAction.channel === 'EMAIL' ? "bg-blue-500" : "bg-sky-500"
+                                        )}>
+                                            {currentAction.channel === 'CALL' ? <Phone className="w-2 h-2 text-white" /> :
+                                             currentAction.channel === 'EMAIL' ? <Mail className="w-2 h-2 text-white" /> :
+                                             <Linkedin className="w-2 h-2 text-white" />}
+                                        </div>
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <p className="font-semibold text-slate-900">
+                                        <p className="text-[18px] font-[500] text-[#1a1a1a] leading-tight">
                                             {currentAction.contact.firstName} {currentAction.contact.lastName}
                                         </p>
                                         {currentAction.contact.title && (
-                                            <Badge variant="default" className="mt-1">
-                                                {currentAction.contact.title}
-                                            </Badge>
+                                            <p className="text-[13px] text-slate-500 mt-0.5 truncate">{currentAction.contact.title}</p>
                                         )}
                                     </div>
                                     {currentAction.contact.id && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setDrawerContactId(currentAction.contact!.id)}
-                                            className="shrink-0 h-8 px-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
-                                            title="Modifier le contact"
-                                        >
-                                            <PenLine className="w-4 h-4" />
+                                        <Button variant="ghost" size="sm" onClick={() => setDrawerContactId(currentAction.contact!.id)} className="shrink-0 h-7 w-7 p-0 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg" title="Modifier le contact">
+                                            <PenLine className="w-3.5 h-3.5" />
                                         </Button>
                                     )}
                                 </div>
@@ -2854,24 +2678,24 @@ export default function SDRActionPage() {
                                                     lastAction: currentAction.lastAction,
                                                     lastActionBy: currentAction.lastActionBy ?? null,
                                                 })}
-                                                className="flex items-center justify-center gap-2 h-12 w-full text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+                                                className="flex items-center justify-center gap-2.5 h-12 w-full text-[14px] font-[500] text-white bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-500 hover:to-violet-600 rounded-xl transition-all shadow-md shadow-violet-500/25 active:scale-[0.98]"
                                             >
                                                 <Phone className="w-4 h-4" />
-                                                {phone}
+                                                <span className="font-mono tracking-wide">{phone}</span>
                                             </a>
                                         ) : null;
                                     })()}
-                                    {/* Email - validate it looks like an email */}
+                                    {/* Email */}
                                     {(() => {
                                         const email = currentAction.contact.email;
                                         const isValidEmail = email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
                                         return isValidEmail ? (
                                             <a
                                                 href={`mailto:${email}`}
-                                                className="flex items-center justify-center gap-2 h-11 w-full text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors"
+                                                className="flex items-center justify-center gap-2 h-10 w-full text-[13px] font-[400] text-slate-600 bg-[#f5f5f5] border border-[#e5e5e5] hover:bg-[#ebebeb] hover:border-slate-300 rounded-xl transition-colors"
                                             >
-                                                <Mail className="w-4 h-4" />
-                                                {email}
+                                                <Mail className="w-3.5 h-3.5 text-slate-500" />
+                                                <span className="truncate max-w-[200px]">{email}</span>
                                             </a>
                                         ) : null;
                                     })()}
@@ -2880,13 +2704,13 @@ export default function SDRActionPage() {
                                             href={currentAction.contact.linkedin.startsWith("http") ? currentAction.contact.linkedin : `https://${currentAction.contact.linkedin}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="flex items-center justify-center gap-2 h-11 w-full text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors"
+                                            className="flex items-center justify-center gap-2 h-10 w-full text-[13px] font-[400] text-sky-700 bg-sky-50 border border-sky-200/60 hover:bg-sky-100 rounded-xl transition-colors"
                                         >
-                                            <Linkedin className="w-4 h-4" />
+                                            <Linkedin className="w-3.5 h-3.5" />
                                             LinkedIn
                                         </a>
                                     )}
-                                    {/* Show warning if contact info is missing or invalid */}
+                                    {/* Warnings for missing contact info */}
                                     {(() => {
                                         const phone = currentAction.contact.phone || (currentAction.channel === 'CALL' && currentAction.company?.phone ? currentAction.company.phone : null);
                                         const isValidPhone = phone && /[\d+\-().\s]/.test(phone) && phone.length >= 8;
@@ -2896,27 +2720,22 @@ export default function SDRActionPage() {
                                         if (currentAction.channel === 'CALL' && !isValidPhone) {
                                             return (
                                                 <div className="space-y-2">
-                                                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
-                                                        <AlertCircle className="w-4 h-4 inline mr-2" />
-                                                        Aucun numéro de téléphone valide disponible
+                                                    <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[13px] text-amber-700">
+                                                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                                        Aucun numéro de téléphone valide
                                                     </div>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => setDrawerContactId(currentAction.contact!.id)}
-                                                        className="w-full gap-2"
-                                                    >
-                                                        <PenLine className="w-4 h-4" />
-                                                        Ajouter un numéro / Modifier le contact
+                                                    <Button variant="outline" size="sm" onClick={() => setDrawerContactId(currentAction.contact!.id)} className="w-full gap-2 border-[#e5e5e5] text-slate-600 hover:border-violet-200 hover:text-violet-600">
+                                                        <PenLine className="w-3.5 h-3.5" />
+                                                        Ajouter un numéro
                                                     </Button>
                                                 </div>
                                             );
                                         }
                                         if (currentAction.channel === 'EMAIL' && !isValidEmail) {
                                             return (
-                                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
-                                                    <AlertCircle className="w-4 h-4 inline mr-2" />
-                                                    Aucune adresse email valide disponible
+                                                <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[13px] text-amber-700">
+                                                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                                    Aucune adresse email valide
                                                 </div>
                                             );
                                         }
@@ -2953,54 +2772,30 @@ export default function SDRActionPage() {
                             </>
                         ) : currentAction.company ? (
                             <>
-                                <div className="flex items-center gap-4 mb-4">
-                                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
-                                        <Building2 className="w-6 h-6 text-indigo-600" />
+                                <div className="flex items-start gap-3 mb-4">
+                                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center flex-shrink-0 shadow-md">
+                                        <span className="text-[15px] font-[500] text-white">{getInitials(null, null, currentAction.company.name)}</span>
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <p className="font-semibold text-slate-900">
-                                            {currentAction.company.name}
-                                        </p>
-                                        <Badge variant="default" className="mt-1">
-                                            Entreprise
-                                        </Badge>
+                                        <p className="text-[18px] font-[500] text-[#1a1a1a] leading-tight">{currentAction.company.name}</p>
+                                        <span className="text-[11px] font-[500] uppercase tracking-wide text-slate-500 bg-[#f5f5f5] border border-[#e5e5e5] px-2 py-0.5 rounded-md mt-1 inline-block">Entreprise</span>
                                     </div>
                                     {currentAction.company.id && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setDrawerCompanyId(currentAction.company!.id)}
-                                            className="shrink-0 h-8 px-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
-                                            title="Modifier l'entreprise"
-                                        >
-                                            <PenLine className="w-4 h-4" />
+                                        <Button variant="ghost" size="sm" onClick={() => setDrawerCompanyId(currentAction.company!.id)} className="shrink-0 h-7 w-7 p-0 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg" title="Modifier l'entreprise">
+                                            <PenLine className="w-3.5 h-3.5" />
                                         </Button>
                                     )}
                                 </div>
-
-                                {/* Company Actions */}
                                 <div className="space-y-2">
                                     {currentAction.company.phone ? (
-                                        <a
-                                            href={`tel:${currentAction.company.phone}`}
-                                            onClick={(e) => handlePhoneCallAttempt(e, currentAction.company.phone!, {
-                                                lastAction: currentAction.lastAction,
-                                                lastActionBy: currentAction.lastActionBy ?? null,
-                                            })}
-                                            className="flex items-center justify-center gap-2 h-12 w-full text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
-                                        >
+                                        <a href={`tel:${currentAction.company.phone}`} onClick={(e) => handlePhoneCallAttempt(e, currentAction.company.phone!, { lastAction: currentAction.lastAction, lastActionBy: currentAction.lastActionBy ?? null })} className="flex items-center justify-center gap-2 h-11 w-full text-[14px] font-[500] text-white bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-500 hover:to-violet-600 rounded-xl transition-all shadow-md shadow-violet-500/25 active:scale-[0.98]">
                                             <Phone className="w-4 h-4" />
                                             {currentAction.company.phone}
                                         </a>
                                     ) : (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setDrawerCompanyId(currentAction.company!.id)}
-                                            className="w-full gap-2"
-                                        >
-                                            <PenLine className="w-4 h-4" />
-                                            Ajouter un numéro / Modifier l'entreprise
+                                        <Button variant="outline" size="sm" onClick={() => setDrawerCompanyId(currentAction.company!.id)} className="w-full gap-2 border-[#e5e5e5] text-slate-600 hover:border-violet-200 hover:text-violet-600">
+                                            <PenLine className="w-3.5 h-3.5" />
+                                            Ajouter un numéro
                                         </Button>
                                     )}
                                 </div>
@@ -3009,37 +2804,35 @@ export default function SDRActionPage() {
 
                         {/* Previous Action Context */}
                         {currentAction.lastAction && (
-                            <div className="mt-4 p-4 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/60 rounded-xl">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <History className="w-4 h-4 text-amber-600" />
-                                    <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">Dernière interaction</p>
-                                </div>
-                                {currentAction.lastActionBy?.id && currentAction.lastActionBy.id !== session?.user?.id && currentAction.lastActionBy.name && (
-                                    <p className="text-xs font-medium text-amber-700 mb-2">Contacté par {currentAction.lastActionBy.name}</p>
-                                )}
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Badge className={cn("text-xs border font-medium", {
-                                        "bg-slate-100 text-slate-600 border-slate-200": currentAction.lastAction.result === "NO_RESPONSE",
-                                        "bg-red-50 text-red-600 border-red-200": currentAction.lastAction.result === "BAD_CONTACT",
-                                        "bg-emerald-50 text-emerald-700 border-emerald-200":
-                                            currentAction.lastAction.result === "INTERESTED" ||
-                                            currentAction.lastAction.result === "MAIL_ENVOYE",
-                                        "bg-amber-100 text-amber-700 border-amber-200": isCallbackResult(currentAction.lastAction.result),
-                                        "bg-indigo-50 text-indigo-700 border-indigo-200": currentAction.lastAction.result === "MEETING_BOOKED",
-                                        "bg-blue-50 text-blue-700 border-blue-200": currentAction.lastAction.result === "ENVOIE_MAIL",
-                                    })}>
-                                        {RESULT_ICON_MAP[currentAction.lastAction.result]}
-                                        <span className="ml-1">{statusLabels[currentAction.lastAction.result] ?? currentAction.lastAction.result}</span>
-                                    </Badge>
-                                    <span className="text-[10px] text-amber-600 font-medium">
+                            <div className="mt-3 rounded-xl border border-amber-200/70 bg-amber-50 overflow-hidden">
+                                <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-100">
+                                    <History className="w-3.5 h-3.5 text-amber-500" />
+                                    <span className="text-[11px] font-[500] uppercase tracking-wide text-amber-700">Dernière interaction</span>
+                                    <span className="ml-auto text-[11px] text-amber-500 font-[400]">
                                         {new Date(currentAction.lastAction.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                 </div>
-                                {currentAction.lastAction.note && (
-                                    <div className="mt-2 pl-3 border-l-2 border-amber-300">
-                                        <p className="text-sm text-amber-900 italic">"{currentAction.lastAction.note}"</p>
+                                <div className="px-3 py-2.5">
+                                    {currentAction.lastActionBy?.id && currentAction.lastActionBy.id !== session?.user?.id && currentAction.lastActionBy.name && (
+                                        <p className="text-[12px] text-amber-600 font-[500] mb-1.5">Par {currentAction.lastActionBy.name}</p>
+                                    )}
+                                    <div className="flex items-center gap-2">
+                                        {(() => {
+                                            const sem = RESULT_SEMANTIC[currentAction.lastAction.result];
+                                            return (
+                                                <span className={cn("inline-flex items-center gap-1 text-[12px] font-[500] px-2 py-1 rounded-lg border", sem ? cn(sem.selectedCls) : "bg-slate-100 text-slate-600 border-slate-200")}>
+                                                    {RESULT_ICON_MAP[currentAction.lastAction.result]}
+                                                    <span className="ml-0.5">{statusLabels[currentAction.lastAction.result] ?? currentAction.lastAction.result}</span>
+                                                </span>
+                                            );
+                                        })()}
                                     </div>
-                                )}
+                                    {currentAction.lastAction.note && (
+                                        <p className="mt-2 text-[13px] text-amber-900 italic leading-relaxed pl-3 border-l-2 border-amber-300">
+                                            "{currentAction.lastAction.note}"
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </Card>
@@ -3048,54 +2841,48 @@ export default function SDRActionPage() {
                 {/* Right - Script Panel (3 cols) */}
                 {!showBookingDrawer && (
                 <div className="lg:col-span-3">
-                    <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm h-full overflow-hidden">
-                        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-white">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-                                    <Sparkles className="w-5 h-5 text-white" />
+                    <div className="bg-white rounded-2xl border border-[#e5e5e5] shadow-sm h-full overflow-hidden">
+                        <div className="px-5 py-4 border-b border-[#e5e5e5] bg-gradient-to-r from-[#f5f5f5] to-white">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-violet-700 flex items-center justify-center shadow-md shadow-violet-500/25">
+                                        <Sparkles className="w-4 h-4 text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-[16px] font-[500] text-[#1a1a1a]">Script d'appel</h3>
+                                        <p className="text-[12px] text-slate-400">Guide conversationnel</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900">Script d'appel</h3>
-                                    <p className="text-xs text-slate-500">
-                                        Guide conversationnel
-                                        {currentAction?.scriptDefaultTab && (
-                                            <span className="ml-2 inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
-                                                Defaut: {SCRIPT_TABS.find((t) => t.id === currentAction.scriptDefaultTab)?.label ?? "Script"}
-                                            </span>
-                                        )}
-                                    </p>
-                                </div>
+                                {currentAction?.scriptDefaultTab && (
+                                    <span className="text-[11px] font-[500] uppercase tracking-wide text-violet-600 bg-violet-50 border border-violet-200 px-2 py-1 rounded-lg">
+                                        {SCRIPT_TABS.find((t) => t.id === currentAction.scriptDefaultTab)?.label ?? "Script"}
+                                    </span>
+                                )}
                             </div>
                         </div>
 
-                        <div className="p-5">
+                        <div className="p-4">
                             {availableScriptTabs.length > 0 ? (
                                 <>
-                                    <Tabs
-                                        tabs={availableScriptTabs}
-                                        activeTab={activeTab}
-                                        onTabChange={setActiveTab}
-                                        className="mb-4"
-                                    />
-                                    <div className="bg-gradient-to-br from-slate-50 to-slate-100/50 border border-slate-200/60 rounded-xl p-5 min-h-[200px]">
-                                        <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                    <Tabs tabs={availableScriptTabs} activeTab={activeTab} onTabChange={setActiveTab} className="mb-3" />
+                                    <div className="bg-[#f5f5f5] border border-[#e5e5e5] rounded-xl p-4 min-h-[200px] max-h-[420px] overflow-y-auto">
+                                        <p className="text-[14px] text-slate-700 leading-[1.65] whitespace-pre-wrap font-[400]">
                                             {scriptPanelContent[activeTab as keyof typeof scriptPanelContent] || ""}
                                         </p>
                                     </div>
                                 </>
                             ) : currentAction.script ? (
-                                <div className="bg-gradient-to-br from-slate-50 to-slate-100/50 border border-slate-200/60 rounded-xl p-5">
-                                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                <div className="bg-[#f5f5f5] border border-[#e5e5e5] rounded-xl p-4 max-h-[420px] overflow-y-auto">
+                                    <p className="text-[14px] text-slate-700 leading-[1.65] whitespace-pre-wrap font-[400]">
                                         {currentAction.script}
                                     </p>
                                 </div>
                             ) : (
                                 <div className="text-center py-12">
-                                    <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                                        <Sparkles className="w-8 h-8 text-slate-300" />
+                                    <div className="w-12 h-12 rounded-2xl bg-[#f5f5f5] border border-[#e5e5e5] flex items-center justify-center mx-auto mb-3">
+                                        <Sparkles className="w-5 h-5 text-slate-300" />
                                     </div>
-                                    <p className="text-sm text-slate-500">Aucun script disponible</p>
-                                    <p className="text-xs text-slate-400 mt-1">Le script sera affiché ici s'il est configuré</p>
+                                    <p className="text-[14px] text-slate-400">Aucun script configuré</p>
                                 </div>
                             )}
                         </div>
@@ -3106,101 +2893,112 @@ export default function SDRActionPage() {
 
             {/* Action Results */}
             <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-                <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-white">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                            <CheckCircle2 className="w-5 h-5 text-white" />
+                <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-violet-700 flex items-center justify-center shadow-md shadow-violet-500/25">
+                                <CheckCircle2 className="w-4.5 h-4.5 text-white" />
+                            </div>
+                            <div>
+                                <h3 className="text-[16px] font-[500] text-[#1a1a1a] leading-tight">Résultat de l'action</h3>
+                                <p className="text-[12px] text-slate-400 mt-0.5">Sélectionnez ou tapez le chiffre correspondant</p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="text-sm font-bold text-slate-900">Résultat de l'action</h3>
-                            <p className="text-xs text-slate-500">Sélectionnez le résultat de votre appel</p>
-                        </div>
+                        {selectedResult && (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedResult(null)}
+                                className="text-[11px] font-[500] uppercase tracking-wide text-slate-400 hover:text-slate-600 transition-colors"
+                            >
+                                Effacer
+                            </button>
+                        )}
                     </div>
                 </div>
-                <div className="p-5">
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        {resultOptions.map((option) => (
-                            <button
-                                key={option.value}
-                                onClick={() => setSelectedResult(option.value)}
-                                title={STATUS_HOVER_HINTS[option.value]}
-                                className={cn(
-                                    "relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all",
-                                    selectedResult === option.value
-                                        ? "bg-gradient-to-br from-indigo-50 to-indigo-100/50 border-indigo-300 shadow-sm"
-                                        : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                                )}
-                            >
-                                <span className={cn(
-                                    "w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
-                                    selectedResult === option.value
-                                        ? "bg-indigo-100 text-indigo-600"
-                                        : "bg-slate-100 text-slate-400"
-                                )}>
-                                    {option.icon}
-                                </span>
-                                <span className={cn(
-                                    "text-sm font-medium text-left",
-                                    selectedResult === option.value ? "text-indigo-900" : "text-slate-700"
-                                )}>
-                                    {option.label}
-                                </span>
-                                <span className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center text-[10px] font-mono text-slate-400 bg-slate-100 rounded">
-                                    {option.key}
-                                </span>
-                            </button>
-                        ))}
+                <div className="p-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                        {resultOptions.map((option) => {
+                            const sem = RESULT_SEMANTIC[option.value] ?? DEFAULT_SEMANTIC;
+                            const isSelected = selectedResult === option.value;
+                            return (
+                                <button
+                                    key={option.value}
+                                    onClick={() => setSelectedResult(option.value)}
+                                    title={STATUS_HOVER_HINTS[option.value]}
+                                    className={cn(
+                                        "relative flex items-center gap-2.5 p-3.5 rounded-xl border-2 transition-all duration-150 text-left group",
+                                        "border-l-[3px]",
+                                        isSelected
+                                            ? cn(sem.selectedCls, "shadow-md scale-[1.02]", sem.activeBorder)
+                                            : cn("bg-white border-[#e5e5e5]", sem.hoverCls, "hover:shadow-sm hover:scale-[1.01]", "border-l-transparent")
+                                    )}
+                                >
+                                    <span className={cn(
+                                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
+                                        isSelected ? sem.iconCls : "bg-[#f5f5f5] text-slate-400 group-hover:text-slate-600"
+                                    )}>
+                                        {option.icon}
+                                    </span>
+                                    <span className={cn(
+                                        "text-[13px] font-[400] leading-snug",
+                                        isSelected ? "text-[#1a1a1a] font-[500]" : "text-slate-600"
+                                    )}>
+                                        {option.label}
+                                    </span>
+                                    <span className={cn(
+                                        "absolute top-2 right-2 w-4.5 h-4.5 flex items-center justify-center text-[10px] font-[500] font-mono rounded-md transition-colors",
+                                        isSelected ? "bg-white/70 text-slate-500" : "bg-[#f5f5f5] text-slate-400"
+                                    )}>
+                                        {option.key}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
 
             {/* Note */}
-            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-                <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-white">
+            <div className="bg-white rounded-2xl border border-[#e5e5e5] shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#e5e5e5] bg-[#f5f5f5]/50">
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
-                                <MessageSquare className="w-5 h-5 text-white" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-900">
-                                    Note
-                                    {selectedResult && getRequiresNote(selectedResult) && (
-                                        <span className="text-red-500 ml-1">*</span>
-                                    )}
-                                </h3>
-                                <p className="text-xs text-slate-500">Ajoutez des informations sur l'échange</p>
-                            </div>
+                        <div className="flex items-center gap-2">
+                            <MessageSquare className="w-4 h-4 text-slate-400" />
+                            <h3 className="text-[14px] font-[500] text-[#1a1a1a]">
+                                Note
+                                {selectedResult && getRequiresNote(selectedResult) && (
+                                    <span className="text-red-500 ml-1">*</span>
+                                )}
+                            </h3>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-400 font-medium">{note.length}/500</span>
-                            {/* Link Allo call button — only for CALL channel */}
+                            <span className="text-[12px] text-slate-400 tabular-nums">{note.length}/500</span>
                             {currentAction?.channel === 'CALL' && (
                                 <button
                                     type="button"
                                     onClick={openAlloDialog}
                                     className={cn(
-                                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                                        "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-[500] border transition-all",
                                         linkedAlloCall
                                             ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                                            : "bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100"
+                                            : "bg-violet-50 text-violet-600 border-violet-200 hover:bg-violet-100"
                                     )}
                                 >
-                                    <PhoneCall className="w-3.5 h-3.5" />
-                                    {linkedAlloCall ? "Appel validé ✓" : "Valider l'appel (Allo)"}
+                                    <PhoneCall className="w-3 h-3" />
+                                    {linkedAlloCall ? "Appel validé ✓" : "Valider appel (Allo)"}
                                 </button>
                             )}
                         </div>
                     </div>
                 </div>
-                <div className="p-5 space-y-3">
+                <div className="p-4 space-y-3">
                     <textarea
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
-                        placeholder="Ajouter une note sur l'échange..."
+                        placeholder="Note sur l'échange..."
                         rows={3}
                         maxLength={500}
-                        className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl bg-slate-50/50 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:bg-white resize-none transition-colors"
+                        className="w-full px-3 py-2.5 text-[14px] border border-[#e5e5e5] rounded-xl bg-[#f5f5f5]/30 text-[#1a1a1a] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 focus:bg-white resize-none transition-colors leading-relaxed"
                     />
                     {/* Linked call preview */}
                     {linkedAlloCall && (
@@ -3249,38 +3047,27 @@ export default function SDRActionPage() {
                 onConfirm={confirmAlloCall}
             />
 
-            {/* Callback date (Rappel) - calendar when status triggers callback */}
+            {/* Callback date */}
             {isCallbackResult(selectedResult) && (
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
-                    <div className="p-5 border-b border-amber-100 bg-gradient-to-r from-amber-100/50 to-transparent">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
-                                <Calendar className="w-5 h-5 text-white" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-900">Date de rappel</h3>
-                                <p className="text-xs text-slate-600">
-                                    {currentAction?.missionName ? (
-                                        <span>Mission: {currentAction.missionName}</span>
-                                    ) : (
-                                        "Choisissez une date et heure pour le rappel"
-                                    )}
-                                </p>
-                            </div>
+                <div className="rounded-2xl border border-amber-200/80 bg-amber-50 overflow-hidden">
+                    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-amber-100">
+                        <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center">
+                            <Calendar className="w-3.5 h-3.5 text-white" />
+                        </div>
+                        <div>
+                            <h3 className="text-[14px] font-[500] text-[#1a1a1a]">Date de rappel</h3>
+                            <p className="text-[12px] text-amber-600">Optionnel — ou indiquez-la dans la note</p>
                         </div>
                     </div>
-                    <div className="p-5">
+                    <div className="p-4">
                         <DateTimePicker
-                            label="Date de rappel"
+                            label=""
                             value={callbackDateValue}
                             onChange={setCallbackDateValue}
                             placeholder="Choisir date et heure du rappel…"
                             min={new Date().toISOString().slice(0, 16)}
                             triggerClassName="border-amber-200 focus:ring-amber-400/40 focus:border-amber-400"
                         />
-                        <p className="text-xs text-slate-500 mt-3">
-                            💡 Optionnel. Vous pouvez aussi indiquer la date dans la note (ex: &quot;rappeler demain 14h&quot;).
-                        </p>
                     </div>
                 </div>
             )}
@@ -3322,72 +3109,89 @@ export default function SDRActionPage() {
                 </div>
             )}
 
-            {/* Submit */}
-            <div className="flex items-center justify-between pt-2 gap-4">
-                {/* Skip / Passer button */}
-                <Button
-                    variant="ghost"
-                    size="lg"
-                    onClick={async () => {
-                        // Skip this contact: record NO_RESPONSE silently and load next
-                        if (!currentAction?.campaignId) return;
-                        setIsSubmitting(true);
-                        try {
-                            const res = await fetch("/api/actions", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                    contactId: currentAction.contact?.id,
-                                    companyId: !currentAction.contact && currentAction.company ? currentAction.company.id : undefined,
-                                    campaignId: currentAction.campaignId,
-                                    channel: currentAction.channel,
-                                    result: "NO_RESPONSE",
-                                    note: "Passé (skip)",
-                                }),
-                            });
-                            const json = await res.json();
-                            if (!json.success) {
-                                showError(json.error || "Erreur lors du passage");
-                                return;
-                            }
-                            await loadNextAction();
-                        } catch {
-                            showError("Erreur de connexion");
-                        } finally {
-                            setIsSubmitting(false);
-                        }
-                    }}
-                    disabled={isSubmitting}
-                    className="gap-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 border border-slate-200"
-                >
-                    <SkipForward className="w-4 h-4" />
-                    Passer
-                </Button>
+            {/* Sticky Submit Bar */}
+            <div className="sticky bottom-0 z-20 -mx-4 px-4 pb-4 pt-3 bg-gradient-to-t from-[#f5f5f5] via-[#f5f5f5]/95 to-transparent backdrop-blur-sm">
+                <div className="flex items-center justify-between gap-3 bg-white rounded-2xl border border-[#e5e5e5] shadow-lg shadow-slate-200/60 px-4 py-3">
+                    {/* Skip button + session timer */}
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                                if (!currentAction?.campaignId) return;
+                                setIsSubmitting(true);
+                                try {
+                                    const res = await fetch("/api/actions", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                            contactId: currentAction.contact?.id,
+                                            companyId: !currentAction.contact && currentAction.company ? currentAction.company.id : undefined,
+                                            campaignId: currentAction.campaignId,
+                                            channel: currentAction.channel,
+                                            result: "NO_RESPONSE",
+                                            note: "Passé (skip)",
+                                        }),
+                                    });
+                                    const json = await res.json();
+                                    if (!json.success) { showError(json.error || "Erreur lors du passage"); return; }
+                                    await loadNextAction();
+                                } catch { showError("Erreur de connexion"); } finally { setIsSubmitting(false); }
+                            }}
+                            disabled={isSubmitting}
+                            className="gap-1.5 text-slate-400 hover:text-slate-600 hover:bg-[#f5f5f5] border border-[#e5e5e5] h-9 px-3 text-[13px]"
+                        >
+                            <SkipForward className="w-3.5 h-3.5" />
+                            Passer
+                        </Button>
+                        {elapsedTime > 0 && (
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#f5f5f5] border border-[#e5e5e5]">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                <span className="text-[12px] font-[500] text-slate-500 tabular-nums">{formatTime(elapsedTime)}</span>
+                            </div>
+                        )}
+                    </div>
 
-                {selectedResult === "ENVOIE_MAIL" && (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="lg"
-                        onClick={openEmailModalForCard}
-                        disabled={isSubmitting}
-                        className="gap-2 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
-                    >
-                        <Send className="w-4 h-4" />
-                        Envoyer un email
-                    </Button>
-                )}
-                <Button
-                    variant="primary"
-                    size="lg"
-                    onClick={handleSubmit}
-                    disabled={!selectedResult || isSubmitting || (getRequiresNote(selectedResult) && !note.trim())}
-                    isLoading={isSubmitting}
-                    className="gap-2 px-8 shadow-lg shadow-indigo-500/20 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600"
-                >
-                    {isSubmitting ? "Enregistrement..." : selectedResult === "ENVOIE_MAIL" ? "Enregistrer (Mail à envoyer)" : "Valider & Suivant"}
-                    <ChevronRight className="w-4 h-4" />
-                </Button>
+                    {/* Right CTA group */}
+                    <div className="flex items-center gap-2">
+                        {selectedResult && (
+                            <div className={cn(
+                                "hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-[500] border",
+                                (() => {
+                                    const sem = RESULT_SEMANTIC[selectedResult] ?? DEFAULT_SEMANTIC;
+                                    return sem.selectedCls + " " + sem.activeBorder + " border-l-2";
+                                })()
+                            )}>
+                                {RESULT_ICON_MAP[selectedResult]}
+                                <span className="text-[#1a1a1a]">{resultOptions.find(o => o.value === selectedResult)?.label}</span>
+                            </div>
+                        )}
+                        {selectedResult === "ENVOIE_MAIL" && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={openEmailModalForCard}
+                                disabled={isSubmitting}
+                                className="gap-1.5 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 h-9 px-3 text-[13px]"
+                            >
+                                <Send className="w-3.5 h-3.5" />
+                                Envoyer un email
+                            </Button>
+                        )}
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={handleSubmit}
+                            disabled={!selectedResult || isSubmitting || (getRequiresNote(selectedResult) && !note.trim())}
+                            isLoading={isSubmitting}
+                            className="gap-2 px-6 h-9 text-[14px] font-[500] shadow-md shadow-violet-500/20 bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-500 hover:to-violet-600 border-0"
+                        >
+                            {isSubmitting ? "Enregistrement…" : selectedResult === "ENVOIE_MAIL" ? "Enregistrer" : "Valider & Suivant"}
+                            {!isSubmitting && <ChevronRight className="w-4 h-4" />}
+                        </Button>
+                    </div>
+                </div>
             </div>
 
             {/* Quick Email Modal (card view) */}
