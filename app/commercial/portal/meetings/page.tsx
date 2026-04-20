@@ -385,6 +385,7 @@ const GLOBAL_CSS = `
 interface Meeting {
   id: string;
   createdAt?: string;
+  channel?: string | null;
   callbackDate?: string | null;
   result?: string;
   note?: string | null;
@@ -540,6 +541,17 @@ const MTY: Record<string, { label:string; emoji:string }> = {
   VISIO:        { label:"Visioconférence",       emoji:"📹" },
   PHYSIQUE:     { label:"Rendez-vous physique",  emoji:"📍" },
   TELEPHONIQUE: { label:"Appel téléphonique",    emoji:"📞" },
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  CALL: "Appel",
+  EMAIL: "Email",
+  LINKEDIN: "LinkedIn",
+};
+
+const getChannelLabel = (channel?: string | null) => {
+  if (!channel) return null;
+  return CHANNEL_LABELS[channel] ?? channel;
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -967,6 +979,9 @@ function Card({
           {/* Badges */}
           <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:5}}>
             <Pill label={sm.label} color={sm.pill.color} bg={sm.pill.bg} border={sm.pill.border} dot={sm.dot} />
+            {getChannelLabel(m.channel) && (
+              <Pill label={`Canal: ${getChannelLabel(m.channel)}`} color={tk.ink3} bg="#F3F4F6" border="rgba(0,0,0,0.07)" />
+            )}
             {m.meetingType && MTY[m.meetingType] && (
               <Pill label={`${MTY[m.meetingType].emoji} ${MTY[m.meetingType].label}`} color={tk.ink3} bg="#F3F4F6" border="rgba(0,0,0,0.07)" />
             )}
@@ -1094,6 +1109,9 @@ function DetailModal({ m, onClose, onFeedback }: {
             <div style={{fontSize:14,fontWeight:700,color:tk.ink}}>{m.callbackDate ? fmtFull(m.callbackDate) : "Date à confirmer"}</div>
             <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:6,marginTop:4}}>
               <Pill label={sm.label} color={sm.pill.color} bg={sm.pill.bg} border={sm.pill.border} dot={sm.dot} />
+              {getChannelLabel(m.channel) && (
+                <Pill label={`Canal: ${getChannelLabel(m.channel)}`} color={tk.ink3} bg="#F3F4F6" border="rgba(0,0,0,0.07)" />
+              )}
               {m.meetingType && MTY[m.meetingType] && <span style={{fontSize:12,color:tk.ink3}}>{MTY[m.meetingType].emoji} {MTY[m.meetingType].label}</span>}
             </div>
           </div>
