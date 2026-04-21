@@ -639,7 +639,7 @@ export function ListHealthDashboard({
                                 ? `${intel.overallCoverageRate.toFixed(1)}%`
                                 : '—'
                             }
-                            sub={`${intel.totalContactedContacts} / ${intel.totalContacts} contacts`}
+                            sub={`${intel.totalContactedTargets} / ${intel.totalTargets} cibles`}
                             color="border-emerald-200"
                             icon={<Target className="w-4 h-4 text-emerald-500" />}
                         />
@@ -829,7 +829,7 @@ export function ListHealthDashboard({
                     <div>
                         <p className="font-bold mb-1">Score d'activité (0–100)</p>
                         <ul className="space-y-1 text-slate-500">
-                            <li>40% — Taux de couverture des contacts</li>
+                            <li>40% — Taux de couverture des cibles (contacts + entreprises)</li>
                             <li>20% — Intensité d'activité récente (7 jours)</li>
                             <li>20% — Taux de résultats positifs</li>
                             <li>20% — Tendance de cadence (hausse/stable/baisse)</li>
@@ -838,7 +838,7 @@ export function ListHealthDashboard({
                     <div>
                         <p className="font-bold mb-1">ETA (Estimation de fin)</p>
                         <p className="text-slate-500">
-                            ETA = contacts restants ÷ nouveaux contacts/jour (moyenne 7 jours).
+                            ETA = cibles restantes ÷ nouvelles cibles/jour (moyenne 7 jours).
                             La confiance est <em>HIGH</em> si la cadence est régulière sur 30 jours avec ≥20 actions.
                         </p>
                     </div>

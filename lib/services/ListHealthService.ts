@@ -460,7 +460,8 @@ async function fetchRawMetrics(
                 a.result,
                 a."createdAt",
                 a."sdrId",
-                a."contactId"
+                a."contactId",
+                a."companyId"
             FROM "Action" a
             WHERE (
                 a."contactId" IN (SELECT id FROM list_contacts)
@@ -478,6 +479,9 @@ async function fetchRawMetrics(
             MAX(la."createdAt")                                                                 AS last_action_at,
             COUNT(DISTINCT la."sdrId")                                                          AS unique_sdrs,
             COUNT(DISTINCT la."contactId") FILTER (WHERE la."contactId" IS NOT NULL)           AS contacted_contacts,
+            COUNT(DISTINCT COALESCE(la."companyId", c."companyId")) FILTER (
+                WHERE COALESCE(la."companyId", c."companyId") IS NOT NULL
+            )                                                                                   AS contacted_companies,
             COUNT(DISTINCT la."contactId") FILTER (
                 WHERE la."contactId" IS NOT NULL
                 AND la."createdAt" >= NOW() - INTERVAL '7 days'
@@ -496,6 +500,7 @@ async function fetchRawMetrics(
                 AND CAST(la.result AS TEXT) NOT IN (${negativeList})
             )                                                                                   AS neutral_count
         FROM list_actions la
+        LEFT JOIN "Contact" c ON c.id = la."contactId"
     `;
 
     return rows[0] ?? null;
@@ -552,6 +557,8 @@ async function fetchBulkRawMetrics(
                 a."createdAt",
                 a."sdrId",
                 a."contactId",
+                a."companyId",
+                ct."companyId" AS contact_company_id,
                 CASE
                     WHEN a."contactId" IS NOT NULL THEN lc.list_id
                     ELSE co.list_id
@@ -559,6 +566,7 @@ async function fetchBulkRawMetrics(
             FROM "Action" a
             LEFT JOIN list_contacts lc ON a."contactId" = lc.id
             LEFT JOIN list_companies co ON a."companyId" = co.id
+            LEFT JOIN "Contact" ct ON ct.id = a."contactId"
             WHERE (lc.id IS NOT NULL OR co.id IS NOT NULL)
             ${sdrFilter}
         ),
@@ -571,6 +579,9 @@ async function fetchBulkRawMetrics(
                 MAX("createdAt")                                                                    AS last_action_at,
                 COUNT(DISTINCT "sdrId")                                                            AS unique_sdrs,
                 COUNT(DISTINCT "contactId") FILTER (WHERE "contactId" IS NOT NULL)                AS contacted_contacts,
+                COUNT(DISTINCT COALESCE("companyId", contact_company_id)) FILTER (
+                    WHERE COALESCE("companyId", contact_company_id) IS NOT NULL
+                )                                                                                   AS contacted_companies,
                 COUNT(DISTINCT "contactId") FILTER (
                     WHERE "contactId" IS NOT NULL AND "createdAt" >= NOW() - INTERVAL '7 days'
                 )                                                                                   AS new_contacts_7d,
@@ -599,6 +610,7 @@ async function fetchBulkRawMetrics(
             aa.last_action_at                   AS last_action_at,
             COALESCE(aa.unique_sdrs, 0)         AS unique_sdrs,
             COALESCE(aa.contacted_contacts, 0)  AS contacted_contacts,
+            COALESCE(aa.contacted_companies, 0) AS contacted_companies,
             COALESCE(aa.new_contacts_7d, 0)     AS new_contacts_7d,
             COALESCE(aa.new_contacts_30d, 0)    AS new_contacts_30d,
             COALESCE(aa.positive_count, 0)      AS positive_count,
@@ -684,10 +696,13 @@ function buildHealthFromRow(
     const now = new Date();
     const totalContacts = toNum(row.total_contacts);
     const totalCompanies = toNum(row.total_companies);
+    const totalTargets = totalContacts + totalCompanies;
     const totalActions = toNum(row.total_actions);
     const actions7d = toNum(row.actions_7d);
     const actions30d = toNum(row.actions_30d);
     const contactedContacts = toNum(row.contacted_contacts);
+    const contactedCompanies = toNum(row.contacted_companies);
+    const contactedTargets = contactedContacts + contactedCompanies;
     const newContacts7d = toNum(row.new_contacts_7d);
     const newContacts30d = toNum(row.new_contacts_30d);
     const positiveCount = toNum(row.positive_count);
@@ -703,11 +718,11 @@ function buildHealthFromRow(
         < HEALTH_THRESHOLDS.NEW_LIST_DAYS;
 
     const hasSparseData =
-        totalContacts < HEALTH_THRESHOLDS.SPARSE_CONTACT_MIN ||
+        totalTargets < HEALTH_THRESHOLDS.SPARSE_CONTACT_MIN ||
         totalActions < HEALTH_THRESHOLDS.SPARSE_ACTION_MIN;
 
     // Rates
-    const coverageRate = totalContacts > 0 ? (contactedContacts / totalContacts) * 100 : null;
+    const coverageRate = totalTargets > 0 ? (contactedTargets / totalTargets) * 100 : null;
     const positiveRate = totalActions > 0 ? (positiveCount / totalActions) * 100 : null;
     const badContactRate = totalActions > 0 ? (badContactCount / totalActions) * 100 : null;
     const meetingRate = totalActions > 0 ? (meetingsCount / totalActions) * 100 : null;
@@ -742,8 +757,8 @@ function buildHealthFromRow(
 
     // Health status
     const { status, explanation: statusExplanation } = computeHealthStatus({
-        totalContacts,
-        contactedContacts,
+        totalContacts: totalTargets,
+        contactedContacts: contactedTargets,
         totalActions,
         daysSinceLastAction: daysSinceLastActionVal,
     });
@@ -751,7 +766,7 @@ function buildHealthFromRow(
     // Activity score
     const { score: activityScore, explanation: activityScoreExplanation } = computeActivityScore({
         coverageRate,
-        totalContacts,
+        totalContacts: totalTargets,
         actions7d,
         positiveRate,
         trend,
@@ -760,8 +775,8 @@ function buildHealthFromRow(
 
     // ETA prediction
     const eta = computeETAPrediction({
-        totalContacts,
-        contactedContacts,
+        totalContacts: totalTargets,
+        contactedContacts: contactedTargets,
         newContactsPerDay7d,
         newContactsPerDay30d,
         totalActions,
@@ -779,8 +794,8 @@ function buildHealthFromRow(
         trend,
         actionsPerDay7d,
         actionsPerDay30d,
-        totalContacts,
-        contactedContacts,
+        totalContacts: totalTargets,
+        contactedContacts: contactedTargets,
         uniqueSdrCount,
         hasSparseData,
         isNewList,
@@ -792,7 +807,10 @@ function buildHealthFromRow(
         computedAt: now.toISOString(),
         totalContacts,
         totalCompanies,
+        totalTargets,
         contactedContacts,
+        contactedCompanies,
+        contactedTargets,
         coverageRate,
         totalActions,
         actions7d,
@@ -834,7 +852,11 @@ function buildSummaryFromMetrics(
         coverageRate: metrics.coverageRate,
         activityScore: metrics.activityScore,
         totalContacts: metrics.totalContacts,
+        totalCompanies: metrics.totalCompanies,
+        totalTargets: metrics.totalTargets,
         contactedContacts: metrics.contactedContacts,
+        contactedCompanies: metrics.contactedCompanies,
+        contactedTargets: metrics.contactedTargets,
         actions7d: metrics.actions7d,
         daysSinceLastAction: metrics.daysSinceLastAction,
         velocity: {
@@ -887,6 +909,7 @@ export async function computeListHealth(
         last_action_at: null,
         unique_sdrs: BigInt(0),
         contacted_contacts: BigInt(0),
+        contacted_companies: BigInt(0),
         new_contacts_7d: BigInt(0),
         new_contacts_30d: BigInt(0),
         positive_count: BigInt(0),
@@ -951,6 +974,7 @@ export async function computeBulkHealthSummaries(
             last_action_at: null,
             unique_sdrs: BigInt(0),
             contacted_contacts: BigInt(0),
+            contacted_companies: BigInt(0),
             new_contacts_7d: BigInt(0),
             new_contacts_30d: BigInt(0),
             positive_count: BigInt(0),
@@ -1010,14 +1034,22 @@ export async function computeClientListsIntelligence(
     };
 
     let totalContacts = 0;
+    let totalCompanies = 0;
+    let totalTargets = 0;
     let totalContactedContacts = 0;
+    let totalContactedCompanies = 0;
+    let totalContactedTargets = 0;
     let totalActions = 0;
     let totalActions7d = 0;
     let totalMeetings = 0;
 
     for (const s of summaries) {
         totalContacts += s.totalContacts;
+        totalCompanies += s.totalCompanies;
+        totalTargets += s.totalTargets;
         totalContactedContacts += s.contactedContacts;
+        totalContactedCompanies += s.contactedCompanies;
+        totalContactedTargets += s.contactedTargets;
         totalActions7d += s.actions7d;
 
         switch (s.status) {
@@ -1043,8 +1075,8 @@ export async function computeClientListsIntelligence(
     totalActions = toNum(clientActionStats[0]?.total_actions);
     totalMeetings = toNum(clientActionStats[0]?.total_meetings);
 
-    const overallCoverageRate = totalContacts > 0
-        ? (totalContactedContacts / totalContacts) * 100
+    const overallCoverageRate = totalTargets > 0
+        ? (totalContactedTargets / totalTargets) * 100
         : null;
 
     // Rankings
@@ -1087,7 +1119,11 @@ export async function computeClientListsIntelligence(
         totalLists: summaries.length,
         ...statusCounts,
         totalContacts,
+        totalCompanies,
+        totalTargets,
         totalContactedContacts,
+        totalContactedCompanies,
+        totalContactedTargets,
         overallCoverageRate,
         totalActions,
         totalActions7d,

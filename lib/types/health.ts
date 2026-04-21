@@ -174,8 +174,14 @@ export interface ListHealthMetrics {
     // ── Coverage ──────────────────────────────────
     totalContacts: number;
     totalCompanies: number;
+    /** Contacts + companies in the list */
+    totalTargets: number;
     /** Contacts that have received at least 1 action */
     contactedContacts: number;
+    /** Companies touched either directly or via contact actions */
+    contactedCompanies: number;
+    /** Contacted contacts + contacted companies */
+    contactedTargets: number;
     /**
      * coverageRate = contactedContacts / totalContacts * 100
      * null when totalContacts === 0
@@ -254,7 +260,11 @@ export interface ListHealthSummary {
     coverageRate: number | null;
     activityScore: number;
     totalContacts: number;
+    totalCompanies: number;
+    totalTargets: number;
     contactedContacts: number;
+    contactedCompanies: number;
+    contactedTargets: number;
     actions7d: number;
     daysSinceLastAction: number | null;
     velocity: Pick<VelocityMetrics, 'trend' | 'actionsPerDay7d' | 'trendExplanation'>;
@@ -298,7 +308,11 @@ export interface ClientListsIntelligence {
 
     // ── Aggregate coverage ───────────────────────
     totalContacts: number;
+    totalCompanies: number;
+    totalTargets: number;
     totalContactedContacts: number;
+    totalContactedCompanies: number;
+    totalContactedTargets: number;
     overallCoverageRate: number | null;
     totalActions: number;
     totalActions7d: number;
@@ -349,6 +363,7 @@ export interface RawListHealthRow {
     last_action_at: Date | null;
     unique_sdrs: bigint;
     contacted_contacts: bigint;
+    contacted_companies: bigint;
     new_contacts_7d: bigint;
     new_contacts_30d: bigint;
     positive_count: bigint;

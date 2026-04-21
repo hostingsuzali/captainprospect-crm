@@ -53,6 +53,8 @@ function detectDelimiter(firstLine: string): string {
 
 const MEETING_TYPES = ["VISIO", "PHYSIQUE", "TELEPHONIQUE"] as const;
 const MEETING_CATEGORIES = ["EXPLORATOIRE", "BESOIN"] as const;
+type MeetingType = (typeof MEETING_TYPES)[number];
+type MeetingCategory = (typeof MEETING_CATEGORIES)[number];
 
 export interface RdvImportMappings {
     dateColumn: string;
@@ -77,6 +79,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const listIdParam = (formData.get("listId") as string)?.trim() || null;
     const mappingsStr = (formData.get("mappings") as string)?.trim();
     const missingEntityHandlingRaw = ((formData.get("missingEntityHandling") as string) || "skip").trim();
+    const createCampaignNow = String(formData.get("createCampaignNow") || "").trim().toLowerCase() === "true";
+    const campaignNameInput = String(formData.get("campaignName") || "").trim();
     const missingEntityHandling: MissingEntityHandling =
         missingEntityHandlingRaw === "create_company" || missingEntityHandlingRaw === "create_contact_and_company"
             ? missingEntityHandlingRaw
@@ -123,10 +127,28 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     if (!mission) {
         return NextResponse.json({ success: false, error: "Mission non trouvée" }, { status: 404 });
     }
-    const campaignId = mission.campaigns[0]?.id;
+    let campaignId = mission.campaigns[0]?.id;
+    if (!campaignId && createCampaignNow) {
+        const safeCampaignName = campaignNameInput || `Campagne import RDV - ${new Date().toLocaleDateString("fr-FR")}`;
+        const createdCampaign = await prisma.campaign.create({
+            data: {
+                missionId: mission.id,
+                name: safeCampaignName,
+                isActive: true,
+                icp: "",
+                pitch: "",
+            },
+            select: { id: true },
+        });
+        campaignId = createdCampaign.id;
+    }
     if (!campaignId) {
         return NextResponse.json(
-            { success: false, error: "Aucune campagne active pour cette mission" },
+            {
+                success: false,
+                error: "Aucune campagne active pour cette mission",
+                code: "MISSING_ACTIVE_CAMPAIGN",
+            },
             { status: 400 }
         );
     }
@@ -274,12 +296,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         }
 
         const meetingTypeRaw = getVal(row, mappings.meetingTypeColumn);
-        const meetingType = MEETING_TYPES.includes(meetingTypeRaw as any)
-            ? (meetingTypeRaw as "VISIO" | "PHYSIQUE" | "TELEPHONIQUE")
+        const meetingType = (MEETING_TYPES as readonly string[]).includes(meetingTypeRaw)
+            ? (meetingTypeRaw as MeetingType)
             : "VISIO";
         const meetingCategoryRaw = getVal(row, mappings.meetingCategoryColumn);
-        const meetingCategory = MEETING_CATEGORIES.includes(meetingCategoryRaw as any)
-            ? (meetingCategoryRaw as "EXPLORATOIRE" | "BESOIN")
+        const meetingCategory = (MEETING_CATEGORIES as readonly string[]).includes(meetingCategoryRaw)
+            ? (meetingCategoryRaw as MeetingCategory)
             : undefined;
         const note = getVal(row, mappings.noteColumn) || undefined;
         const meetingAddress = getVal(row, mappings.meetingAddressColumn) || undefined;

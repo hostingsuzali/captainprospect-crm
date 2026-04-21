@@ -141,7 +141,7 @@ function CoverageBar({
         <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
                 <span className="font-medium text-slate-600">
-                    {contacted} / {total} contacts prospectés
+                    {contacted} / {total} cibles prospectées
                 </span>
                 <span className={`font-bold ${pctTextColor}`}>{pct.toFixed(1)}%</span>
             </div>
@@ -281,7 +281,7 @@ export function ProspectionHealthPanel({
                             <span>
                                 {health.isNewList
                                     ? "Liste récente — les prédictions seront disponibles après quelques jours d'activité."
-                                    : `Données limitées (${health.totalContacts} contacts, ${health.totalActions} actions) — les métriques sont à titre indicatif.`
+                                    : `Données limitées (${health.totalTargets} cibles, ${health.totalActions} actions) — les métriques sont à titre indicatif.`
                                 }
                             </span>
                         </div>
@@ -294,18 +294,18 @@ export function ProspectionHealthPanel({
                             Couverture
                         </h4>
                         <CoverageBar
-                            contacted={health.contactedContacts}
-                            total={health.totalContacts}
+                            contacted={health.contactedTargets}
+                            total={health.totalTargets}
                             rate={health.coverageRate}
                         />
                         <div className="grid grid-cols-3 gap-3 pt-1">
                             <div className="text-center">
-                                <p className="text-lg font-bold text-slate-900">{health.totalContacts}</p>
-                                <p className="text-[10px] text-slate-400">Contacts total</p>
+                                <p className="text-lg font-bold text-slate-900">{health.totalTargets}</p>
+                                <p className="text-[10px] text-slate-400">Cibles totales</p>
                             </div>
                             <div className="text-center">
-                                <p className="text-lg font-bold text-blue-600">{health.contactedContacts}</p>
-                                <p className="text-[10px] text-slate-400">Prospectés</p>
+                                <p className="text-lg font-bold text-blue-600">{health.contactedTargets}</p>
+                                <p className="text-[10px] text-slate-400">Cibles contactées</p>
                             </div>
                             <div className="text-center">
                                 <p className="text-lg font-bold text-slate-500">{health.eta.remainingContacts}</p>
@@ -350,7 +350,7 @@ export function ProspectionHealthPanel({
                         )}
                         <div className="pt-1 border-t border-slate-100">
                             <p className="text-[10px] text-slate-400">
-                                Formule : contacts restants ÷ nouveaux contacts/jour (7j)
+                                Formule : cibles restantes ÷ nouvelles cibles/jour (7j)
                             </p>
                         </div>
                     </div>

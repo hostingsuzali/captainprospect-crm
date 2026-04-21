@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Modal, ModalFooter } from "@/components/ui/Modal";
+import { Modal } from "@/components/ui/Modal";
 
 interface RdvImportMappings {
   dateColumn: string;
@@ -75,6 +75,8 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [uploading, setUploading] = useState(false);
   const [missingEntityHandling, setMissingEntityHandling] = useState<MissingEntityHandling>("skip");
+  const [showCampaignQuickCreate, setShowCampaignQuickCreate] = useState(false);
+  const [campaignName, setCampaignName] = useState("");
   const [result, setResult] = useState<{
     created: number;
     totalRows: number;
@@ -104,6 +106,8 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
       setPreviewRows([]);
       setMappings({ dateColumn: "" });
       setMissingEntityHandling("skip");
+      setShowCampaignQuickCreate(false);
+      setCampaignName("");
       setResult(null);
     }
   }, [isOpen, fetchMissions]);
@@ -174,9 +178,17 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
       });
       const json = await res.json().catch(() => ({}));
       if (json.success && json.data) {
+        setShowCampaignQuickCreate(false);
         setResult(json.data);
         if (json.data.created > 0) onSuccess();
       } else {
+        if ((json as { code?: string }).code === "MISSING_ACTIVE_CAMPAIGN") {
+          const missionName = missions.find((m) => m.id === missionId)?.name || "mission";
+          if (!campaignName) {
+            setCampaignName(`Campagne import RDV - ${missionName}`);
+          }
+          setShowCampaignQuickCreate(true);
+        }
         setResult({
           created: 0,
           totalRows: 0,
@@ -288,16 +300,16 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
                   Associez les colonnes du CSV aux champs RDV.
                 </p>
                 {[
-                  { key: "dateColumn" as const, label: "Date du RDV *", required: true },
-                  { key: "contactEmailColumn" as const, label: "Email du contact", required: false },
-                  { key: "companyNameColumn" as const, label: "Nom de la société", required: false },
-                  { key: "meetingTypeColumn" as const, label: "Type (VISIO/PHYSIQUE/TELEPHONIQUE)", required: false },
-                  { key: "meetingCategoryColumn" as const, label: "Catégorie (EXPLORATOIRE/BESOIN)", required: false },
-                  { key: "noteColumn" as const, label: "Note", required: false },
-                  { key: "meetingAddressColumn" as const, label: "Adresse", required: false },
-                  { key: "meetingJoinUrlColumn" as const, label: "Lien visio", required: false },
-                  { key: "meetingPhoneColumn" as const, label: "Téléphone", required: false },
-                ].map(({ key, label, required }) => (
+                  { key: "dateColumn" as const, label: "Date du RDV *" },
+                  { key: "contactEmailColumn" as const, label: "Email du contact" },
+                  { key: "companyNameColumn" as const, label: "Nom de la société" },
+                  { key: "meetingTypeColumn" as const, label: "Type (VISIO/PHYSIQUE/TELEPHONIQUE)" },
+                  { key: "meetingCategoryColumn" as const, label: "Catégorie (EXPLORATOIRE/BESOIN)" },
+                  { key: "noteColumn" as const, label: "Note" },
+                  { key: "meetingAddressColumn" as const, label: "Adresse" },
+                  { key: "meetingJoinUrlColumn" as const, label: "Lien visio" },
+                  { key: "meetingPhoneColumn" as const, label: "Téléphone" },
+                ].map(({ key, label }) => (
                   <div key={key}>
                     <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--ink3)", marginBottom: 4 }}>{label}</label>
                     <select
@@ -383,13 +395,80 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
                   <button className="rdv-btn rdv-btn-ghost" onClick={() => setStep(2)} disabled={uploading}>
                     ← Retour
                   </button>
-                  <button
-                    className="rdv-btn rdv-btn-primary"
-                    disabled={!canImport || uploading}
-                    onClick={handleImport}
-                  >
-                    {uploading ? "Import en cours…" : "Importer les RDV"}
-                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                    {showCampaignQuickCreate && (
+                      <div
+                        style={{
+                          width: 360,
+                          maxWidth: "100%",
+                          border: "1px solid var(--amber-300, #fcd34d)",
+                          background: "var(--amber-50, #fffbeb)",
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <p style={{ fontSize: 12, color: "var(--ink2)" }}>
+                          Aucune campagne active trouvee pour cette mission. Creez une campagne maintenant pour continuer l&apos;import.
+                        </p>
+                        <input
+                          className="rdv-input"
+                          style={{ width: "100%" }}
+                          placeholder="Nom de la campagne"
+                          value={campaignName}
+                          onChange={(e) => setCampaignName(e.target.value)}
+                        />
+                        <button
+                          className="rdv-btn rdv-btn-primary"
+                          disabled={uploading || !campaignName.trim()}
+                          onClick={async () => {
+                            if (!canImport || !file || !missionId) return;
+                            setUploading(true);
+                            setResult(null);
+                            try {
+                              const formData = new FormData();
+                              formData.append("file", file);
+                              formData.append("missionId", missionId);
+                              if (listId) formData.append("listId", listId);
+                              formData.append("mappings", JSON.stringify(mappings));
+                              formData.append("missingEntityHandling", missingEntityHandling);
+                              formData.append("createCampaignNow", "true");
+                              formData.append("campaignName", campaignName.trim());
+                              const res = await fetch("/api/manager/rdv/import", {
+                                method: "POST",
+                                body: formData,
+                              });
+                              const json = await res.json().catch(() => ({}));
+                              if (json.success && json.data) {
+                                setShowCampaignQuickCreate(false);
+                                setResult(json.data);
+                                if (json.data.created > 0) onSuccess();
+                              } else {
+                                setResult({
+                                  created: 0,
+                                  totalRows: 0,
+                                  errors: [{ row: 0, message: (json as { error?: string }).error ?? "Erreur import" }],
+                                });
+                              }
+                            } finally {
+                              setUploading(false);
+                            }
+                          }}
+                        >
+                          {uploading ? "Création + import…" : "Créer campagne maintenant et importer"}
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      className="rdv-btn rdv-btn-primary"
+                      disabled={!canImport || uploading}
+                      onClick={handleImport}
+                    >
+                      {uploading ? "Import en cours…" : "Importer les RDV"}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
