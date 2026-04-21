@@ -77,6 +77,8 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
   const [missingEntityHandling, setMissingEntityHandling] = useState<MissingEntityHandling>("skip");
   const [showCampaignQuickCreate, setShowCampaignQuickCreate] = useState(false);
   const [campaignName, setCampaignName] = useState("");
+  const [showListQuickCreate, setShowListQuickCreate] = useState(false);
+  const [listName, setListName] = useState("");
   const [result, setResult] = useState<{
     created: number;
     totalRows: number;
@@ -108,6 +110,8 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
       setMissingEntityHandling("skip");
       setShowCampaignQuickCreate(false);
       setCampaignName("");
+      setShowListQuickCreate(false);
+      setListName("");
       setResult(null);
     }
   }, [isOpen, fetchMissions]);
@@ -179,9 +183,17 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
       const json = await res.json().catch(() => ({}));
       if (json.success && json.data) {
         setShowCampaignQuickCreate(false);
+        setShowListQuickCreate(false);
         setResult(json.data);
         if (json.data.created > 0) onSuccess();
       } else {
+        if ((json as { code?: string }).code === "MISSION_HAS_NO_LIST") {
+          const missionName = missions.find((m) => m.id === missionId)?.name || "mission";
+          if (!listName) {
+            setListName(`Liste import RDV - ${missionName}`);
+          }
+          setShowListQuickCreate(true);
+        }
         if ((json as { code?: string }).code === "MISSING_ACTIVE_CAMPAIGN") {
           const missionName = missions.find((m) => m.id === missionId)?.name || "mission";
           if (!campaignName) {
@@ -396,6 +408,71 @@ export function ImportRdvModal({ isOpen, onClose, onSuccess }: ImportRdvModalPro
                     ← Retour
                   </button>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                    {showListQuickCreate && (
+                      <div
+                        style={{
+                          width: 360,
+                          maxWidth: "100%",
+                          border: "1px solid var(--amber-300, #fcd34d)",
+                          background: "var(--amber-50, #fffbeb)",
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <p style={{ fontSize: 12, color: "var(--ink2)" }}>
+                          Cette mission n&apos;a aucune liste. Creez une liste maintenant pour continuer l&apos;import.
+                        </p>
+                        <input
+                          className="rdv-input"
+                          style={{ width: "100%" }}
+                          placeholder="Nom de la liste"
+                          value={listName}
+                          onChange={(e) => setListName(e.target.value)}
+                        />
+                        <button
+                          className="rdv-btn rdv-btn-primary"
+                          disabled={uploading || !listName.trim()}
+                          onClick={async () => {
+                            if (!canImport || !file || !missionId) return;
+                            setUploading(true);
+                            setResult(null);
+                            try {
+                              const formData = new FormData();
+                              formData.append("file", file);
+                              formData.append("missionId", missionId);
+                              if (listId) formData.append("listId", listId);
+                              formData.append("mappings", JSON.stringify(mappings));
+                              formData.append("missingEntityHandling", missingEntityHandling);
+                              formData.append("createListNow", "true");
+                              formData.append("listName", listName.trim());
+                              const res = await fetch("/api/manager/rdv/import", {
+                                method: "POST",
+                                body: formData,
+                              });
+                              const json = await res.json().catch(() => ({}));
+                              if (json.success && json.data) {
+                                setShowListQuickCreate(false);
+                                setResult(json.data);
+                                if (json.data.created > 0) onSuccess();
+                              } else {
+                                setResult({
+                                  created: 0,
+                                  totalRows: 0,
+                                  errors: [{ row: 0, message: (json as { error?: string }).error ?? "Erreur import" }],
+                                });
+                              }
+                            } finally {
+                              setUploading(false);
+                            }
+                          }}
+                        >
+                          {uploading ? "Creation + import…" : "Creer la liste maintenant et importer"}
+                        </button>
+                      </div>
+                    )}
                     {showCampaignQuickCreate && (
                       <div
                         style={{

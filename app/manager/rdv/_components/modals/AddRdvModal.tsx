@@ -43,6 +43,7 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [creatingList, setCreatingList] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [missionId, setMissionId] = useState("");
@@ -63,6 +64,7 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
   const [meetingJoinUrl, setMeetingJoinUrl] = useState("");
   const [meetingPhone, setMeetingPhone] = useState("");
   const [duration, setDuration] = useState(30);
+  const [quickListName, setQuickListName] = useState("");
 
   const [clientBookingUrl, setClientBookingUrl] = useState<string>("");
   const [clientInterlocuteurs, setClientInterlocuteurs] = useState<Array<{
@@ -107,6 +109,7 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
       setMeetingJoinUrl("");
       setMeetingPhone("");
       setDuration(30);
+      setQuickListName("");
       setClientBookingUrl("");
       setClientInterlocuteurs([]);
       setShowBookingDrawer(false);
@@ -195,6 +198,39 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
   const campaign = mission?.campaigns?.find((c) => c.isActive) ?? mission?.campaigns?.[0];
   const campaignId = campaign?.id;
   const channel = (mission?.channel as "CALL" | "EMAIL" | "LINKEDIN") ?? "CALL";
+
+  const handleQuickCreateList = async () => {
+    if (!missionId || !quickListName.trim()) return;
+    setCreatingList(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/lists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          missionId,
+          name: quickListName.trim(),
+          type: "CLIENT",
+          source: "SAS_RDV",
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        setError((json as { error?: string }).error ?? "Erreur lors de la creation de la liste");
+        return;
+      }
+      const created = (json as { data?: { id: string; name: string } }).data;
+      if (!created) {
+        setError("Erreur lors de la creation de la liste");
+        return;
+      }
+      setLists((prev) => [...prev, { id: created.id, name: created.name }]);
+      setListId(created.id);
+      setQuickListName("");
+    } finally {
+      setCreatingList(false);
+    }
+  };
 
   const selectedCompany = companies.find((c) => c.id === companyId);
   const contacts = selectedCompany?.contacts ?? [];
@@ -299,7 +335,6 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
   const now = new Date();
   const defaultDatetime = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   defaultDatetime.setMinutes(0, 0, 0);
-  const defaultDatetimeStr = defaultDatetime.toISOString().slice(0, 16);
 
   return (
     <>
@@ -341,6 +376,43 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
                 <option key={l.id} value={l.id}>{l.name}</option>
               ))}
             </select>
+            {missionId && lists.length === 0 && (
+              <div
+                style={{
+                  marginTop: 8,
+                  border: "1px solid var(--amber-300, #fcd34d)",
+                  background: "var(--amber-50, #fffbeb)",
+                  borderRadius: 10,
+                  padding: 10,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <p style={{ fontSize: 12, color: "var(--ink2)" }}>
+                  Cette mission n&apos;a aucune liste. Creez-en une maintenant pour ajouter le RDV.
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="text"
+                    className="rdv-input"
+                    style={{ width: "100%" }}
+                    placeholder="Nom de la nouvelle liste"
+                    value={quickListName}
+                    onChange={(e) => setQuickListName(e.target.value)}
+                    disabled={creatingList}
+                  />
+                  <button
+                    className="rdv-btn rdv-btn-primary"
+                    type="button"
+                    disabled={creatingList || !quickListName.trim()}
+                    onClick={handleQuickCreateList}
+                  >
+                    {creatingList ? "Creation…" : "Creer"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

@@ -81,6 +81,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const missingEntityHandlingRaw = ((formData.get("missingEntityHandling") as string) || "skip").trim();
     const createCampaignNow = String(formData.get("createCampaignNow") || "").trim().toLowerCase() === "true";
     const campaignNameInput = String(formData.get("campaignName") || "").trim();
+    const createListNow = String(formData.get("createListNow") || "").trim().toLowerCase() === "true";
+    const listNameInput = String(formData.get("listName") || "").trim();
     const missingEntityHandling: MissingEntityHandling =
         missingEntityHandlingRaw === "create_company" || missingEntityHandlingRaw === "create_contact_and_company"
             ? missingEntityHandlingRaw
@@ -153,12 +155,30 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         );
     }
     const channel = (mission.channel as "CALL" | "EMAIL" | "LINKEDIN") || "CALL";
-    const listIds = listIdParam
+    let computedListIds = listIdParam
         ? [listIdParam]
         : mission.lists.map((l) => l.id);
+    if (computedListIds.length === 0 && createListNow) {
+        const safeListName = listNameInput || `Liste import RDV - ${new Date().toLocaleDateString("fr-FR")}`;
+        const createdList = await prisma.list.create({
+            data: {
+                missionId: mission.id,
+                name: safeListName,
+                type: "CLIENT",
+                source: "SAS_RDV_IMPORT",
+            },
+            select: { id: true },
+        });
+        computedListIds = [createdList.id];
+    }
+    const listIds = computedListIds;
     if (listIds.length === 0) {
         return NextResponse.json(
-            { success: false, error: "La mission n'a aucune liste (ou liste fournie invalide)" },
+            {
+                success: false,
+                error: "La mission n'a aucune liste (ou liste fournie invalide)",
+                code: "MISSION_HAS_NO_LIST",
+            },
             { status: 400 }
         );
     }
