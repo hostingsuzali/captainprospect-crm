@@ -3,7 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Target, Mic, CalendarCheck, Users, ArrowRight, Activity, AlertCircle } from "lucide-react";
 import Link from "next/link";
-import { Card, CardHeader, CardTitle, CardContent, Badge, Skeleton, ProgressBar, Button } from "@/components/ui";
+import { Card, CardHeader, CardTitle, CardContent, Badge, Skeleton, Button } from "@/components/ui";
+import { ProgressBar } from "@/components/ui/ProgressBar";
 import { qk } from "@/lib/query-keys";
 import type { ClientShellData } from "../ClientDetailShell";
 import { useClientNavState } from "../_hooks/useClientNavState";

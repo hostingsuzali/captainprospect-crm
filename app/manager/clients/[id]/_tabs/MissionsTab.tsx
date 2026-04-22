@@ -3,7 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Plus, Target, ExternalLink } from "lucide-react";
-import { Button, Badge, DataTable, EmptyState, TableSkeleton, ProgressBar, type Column } from "@/components/ui";
+import { Button, Badge, DataTable, EmptyState, TableSkeleton, type Column } from "@/components/ui";
+import { ProgressBar } from "@/components/ui/ProgressBar";
 import { qk } from "@/lib/query-keys";
 import { IdChip } from "@/app/manager/_shared/IdChip";
 import { ErrorCard } from "@/app/manager/_shared/ErrorCard";
