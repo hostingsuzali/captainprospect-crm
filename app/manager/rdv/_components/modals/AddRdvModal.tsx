@@ -179,12 +179,21 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
       .then((r) => r.json())
       .then((json) => {
         if (json.success && Array.isArray(json.data)) {
-          setCompanies(json.data as Company[]);
+          const fetched = json.data as Company[];
+          setCompanies(fetched);
+          if (fetched.length === 0) {
+            // No existing companies to pick: switch directly to new-company entry.
+            setCompanyMode("new");
+          }
         } else {
           setCompanies([]);
+          setCompanyMode("new");
         }
       })
-      .catch(() => setCompanies([]))
+      .catch(() => {
+        setCompanies([]);
+        setCompanyMode("new");
+      })
       .finally(() => setLoading(false));
     setCompanyId("");
     setContactId("");
@@ -424,6 +433,7 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
                   name="companyMode"
                   checked={companyMode === "existing"}
                   onChange={() => { setCompanyMode("existing"); setNewCompanyName(""); }}
+                  disabled={!listId || companies.length === 0}
                 />
                 Existante
               </label>
@@ -458,7 +468,7 @@ export function AddRdvModal({ isOpen, onClose, onSuccess }: AddRdvModalProps) {
                 placeholder="Nom de la société"
                 value={newCompanyName}
                 onChange={(e) => setNewCompanyName(e.target.value)}
-                disabled={!listId}
+                disabled={!missionId}
               />
             )}
           </div>
