@@ -22,7 +22,9 @@
       "Read(//c/Program Files/nodejs//**)",
       "Read(//c/Users/dell/AppData/Roaming/**)",
       "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")",
-      "Bash(node_modules/.bin/prisma db *)"
+      "Bash(node_modules/.bin/prisma db *)",
+      "Bash(xargs -I {} bash -c 'echo \"=== {} ===\" && head -5 \"{}\"')",
+      "Bash(xargs -I {} bash -c 'echo \"{}\"; grep -o \"import\\\\|export\" \"{}\" | head -3')"
     ]
   }
 }
